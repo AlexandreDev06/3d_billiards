@@ -1,0 +1,15 @@
+{
+  "name": "@sinuca/protocolo",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "dependencies": {
+    "@sinuca/fisica": "workspace:*",
+    "@sinuca/regras": "workspace:*"
+  }
+}

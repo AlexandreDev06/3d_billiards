@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-br">
+<head>
+<meta charset="utf-8">
+<title>Visor do balão</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; background: #0c0b0e; color: #d9d2c4; font: 13px system-ui, sans-serif; overflow: hidden; }
+  canvas { display: block; }
+  #painel { position: fixed; left: 8px; top: 8px; display: flex; flex-wrap: wrap; gap: 4px; max-width: 70vw; }
+  body.captura #painel { display: none; }
+  button { background: #2a2630; color: inherit; border: 1px solid #4a4452; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+  button.ativo { background: #3aa0ff; color: #08121c; border-color: #3aa0ff; }
+</style>
+</head>
+<body>
+<div id="painel"></div>
+<script type="importmap">
+{ "imports": {
+  "three": "/node_modules/.pnpm/three@0.186.1/node_modules/three/build/three.module.js",
+  "three/addons/": "/node_modules/.pnpm/three@0.186.1/node_modules/three/examples/jsm/"
+} }
+</script>
+<script type="module" src="./balao.js"></script>
+</body>
+</html>

@@ -1,0 +1,206 @@
+{
+ "arquivo": "mao.glb",
+ "unidades": "metros; origem no pulso; +Y para os dedos, +X para o mínimo, +Z para o dorso (mão direita, palma para baixo); a esquerda é o espelho (escala X = -1)",
+ "malhas": {
+  "mao_alta": {
+   "triangulos": 3880
+  },
+  "mao_baixa": {
+   "triangulos": 836
+  }
+ },
+ "esqueleto": {
+  "ossos": 17,
+  "nomes": [
+   "pulso",
+   "palma",
+   "indicador_1",
+   "indicador_2",
+   "indicador_3",
+   "medio_1",
+   "medio_2",
+   "medio_3",
+   "anelar_1",
+   "anelar_2",
+   "anelar_3",
+   "minimo_1",
+   "minimo_2",
+   "minimo_3",
+   "polegar_1",
+   "polegar_2",
+   "polegar_3"
+  ]
+ },
+ "acoes": {
+  "gesto_joinha": {
+   "quadros": 38,
+   "fps": 30,
+   "segundos": 1.233,
+   "tipo": "gesto"
+  },
+  "gesto_mole": {
+   "quadros": 45,
+   "fps": 30,
+   "segundos": 1.467,
+   "tipo": "gesto",
+   "pico": 13,
+   "nota": "o fundo da queda (o 'plof'); balança devagar até o fim",
+   "comeca_em": "pose_repouso",
+   "termina_em": "pendurada (não volta ao repouso: segura balançando até o jogo fazer o fade para a próxima pose)"
+  },
+  "gesto_palmas": {
+   "quadros": 37,
+   "fps": 30,
+   "segundos": 1.2,
+   "tipo": "gesto",
+   "pico": 8,
+   "picos": [
+    8,
+    16,
+    24
+   ],
+   "ciclo": [
+    4,
+    12
+   ],
+   "nota": "contatos em 8, 16 e 24; 4 a 12 é um aplauso inteiro e pode repetir",
+   "comeca_em": "pose_repouso",
+   "termina_em": "pose_repouso"
+  },
+  "gesto_quase": {
+   "quadros": 32,
+   "fps": 30,
+   "segundos": 1.033,
+   "tipo": "gesto",
+   "pico": 9,
+   "nota": "a mão explode aberta (ápice do susto); treme até 18",
+   "comeca_em": "pose_repouso",
+   "termina_em": "pose_repouso"
+  },
+  "gesto_respirar": {
+   "quadros": 91,
+   "fps": 30,
+   "segundos": 3.0,
+   "tipo": "gesto",
+   "pico": 52,
+   "ciclo": [
+    0,
+    90
+   ],
+   "aditivo": true,
+   "nota": "ciclo de 3 s (a inspiração máxima é o quadro 52); é uma ação aditiva: o quadro 0 é a referência e o jogo soma só a diferença (three: AnimationUtils.makeClipAdditive(clip, 0), action.blendMode = AdditiveAnimationBlendMode, LoopRepeat) por cima de qualquer pose"
+  },
+  "gesto_soco_ar": {
+   "quadros": 39,
+   "fps": 30,
+   "segundos": 1.267,
+   "tipo": "gesto",
+   "pico": 13,
+   "nota": "o punho chega ao alto (ápice, hora do som de impacto/whoosh); repique em 25",
+   "comeca_em": "pose_repouso",
+   "termina_em": "pose_repouso"
+  },
+  "gesto_tamborilar": {
+   "quadros": 25,
+   "fps": 30,
+   "segundos": 0.8,
+   "tipo": "gesto",
+   "picos": [
+    10,
+    13,
+    16,
+    19
+   ],
+   "ciclo": [
+    0,
+    24
+   ],
+   "nota": "o ciclo repete de 0 a 24 (o 24 é igual ao 0); os toques no cabo são 10 (mínimo), 13 (anelar), 16 (médio) e 19 (indicador)",
+   "comeca_em": "pose_punho",
+   "termina_em": "pose_punho (ciclo: o jogo entra com fade a partir da pose_punho)"
+  },
+  "gesto_tapinha": {
+   "quadros": 35,
+   "fps": 30,
+   "segundos": 1.133,
+   "tipo": "gesto",
+   "pico": 11,
+   "picos": [
+    11,
+    20
+   ],
+   "nota": "contato do punho no plano (quadro 11 e o segundo tapa em 20)",
+   "comeca_em": "pose_repouso",
+   "termina_em": "pose_repouso"
+  },
+  "pose_aberta": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_apontar": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_pinca": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_canto": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_colada": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_elevada": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_laco": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_tabela": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_ponte_v": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_punho": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  },
+  "pose_repouso": {
+   "quadros": 3,
+   "fps": 30,
+   "segundos": 0.067,
+   "tipo": "pose"
+  }
+ },
+ "poses": "uma pose é um clipe de 3 quadros iguais (0, 1, 2): toque com LoopOnce e clampWhenFinished e entre uma e outra `crossFadeFrom`; o quadro 0 já é a pose",
+ "gestos": "um gesto é um clipe de 30 quadros/s; `comeca_em` e `termina_em` dizem de onde ele sai e onde assenta (os de impacto saem e voltam à `pose_repouso`; `gesto_mole` termina pendurada, balançando; `gesto_tamborilar` é um ciclo sobre a `pose_punho`; `gesto_respirar` é aditivo); o fade de entrada é do jogo (`crossFadeFrom`); `pico` e `picos` são os quadros para sincronizar com o som; `ciclo` ([de, até], quadros) é o trecho que se repete; `mao-taco.json` leva o plano e o ponto de contato dos gestos de contato",
+ "aditivo": "gesto_respirar é aditivo: `THREE.AnimationUtils.makeClipAdditive(clip, 0)` (o quadro 0 é a referência) e `action.blendMode = THREE.AdditiveAnimationBlendMode`, em LoopRepeat e peso 1, por cima de qualquer pose ou gesto; o glTF não tem mistura aditiva própria"
+}

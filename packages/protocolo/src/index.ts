@@ -1,0 +1,11 @@
+export * from './carteira';
+export * from './coerencia';
+export * from './esquemas';
+export * from './esquemas-carteira';
+export * from './fio';
+export * from './gravacao-codec';
+export * from './limites';
+export * from './missoes';
+export * from './placar';
+export * from './tipos';
+export { ErroDeForma, validar, type Resultado } from './validacao';

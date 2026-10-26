@@ -1,0 +1,198 @@
+{
+  "versao": 1,
+  "base": "/sons/",
+  "formatos": [
+    "ogg",
+    "mp3"
+  ],
+  "intensidade": "0 a 1 = velocidade do impacto / `velocidadeCheia` (config.audio), como em `fracaoDaVelocidade`. Eventos de interface não têm faixa.",
+  "escolha": "entre as variações cuja faixa contém a intensidade, sortear sem repetir a última; faixas se tocam nas bordas, então vale a primeira que bater.",
+  "ganho": "multiplicador de 0 a 1 aplicado antes do volume do mapeamento; as amostras já estão normalizadas em ~−1 dBFS.",
+  "formatoPreferido": "ogg (Vorbis); mp3 só para o Safari (usar canPlayType/decodeAudioData com fallback).",
+  "eventos": {
+    "bola-bola": [
+      {
+        "id": "bola-bola-1",
+        "ogg": "bola-bola-1.ogg",
+        "mp3": "bola-bola-1.mp3",
+        "ganho": 0.45,
+        "duracaoMs": 174,
+        "fonte": "freesound:404519",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0,
+          0.3
+        ],
+        "uso": "choque fraco"
+      },
+      {
+        "id": "bola-bola-2",
+        "ogg": "bola-bola-2.ogg",
+        "mp3": "bola-bola-2.mp3",
+        "ganho": 0.7,
+        "duracaoMs": 239,
+        "fonte": "freesound:539854",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.3,
+          0.55
+        ],
+        "uso": "choque médio"
+      },
+      {
+        "id": "bola-bola-3",
+        "ogg": "bola-bola-3.ogg",
+        "mp3": "bola-bola-3.mp3",
+        "ganho": 0.85,
+        "duracaoMs": 234,
+        "fonte": "freesound:404519",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.55,
+          0.8
+        ],
+        "uso": "choque médio-forte"
+      },
+      {
+        "id": "bola-bola-4",
+        "ogg": "bola-bola-4.ogg",
+        "mp3": "bola-bola-4.mp3",
+        "ganho": 1.0,
+        "duracaoMs": 214,
+        "fonte": "freesound:703529",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.8,
+          1.0
+        ],
+        "uso": "choque forte (a quebra usa este)"
+      }
+    ],
+    "taco-bola": [
+      {
+        "id": "taco-bola-1",
+        "ogg": "taco-bola-1.ogg",
+        "mp3": "taco-bola-1.mp3",
+        "ganho": 0.75,
+        "duracaoMs": 284,
+        "fonte": "freesound:763603",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0,
+          0.5
+        ],
+        "uso": "tacada leve"
+      },
+      {
+        "id": "taco-bola-2",
+        "ogg": "taco-bola-2.ogg",
+        "mp3": "taco-bola-2.mp3",
+        "ganho": 1.0,
+        "duracaoMs": 254,
+        "fonte": "freesound:675330",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.5,
+          1.0
+        ],
+        "uso": "tacada forte"
+      }
+    ],
+    "bola-tabela": [
+      {
+        "id": "bola-tabela-1",
+        "ogg": "bola-tabela-1.ogg",
+        "mp3": "bola-tabela-1.mp3",
+        "ganho": 0.6,
+        "duracaoMs": 174,
+        "fonte": "freesound:675330",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0,
+          0.5
+        ],
+        "uso": "batida leve na tabela"
+      },
+      {
+        "id": "bola-tabela-2",
+        "ogg": "bola-tabela-2.ogg",
+        "mp3": "bola-tabela-2.mp3",
+        "ganho": 0.9,
+        "duracaoMs": 194,
+        "fonte": "freesound:675330",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.5,
+          1.0
+        ],
+        "uso": "batida forte na tabela"
+      }
+    ],
+    "cacapa": [
+      {
+        "id": "cacapa-1",
+        "ogg": "cacapa-1.ogg",
+        "mp3": "cacapa-1.mp3",
+        "ganho": 0.8,
+        "duracaoMs": 904,
+        "fonte": "freesound:763601",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0,
+          0.5
+        ],
+        "uso": "bola cai e rola no fundo"
+      },
+      {
+        "id": "cacapa-2",
+        "ogg": "cacapa-2.ogg",
+        "mp3": "cacapa-2.mp3",
+        "ganho": 0.8,
+        "duracaoMs": 1354,
+        "fonte": "freesound:443057",
+        "licenca": "CC0-1.0",
+        "intensidade": [
+          0.5,
+          1.0
+        ],
+        "uso": "bola cai e rola por dentro da mesa"
+      }
+    ],
+    "vez-outro": [
+      {
+        "id": "vez-outro",
+        "ogg": "vez-outro.ogg",
+        "mp3": "vez-outro.mp3",
+        "ganho": 0.3,
+        "duracaoMs": 164,
+        "fonte": "freesound:692828",
+        "licenca": "CC0-1.0",
+        "uso": "a vez passou para outro jogador (discreto)"
+      }
+    ],
+    "vez-sua": [
+      {
+        "id": "vez-sua",
+        "ogg": "vez-sua.ogg",
+        "mp3": "vez-sua.mp3",
+        "ganho": 0.55,
+        "duracaoMs": 804,
+        "fonte": "freesound:452379",
+        "licenca": "CC0-1.0",
+        "uso": "chegou a sua vez (mais marcado)"
+      }
+    ],
+    "tempo-esgotado": [
+      {
+        "id": "tempo-esgotado",
+        "ogg": "tempo-esgotado.ogg",
+        "mp3": "tempo-esgotado.mp3",
+        "ganho": 0.5,
+        "duracaoMs": 604,
+        "fonte": "freesound:742279",
+        "licenca": "CC0-1.0",
+        "uso": "o tempo da vez acabou"
+      }
+    ]
+  }
+}

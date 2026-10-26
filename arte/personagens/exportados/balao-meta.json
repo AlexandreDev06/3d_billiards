@@ -1,0 +1,182 @@
+{
+  "arquivo": "balao.glb",
+  "unidades": "metros; origem no centro do corpo; o rosto olha para +Z (yaw 0 do jogo); +X é a esquerda do balão (a direita de quem o vê de frente)",
+  "tamanho_repouso_cm": {
+    "metade_altura": 6.6,
+    "raio": 4.5,
+    "no_z": -8.5,
+    "cordinha": 7.2
+  },
+  "malhas": {
+    "balao_alta": {
+      "triangulos": 2870
+    },
+    "balao_baixa": {
+      "triangulos": 780
+    }
+  },
+  "materiais": {
+    "latex_glb": "branco, o jogo tinge com a cor da equipe (verniz KHR_materials_clearcoat)",
+    "olho_branco": "globo e reflexos",
+    "rosto_preto": "pupila, sobrancelha, boca",
+    "lingua": "língua e bochecha",
+    "cordinha": "cordinha e nó em creme"
+  },
+  "formas": {
+    "nomes": [
+      "cara_neutro",
+      "cara_sorriso",
+      "cara_susto",
+      "cara_bravo",
+      "cara_triste",
+      "piscar"
+    ],
+    "uso": "morph targets em `morphTargetDictionary`; peso 0 é o rosto neutro; `cara_neutro` é o rosto-base e só existe pelo nome; `piscar` soma às caras (peso 1 fecha as pálpebras, ao multiplicar a cara por 1 - piscar o resto fica certo); o GLTFLoader cria um filho por material: aplique o peso nos `morphTargetInfluences` de TODOS os filhos de `balao_alta`/`balao_baixa`"
+  },
+  "olhos": {
+    "olho_esq": {
+      "centro_m": [
+        0.01506,
+        0.01444,
+        0.03917
+      ],
+      "eixo_do_olhar_no_repouso": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "pai": "espinha_2"
+    },
+    "olho_dir": {
+      "centro_m": [
+        -0.01506,
+        0.01444,
+        0.03917
+      ],
+      "eixo_do_olhar_no_repouso": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "pai": "espinha_2"
+    }
+  },
+  "olhar": {
+    "limite_graus": 30.0,
+    "como": "no carregamento, eixo_repouso_no_pai = inverse(quaternion_mundial_do_pai) * eixo_do_olhar_no_repouso e quaternion_de_repouso = quaternion do osso do olho; a cada quadro (depois do mixer), q = setFromUnitVectors(eixo_repouso_no_pai, direcao_do_alvo_no_pai), com o ângulo limitado a `limite_graus`, e osso.quaternion = q * quaternion_de_repouso; `olharPara` em arte/visor/balao.js é a conta pronta"
+  },
+  "ossos": {
+    "raiz": "leva tudo (balanço, pulo)",
+    "espinha_1": "gira e escala a partir do pescoço (estufar, murchar, inclinar)",
+    "espinha_2": "meio do corpo e do rosto; pai dos olhos e dos pontos das mãos",
+    "espinha_3": "topo",
+    "no": "nó (filho da raiz; não escala com o corpo)",
+    "cordinha_1..4": "corrente da cordinha, do nó para baixo",
+    "olho_esq/olho_dir": "olhar"
+  },
+  "pontos_das_maos": {
+    "mao_esq": {
+      "pai": "espinha_2",
+      "posicao_repouso_m": [
+        0.095,
+        -0.012,
+        0.018
+      ],
+      "uso": "ponha a `mao.glb` aqui; use só a posição (e a orientação), não a escala do pai"
+    },
+    "mao_dir": {
+      "pai": "espinha_2",
+      "posicao_repouso_m": [
+        -0.095,
+        -0.012,
+        0.018
+      ],
+      "uso": "ponha a `mao.glb` aqui; use só a posição (e a orientação), não a escala do pai"
+    }
+  },
+  "acoes": {
+    "balao_estufar": {
+      "quadros": 75,
+      "fps": 30,
+      "segundos": 2.5,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        27
+      ],
+      "ciclo_quadros": [
+        27,
+        75
+      ],
+      "cara_par": "cara_sorriso"
+    },
+    "balao_inclinar": {
+      "quadros": 84,
+      "fps": 30,
+      "segundos": 2.8,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        24
+      ],
+      "ciclo_quadros": [
+        24,
+        84
+      ],
+      "cara_par": "cara_neutro"
+    },
+    "balao_murchar": {
+      "quadros": 84,
+      "fps": 30,
+      "segundos": 2.8,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        48
+      ],
+      "ciclo_quadros": [
+        48,
+        84
+      ],
+      "cara_par": "cara_triste"
+    },
+    "balao_parado": {
+      "quadros": 78,
+      "fps": 30,
+      "segundos": 2.6,
+      "repete": true,
+      "entrada_quadros": null,
+      "ciclo_quadros": [
+        0,
+        78
+      ],
+      "cara_par": "cara_neutro"
+    },
+    "balao_pulinho": {
+      "quadros": 36,
+      "fps": 30,
+      "segundos": 1.2,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_sorriso"
+    },
+    "balao_susto": {
+      "quadros": 30,
+      "fps": 30,
+      "segundos": 1.0,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_susto"
+    }
+  },
+  "par_de_cara": {
+    "balao_parado": "cara_neutro",
+    "balao_inclinar": "cara_neutro",
+    "balao_pulinho": "cara_sorriso",
+    "balao_susto": "cara_susto",
+    "balao_estufar": "cara_sorriso",
+    "balao_murchar": "cara_triste"
+  }
+}

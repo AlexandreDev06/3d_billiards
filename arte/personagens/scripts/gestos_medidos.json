@@ -1,0 +1,88 @@
+{
+ "gesto_palmas": {
+  "contatos": [
+   {
+    "folga_ao_plano_mm": 0.0,
+    "normal_da_palma": [
+     -1.0,
+     0.0,
+     0.0
+    ],
+    "ponto_m": [
+     -0.02533,
+     0.05918,
+     0.02697
+    ],
+    "quadro": 8
+   },
+   {
+    "folga_ao_plano_mm": 0.0,
+    "normal_da_palma": [
+     -1.0,
+     0.0,
+     0.0
+    ],
+    "ponto_m": [
+     -0.02533,
+     0.05918,
+     0.02697
+    ],
+    "quadro": 16
+   },
+   {
+    "folga_ao_plano_mm": 0.0,
+    "normal_da_palma": [
+     -1.0,
+     -0.0,
+     0.0
+    ],
+    "ponto_m": [
+     -0.02533,
+     0.05918,
+     0.02697
+    ],
+    "quadro": 24
+   }
+  ],
+  "eixo": "x",
+  "maior_afundamento_mm": -0.0,
+  "plano_m": -0.02533,
+  "sentido": -1
+ },
+ "gesto_tapinha": {
+  "contatos": [
+   {
+    "folga_ao_plano_mm": 0.0,
+    "normal_da_palma": [
+     -0.9976,
+     -0.0698,
+     0.0
+    ],
+    "ponto_m": [
+     -0.00557,
+     0.06788,
+     -0.07044
+    ],
+    "quadro": 11
+   },
+   {
+    "folga_ao_plano_mm": -0.141,
+    "normal_da_palma": [
+     -0.9976,
+     -0.0694,
+     0.0
+    ],
+    "ponto_m": [
+     -0.00555,
+     0.06787,
+     -0.07058
+    ],
+    "quadro": 20
+   }
+  ],
+  "eixo": "z",
+  "maior_afundamento_mm": 0.141,
+  "plano_m": -0.07044,
+  "sentido": -1
+ }
+}

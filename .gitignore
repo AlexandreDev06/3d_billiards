@@ -1,0 +1,27 @@
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+
+.outros/
+.maestri/
+.claude/settings.local.json
+.claude/worktrees/
+
+# carteiras da sala (L22): saldo e skins em disco, nunca no git
+apps/sala/dados/
+
+# personagens do artista copiados de arte/personagens/exportados/ pelo dev e pelo build (L28)
+apps/web/public/personagens/
+
+# Cópia de segurança do Blender
+*.blend1

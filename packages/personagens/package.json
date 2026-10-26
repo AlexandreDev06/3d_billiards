@@ -1,0 +1,20 @@
+{
+  "name": "@sinuca/personagens",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./three": "./src/three/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p ."
+  },
+  "peerDependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "@types/three": "^0.186.0",
+    "three": "^0.186.1"
+  }
+}
