@@ -8,8 +8,9 @@ const COR_VALIDA = (c: number): boolean => Number.isInteger(c) && c >= 0 && c <=
 const superficies = (a: AparenciaTaco): Superficie[] => [a.virola, a.haste, a.junta, a.antebraco.base, a.anel, a.base, a.borracha];
 
 describe('skins do taco', () => {
-  it('são as oito do catálogo, com os ids do protocolo, e cada id tem a sua aparência', () => {
-    expect(IDS_DE_SKIN_DO_TACO).toEqual(['classico', 'ebano', 'boteco', 'marfim', 'carbono', 'chamas', 'neon', 'ouro']);
+  it('são as 21 do catálogo, com os ids do protocolo, e cada id tem a sua aparência', () => {
+    expect(IDS_DE_SKIN_DO_TACO).toHaveLength(21);
+    for (const id of ['classico', 'ebano', 'boteco', 'marfim', 'carbono', 'chamas', 'neon', 'ouro', 'coral', 'bicho-solto', 'corujao', 'dragao-das-quinze', 'tempera', 'obsidiana', 'esmeralda-do-pano']) expect(IDS_DE_SKIN_DO_TACO).toContain(id);
     expect(Object.keys(APARENCIAS_DO_TACO).sort()).toEqual([...IDS_DE_SKIN_DO_TACO].sort());
     for (const id of IDS_DE_SKIN_DO_TACO) expect(APARENCIAS_DO_TACO[id].id).toBe(id);
   });

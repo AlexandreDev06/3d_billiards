@@ -597,7 +597,7 @@ describe('validação das mensagens da sala', () => {
 
   it('cobre todos os tipos da união', () => {
     const tipos = new Set(sala.map((m) => m.tipo));
-    expect([...tipos].sort()).toEqual(['aposta-paga', 'boas-vindas', 'chat-retransmitido', 'emoji-retransmitido', 'erro', 'estado-sala', 'expulso', 'mira-retransmitida', 'missoes', 'pong', 'retrato', 'tacada-retransmitida', 'tempo-esgotado']);
+    expect([...tipos].sort()).toEqual(['aposta-paga', 'boas-vindas', 'chat-retransmitido', 'emoji-retransmitido', 'erro', 'estado-sala', 'expulso', 'fisica-alterada', 'mira-retransmitida', 'missoes', 'pong', 'retrato', 'tacada-retransmitida', 'tempo-esgotado']);
   });
 
   it('recusa tipos do cliente e vice-versa', () => {

@@ -4,6 +4,8 @@ import { placarParaMostrar, type Formacao, type PlacarParaMostrar } from '../hud
 import { tituloDoFormato } from '../lobby/catalogo';
 import { TEMPO_PADRAO_DA_SALA, regrasDoEstado, type RegrasDaSala } from '../lobby/regras-da-sala';
 import type { LinhaDaPartida } from '../previsao/regra-da-linha';
+import { fisicaMexidaDoEstado, linhaDaFisicaNaEspera } from './fisica-da-sala-modelo';
+import { resumoDoLugar } from './perfil-modelo';
 import type { TempoDaTacadaS } from '../relogio/modelo';
 
 export interface AssentoModelo {
@@ -26,6 +28,11 @@ export interface AssentoModelo {
   readonly saldo: number | null;
   /** A skin do taco de quem está no lugar (o clássico se vago, sem carteira ou se a sala não disse). */
   readonly skin: SkinTaco;
+  /**
+   * L43: o resumo público das estatísticas de quem está no lugar, a linha curta de baixo do nome ("12 vitórias em 30 · 85 bolas");
+   * `null` = vago, sem carteira ou sala que não o manda: o cartão fica sem a linha.
+   */
+  readonly resumo: string | null;
 }
 
 /** Uma equipe da sala de espera: os lugares dela, na ordem. */
@@ -66,6 +73,11 @@ export interface SalaModelo {
   readonly regras: RegrasDaSala;
   /** O anfitrião pode mudar modalidade, formato, tempo, linha, giz e força: só na espera. Os outros veem as regras, sem mexer. */
   readonly podeConfigurar: boolean;
+  /**
+   * A linha da física nas regras da espera (L42): "Física: padrão", ou "Física mexida: missões e estatísticas não contam" em
+   * destaque. `souAnfitriao` diz se o F1 abre para mexer (o painel dele) ou só para ler.
+   */
+  readonly fisica: { readonly texto: string; readonly destaque: boolean; readonly mexida: boolean; readonly souAnfitriao: boolean };
   /**
    * O placar da sala: o confronto de quem está sentado (se a formação mudou, já o 0 × 0 novo, e o anterior no histórico) e os
    * anteriores. Com lugar vago a formação não se conhece e vale o confronto como a sala o mandou.
@@ -109,6 +121,7 @@ export function modeloDaSala(estado: MsgEstadoSala, meuLugar: number | null, sou
       podeExpulsar: estado.fase === 'espera' && souAnfitriao && l.nome !== null && !l.anfitriao,
       saldo: l.nome === null ? null : (l.saldo ?? null),
       skin: l.skin ?? SKIN_PADRAO,
+      resumo: l.nome === null ? null : resumoDoLugar(l.estatisticas),
     }),
   );
   const vagos = assentos.filter((a) => a.nome === null).length;
@@ -136,6 +149,7 @@ export function modeloDaSala(estado: MsgEstadoSala, meuLugar: number | null, sou
     forca: regras.forca,
     regras,
     podeConfigurar: souAnfitriao && estado.fase === 'espera',
+    fisica: { ...linhaDaFisicaNaEspera(fisicaMexidaDoEstado(estado)), mexida: fisicaMexidaDoEstado(estado), souAnfitriao },
     placar: placarParaMostrar(estado.placar, formacaoSentada(assentos), regras.modalidade),
   };
 }

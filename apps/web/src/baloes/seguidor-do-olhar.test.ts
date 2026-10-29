@@ -83,6 +83,41 @@ describe('SeguidorDoOlhar (para onde o balão olha)', () => {
     expect(s.x).toBeGreaterThanOrEqual(0);
   });
 
+  it('diz se alguma bola anda e onde está a bola seguida, sem a suavização (o olho persegue sozinho)', () => {
+    const { xs, zs, ativas } = mesa();
+    const s = new SeguidorDoOlhar({ ...CFG, taxa: 1 }, BRANCA);
+    s.atualizar(0.1, xs, zs, ativas);
+    s.atualizar(0.1, xs, zs, ativas);
+    expect(s.andando).toBe(false);
+    expect([s.bolaX, s.bolaZ]).toEqual([0, 0]);
+    for (let i = 0; i < 4; i++) {
+      xs[2]! += 0.3;
+      zs[2]! += 0.1;
+      s.atualizar(0.1, xs, zs, ativas);
+    }
+    expect(s.andando).toBe(true);
+    expect(s.bolaSeguida).toBe(2);
+    expect(s.bolaX).toBeCloseTo(xs[2]!, 9);
+    expect(s.bolaZ).toBeCloseTo(zs[2]!, 9);
+    // a suavização antiga (taxa 1) ficou para trás da bola
+    expect(s.x).toBeLessThan(xs[2]! - 0.3);
+    for (let i = 0; i < 12; i++) s.atualizar(0.1, xs, zs, ativas);
+    expect(s.andando).toBe(false);
+  });
+
+  it('a branca rolando também é "algo anda" (a bola olhada é ela)', () => {
+    const { xs, zs, ativas } = mesa();
+    const s = new SeguidorDoOlhar(CFG, BRANCA);
+    s.atualizar(0.1, xs, zs, ativas);
+    for (let i = 0; i < 4; i++) {
+      xs[0]! += 0.3;
+      s.atualizar(0.1, xs, zs, ativas);
+    }
+    expect(s.bolaSeguida).toBe(BRANCA);
+    expect(s.andando).toBe(true);
+    expect(s.bolaX).toBeCloseTo(xs[0]!, 9);
+  });
+
   it('reiniciar volta à branca e esquece as velocidades', () => {
     const { xs, zs, ativas } = mesa();
     const s = new SeguidorDoOlhar(CFG, BRANCA);

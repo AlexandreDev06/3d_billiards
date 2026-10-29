@@ -492,6 +492,11 @@ body.fim-roteiro .aviso-provisorio {
   margin: 0;
 }
 
+.hud-ajuda-lista dt[hidden],
+.hud-ajuda-lista dd[hidden] {
+  display: none;
+}
+
 /* ---------- Efeito e giz: embaixo à direita ---------- */
 
 .hud-painel {
@@ -1404,20 +1409,27 @@ body.menu-aberto .hud {
   visibility: hidden;
 }
 
+/* L40: a tela é uma coluna (a barra de cima e o palco onde a caixa fica); o visual todo mora em `estilo-menu.css`. */
 .menu {
   position: fixed;
   inset: 0;
   z-index: 20;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 16px;
+  flex-direction: column;
   box-sizing: border-box;
   overflow-y: auto;
   background: radial-gradient(ellipse at center, rgba(8, 10, 14, 0.55), rgba(8, 10, 14, 0.9));
-  backdrop-filter: blur(3px);
   font: 14px/1.4 system-ui, sans-serif;
   color: #e8e6df;
+}
+
+.menu-palco {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 10px 16px;
 }
 
 .menu[hidden] {
@@ -1891,7 +1903,8 @@ body.menu-aberto .hud {
   font: 12px/1.35 system-ui, sans-serif;
   pointer-events: auto;
   user-select: none;
-  z-index: 10;
+  /* Acima da sala de espera (20) e dos avisos de missão (26): o anfitrião mexe na física pelo F1 com a espera na tela. */
+  z-index: 27;
 }
 
 .painel-dev[hidden] {
@@ -1913,6 +1926,19 @@ body.menu-aberto .hud {
 .painel-dev-nota {
   margin: 4px 0 8px;
   color: rgba(232, 230, 223, 0.6);
+}
+
+.painel-dev-nota.travada {
+  color: #ffa13a;
+}
+
+.painel-dev-linha input:disabled {
+  opacity: 0.55;
+}
+
+.painel-dev-botoes .hud-botao:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
 
 .painel-dev h3 {
@@ -2008,9 +2034,6 @@ body.menu-aberto .hud {
 }
 
 .menu-engrenagem {
-  position: absolute;
-  top: 16px;
-  right: 16px;
   display: inline-flex;
   padding: 9px;
   border: 1px solid rgba(232, 230, 223, 0.22);
@@ -2647,6 +2670,10 @@ body.menu-aberto .hud {
   margin: 8px 0 10px;
   font-size: 11.5px;
   color: var(--texto-fraco);
+}
+
+.creditos-nota-arte {
+  margin-top: 14px;
 }
 
 .creditos-lista {
@@ -3598,12 +3625,6 @@ body.menu-aberto .hud {
   font-size: 11px;
 }
 
-/* A tela de menu perde menos de cada lado: com as regras, a sala de espera de quatro mais o placar cabe em 720 px. */
-body.menu-aberto .menu {
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-
 .menu-placar {
   gap: 2px;
   padding: 4px 12px 5px;
@@ -3690,6 +3711,7 @@ body.menu-aberto .menu {
   box-sizing: border-box;
   width: 760px;
   max-width: 100%;
+  max-height: calc(100vh - 32px);
   padding: 18px 22px 18px;
   background: rgba(15, 17, 22, 0.98);
   border: 1px solid rgba(232, 230, 223, 0.16);
@@ -3793,6 +3815,66 @@ body.menu-aberto .menu {
   font-weight: 700;
 }
 
+.loja-rolagem {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-right: -6px;
+}
+
+.loja-faixas {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.loja-faixa-titulo,
+.loja-vitrine-titulo {
+  margin: 0 0 8px;
+  padding-left: 10px;
+  border-left: 4px solid var(--faixa, var(--acento));
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--faixa, var(--texto));
+}
+
+.loja-vitrine {
+  --faixa: #e4ae39;
+  padding: 10px 12px 12px;
+  background: linear-gradient(180deg, rgba(228, 174, 57, 0.13), rgba(228, 174, 57, 0.03));
+  border: 1px solid rgba(228, 174, 57, 0.45);
+  border-radius: 14px;
+}
+
+.loja-vitrine[hidden] {
+  display: none;
+}
+
+.loja-vitrine-topo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+}
+
+.loja-vitrine-desconto {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--verde);
+}
+
+.loja-vitrine-restante {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--texto-fraco);
+  font-variant-numeric: tabular-nums;
+}
+
 .loja-grade {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -3802,19 +3884,37 @@ body.menu-aberto .menu {
   list-style: none;
 }
 
+.loja-grade-vitrine {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .loja-cartao {
+  --faixa: #b0c3d9;
   display: flex;
   flex-direction: column;
   gap: 5px;
+  min-width: 0;
   padding: 9px 12px 9px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(232, 230, 223, 0.12);
+  border: 1px solid var(--faixa);
+  border-left-width: 4px;
   border-radius: 12px;
 }
 
+.loja-cartao.rara {
+  box-shadow: 0 0 0 1px var(--faixa), 0 0 14px -2px var(--faixa);
+}
+
 .loja-cartao.em-uso {
-  border-color: var(--acento);
   background: rgba(58, 160, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--acento);
+}
+
+@media (max-width: 640px) {
+  .loja-grade,
+  .loja-grade-vitrine {
+    grid-template-columns: 1fr;
+  }
 }
 
 .loja-caixa.fora-do-ar .loja-cartao {
@@ -3852,6 +3952,93 @@ body.menu-aberto .menu {
 .loja-selo.sua {
   background: rgba(95, 211, 154, 0.2);
   color: var(--verde);
+}
+
+.loja-etiquetas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.loja-faixa-etiqueta {
+  padding: 1px 8px;
+  border-radius: 4px;
+  background: var(--faixa);
+  color: #0b0d11;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.loja-desconto {
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: rgba(95, 211, 154, 0.2);
+  color: var(--verde);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.loja-preco-linha {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.loja-preco-riscado {
+  font-size: 12px;
+  color: var(--texto-fraco);
+  font-variant-numeric: tabular-nums;
+  text-decoration: line-through;
+}
+
+.loja-meu-taco {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.loja-semente {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--texto);
+}
+
+.loja-selo-raro {
+  padding: 0 6px;
+  border: 1px solid var(--faixa);
+  border-radius: 4px;
+  color: var(--faixa);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.loja-rara-nome {
+  color: var(--texto-fraco);
+}
+
+/* A fase comum do Doppler e do Gamma Doppler ("Phase 2"): discreta, sem a borda do selo de raro. */
+.loja-fase {
+  color: var(--texto-fraco);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* O contador de bolas do taco: quatro dígitos de LED âmbar, como o da placa no cabo. */
+.loja-contador {
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 4px;
+  background: #0b0c10;
+  color: #ffa31a;
+  font: 700 13px ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  letter-spacing: 0.12em;
+  text-shadow: 0 0 6px rgba(255, 163, 26, 0.7);
 }
 
 .loja-selo.em-uso {
@@ -3924,6 +4111,107 @@ body.menu-aberto .menu {
   outline-offset: 2px;
 }
 
+/* Seção "Balão" da loja (L48): quatro categorias de ícones do artista, cada item com nome, preço e Comprar. */
+.loja-balao {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+.loja-balao-dica {
+  margin: 0;
+  font-size: 13px;
+  color: var(--texto-fraco);
+}
+
+.loja-balao-categorias {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.loja-balao-categoria-titulo {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--texto-fraco);
+}
+
+.loja-grade-balao {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.loja-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 8px 8px 9px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(232, 230, 223, 0.2);
+  border-radius: 12px;
+}
+
+.loja-item.equipado {
+  background: rgba(58, 160, 255, 0.1);
+  box-shadow: inset 0 0 0 1px var(--acento);
+}
+
+.loja-item.destaque {
+  box-shadow: 0 0 0 2px #e4ae39, 0 0 16px -2px #e4ae39;
+}
+
+.loja-item-icone {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+}
+
+.loja-item .loja-nome {
+  font-size: 14px;
+}
+
+.loja-item .loja-nome-linha {
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.loja-item .loja-preco {
+  margin-left: 0;
+}
+
+.loja-item .loja-faltam {
+  flex: 0;
+  font-size: 12px;
+}
+
+.loja-item .loja-botao {
+  min-width: 0;
+  padding: 4px 12px;
+  font-size: 13px;
+}
+
+.loja-balao.indisponivel .loja-item {
+  opacity: 0.55;
+}
+
+@media (max-width: 640px) {
+  .loja-grade-balao {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 /* Aposta da sala (L24): quatro botões como os do tempo, na mesma grade das regras. */
 .menu-apostas {
   display: grid;
@@ -3953,9 +4241,8 @@ body.menu-aberto .menu {
   --nivel-dificil: #ff7a6b;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-top: 4px;
-  padding-top: 14px;
+  gap: 5px;
+  padding-top: 12px;
   border-top: 1px solid rgba(232, 230, 223, 0.14);
 }
 
@@ -3987,8 +4274,8 @@ body.menu-aberto .menu {
 .missoes-lista {
   display: flex;
   flex-direction: column;
-  gap: 7px;
-  margin: 2px 0 0;
+  gap: 6px;
+  margin: 1px 0 0;
   padding: 0;
   list-style: none;
 }
@@ -3997,8 +4284,8 @@ body.menu-aberto .menu {
   --cor: var(--nivel-facil);
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  padding: 8px 11px 8px 12px;
+  gap: 2px;
+  padding: 6px 11px 7px 12px;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(232, 230, 223, 0.12);
   border-left: 4px solid var(--cor);
@@ -4057,6 +4344,7 @@ body.menu-aberto .menu {
 
 .missao-descricao {
   font-size: 12.5px;
+  line-height: 1.3;
   color: rgba(232, 230, 223, 0.72);
 }
 
@@ -4116,12 +4404,129 @@ body.menu-aberto .menu {
 }
 
 .missoes-aviso {
-  padding: 7px 10px;
+  padding: 5px 10px;
   background: rgba(58, 160, 255, 0.12);
   border: 1px solid rgba(58, 160, 255, 0.4);
   border-radius: 8px;
-  font-size: 12px;
+  font-size: 11.5px;
+  line-height: 1.3;
   color: rgba(232, 230, 223, 0.86);
+}
+
+/*
+ * A tela inicial com as missões (L35, o ajuste que sobrou do L32): a 720 px de altura, sem carteira (com o aviso a mais), a caixa tinha
+ * 705 px e a tela rolava. Folgas menores só nela, para caber em ~670 px com ou sem o aviso.
+ */
+.menu-caixa:has(.missoes) {
+  gap: 10px;
+  padding: 20px 30px 18px;
+}
+
+.menu-caixa:has(.missoes) .missoes {
+  padding-top: 10px;
+}
+
+.menu-caixa:has(.missoes) .missao-cartao {
+  padding: 5px 11px 5px 12px;
+}
+
+/*
+ * A seção "Missões do dia" do H durante a partida (L37): o mesmo painel do lobby, apertado, num cartão do HUD na coluna da esquerda,
+ * sob o placar (290 px de largura, fora do pano a 1280x720; a ajuda de controles já ocupa o alto da direita).
+ */
+.hud-ajuda-missoes {
+  padding: 7px 10px 8px;
+  background: var(--painel);
+  border-radius: 12px;
+}
+
+.hud-ajuda-missoes[hidden] {
+  display: none;
+}
+
+.missoes-compactas {
+  gap: 3px;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.missoes-compactas .missoes-titulo {
+  font: 600 11px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--texto-fraco);
+}
+
+.missoes-compactas .missoes-ganho {
+  font-size: 11.5px;
+}
+
+.missoes-compactas .missoes-restante {
+  font-size: 11px;
+}
+
+.missoes-compactas .missoes-lista {
+  gap: 3px;
+  margin: 0;
+}
+
+.missoes-compactas .missao-cartao {
+  gap: 0;
+  padding: 2px 8px 3px 9px;
+  border-left-width: 3px;
+  border-radius: 7px;
+}
+
+.missoes-compactas .missao-linha {
+  gap: 6px;
+}
+
+.missoes-compactas .missao-nivel {
+  padding: 0 6px;
+  font-size: 9.5px;
+}
+
+.missoes-compactas .missao-nome {
+  font-size: 12.5px;
+}
+
+.missoes-compactas .missao-premio {
+  font-size: 12px;
+}
+
+.missoes-compactas .missao-descricao {
+  font-size: 11px;
+  line-height: 1.25;
+}
+
+.missoes-compactas .missao-progresso {
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.missoes-compactas .missao-barra {
+  height: 5px;
+}
+
+.missoes-compactas .missao-numero {
+  min-width: 36px;
+  font-size: 11px;
+}
+
+.missoes-compactas .missao-visto {
+  width: 16px;
+  height: 16px;
+  font-size: 11px;
+}
+
+/* O aviso vira uma linha discreta, sem a caixa azul do lobby. */
+.missoes-compactas .missoes-aviso {
+  padding: 0;
+  background: none;
+  border: 0;
+  font-size: 10.5px;
+  font-style: italic;
+  color: var(--texto-fraco);
 }
 
 /* Avisos de missão na partida: canto de cima à direita, abaixo dos botões, fora do meio da mesa (z-index acima dos emojis, abaixo dos painéis). */
@@ -4204,4 +4609,185 @@ body.menu-aberto .menu {
   .missao-enchimento {
     transition: none;
   }
+}
+
+/* ---------- Treino (L42): cartão, ferramentas, cenários e bandeja ---------- */
+
+/* No treino não há adversário nem placar de partida: só o cartão do treino (a frase da jogada, em `.aviso`, continua). */
+/* Com a mão na mesa, ou a mesa limpa, não há tacada a dar: o "Clique para jogar" ficaria errado. */
+body.treino-sem-tacada .tela-clique {
+  display: none;
+}
+
+body.modo-treino .hud .placar,
+body.modo-treino .hud .placar-sala,
+body.modo-treino .hud .aviso-objetivo,
+body.modo-treino .hud .aviso-provisorio {
+  display: none;
+}
+
+.treino-cartao {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--painel);
+  border-left: 4px solid var(--acento);
+  border-radius: 0 12px 12px 0;
+}
+
+.treino-cartao[hidden],
+.treino-ferramentas[hidden],
+.treino-bandeja[hidden],
+.treino-cenarios[hidden],
+.treino-cenario[hidden],
+.treino-dica[hidden] {
+  display: none;
+}
+
+.treino-cartao.mesa-limpa {
+  border-left-color: var(--equipe-2);
+}
+
+.treino-titulo {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.treino-numeros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  font-weight: 600;
+}
+
+.treino-tacadas {
+  color: var(--texto-fraco);
+}
+
+.treino-cenario {
+  padding: 6px 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+}
+
+.treino-cenario-nome {
+  display: block;
+  color: var(--equipe-1);
+}
+
+.treino-cenario-descricao,
+.treino-dica {
+  margin: 2px 0 0;
+  color: var(--texto-fraco);
+  font-size: 12px;
+}
+
+.treino-dica {
+  color: var(--texto);
+}
+
+.treino-ferramentas {
+  position: absolute;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.treino-barra {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.treino-botao {
+  justify-content: flex-start;
+  min-width: 170px;
+}
+
+.treino-botao.ativo,
+.treino-cenario-item:hover {
+  border-color: var(--acento);
+  background: rgba(58, 160, 255, 0.22);
+}
+
+.treino-botao:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.treino-cenarios {
+  position: absolute;
+  left: calc(100% + 8px);
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 270px;
+  padding: 10px;
+  background: var(--painel);
+  border-radius: 12px;
+  pointer-events: auto;
+}
+
+.treino-cenarios-titulo {
+  font-weight: 700;
+}
+
+.treino-cenario-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+}
+
+.treino-cenario-item-descricao {
+  color: var(--texto-fraco);
+  font-weight: 400;
+  font-size: 11.5px;
+}
+
+.treino-bandeja {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 260px;
+  padding: 8px 10px;
+  background: var(--painel);
+  border-radius: 12px;
+  pointer-events: auto;
+}
+
+.treino-bandeja-titulo {
+  color: var(--texto-fraco);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.treino-bandeja-fichas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.treino-bandeja.vazia .treino-bandeja-fichas {
+  color: var(--texto-fraco);
+}
+
+.treino-ficha-botao {
+  padding: 2px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  cursor: pointer;
+}
+
+.treino-ficha-botao:hover,
+.treino-ficha-botao:focus-visible {
+  border-color: var(--acento);
 }

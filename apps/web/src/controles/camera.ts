@@ -2,11 +2,13 @@ import { MathUtils, Vector3, type PerspectiveCamera } from 'three';
 import { BOLAO, TACO } from '@sinuca/fisica';
 import type { ConfigCamera } from '../config';
 import type { PoseDaCameraDoFim } from './camera-do-fim';
+import { poseDoMenuVazia, type PoseDaCameraDoMenu } from './camera-do-menu';
 import { poseDaCameraDeTacada, poseVazia, type GeometriaDaCameraDeTacada, type PoseDaCameraDeTacada } from './camera-tacada';
+import { fracaoDentroDaSala, raioMaximoNaDirecao, type LimitesDaSala } from './limite-da-sala';
 import { diferencaAngular, fatorDeSuavizacao } from './suavizar';
 import { ajusteDaVistaDeCima } from './vista-cima';
 
-export type VistaCamera = 'tacada' | 'cima' | 'fim';
+export type VistaCamera = 'tacada' | 'cima' | 'fim' | 'menu';
 
 const CENTRO_DA_MESA = new Vector3(0, 0, 0);
 const PARA_CIMA = new Vector3(0, 1, 0);
@@ -25,8 +27,12 @@ export interface TacoParaACamera {
 
 /**
  * Câmera da mesa: de tacada (atrás do taco, segue a mira), de cima (Tab), do fim da partida
- * (os balões em volta da mesa, posta de fora: `entrarNoFim`) ou orbital livre (botão direito). Toda transição é amortecida pelo tempo real do
- * quadro; nada aqui aloca por quadro.
+ * (os balões em volta da mesa, posta de fora: `entrarNoFim`), do menu (passeando pelo boteco: `entrarNoMenu`) ou orbital livre (botão
+ * direito). Toda transição é amortecida pelo tempo real do quadro; nada aqui aloca por quadro.
+ *
+ * Com o boteco em cena (`definirLimites`), a câmera do jogo (tacada, órbita e fim) nunca sai da zona livre da sala: passando do limite
+ * ela encurta a distância ao que olha, na mesma direção, em vez de atravessar parede ou móvel. A vista de cima só sobe (sem parede por
+ * perto) e a do menu é a do artista.
  */
 export class CameraRig {
   vista: VistaCamera = 'tacada';
@@ -38,6 +44,7 @@ export class CameraRig {
   private elevacao = 0;
   private raio = 1;
   private anguloSuave = 0;
+  private vistaAntesDoMenu: VistaCamera = 'tacada';
   private primeiroQuadro = true;
   /** Deslocamento lateral do desenho (fração da largura) e o que a vista atual pede; só a vista de cima desloca. */
   private deslocamento = 0;
@@ -49,6 +56,9 @@ export class CameraRig {
   private readonly olhar = new Vector3();
   private readonly poseDaTacada: PoseDaCameraDeTacada = poseVazia();
   private readonly poseDoFim: PoseDaCameraDoFim = { x: 0, y: 0, z: 0, olharX: 0, olharY: 0, olharZ: 0 };
+  private readonly poseDoMenu: PoseDaCameraDoMenu = poseDoMenuVazia();
+  private limites: LimitesDaSala | null = null;
+  private readonly pivo = new Vector3();
   private readonly entradaDaTacada = { x: 0, y: 0, z: 0, angulo: 0, elevacaoDoTaco: 0, recuo: 0, zoom: 1 };
 
   constructor(
@@ -67,6 +77,11 @@ export class CameraRig {
   /** Troca a sensibilidade da órbita, o passo do zoom e a pressa do giro (configurações do jogador). */
   configurar(cfg: ConfigCamera): void {
     this.cfg = cfg;
+  }
+
+  /** Onde a câmera do jogo pode estar dentro da sala (o boteco carregou); `null` = sem limite (sem boteco não há parede). */
+  definirLimites(limites: LimitesDaSala | null): void {
+    this.limites = limites;
   }
 
   /** Largura da janela em px; a vista de cima a usa para converter a largura que o HUD cobre em fração da tela. */
@@ -90,7 +105,7 @@ export class CameraRig {
 
   /** Tab: de tacada para de cima e de volta. No fim da partida a câmera é do fim e Tab não mexe nela. */
   alternarVista(): void {
-    if (this.vista === 'fim') return;
+    if (this.vista === 'fim' || this.vista === 'menu') return;
     this.vista = this.vista === 'tacada' ? 'cima' : 'tacada';
   }
 
@@ -105,8 +120,24 @@ export class CameraRig {
     if (this.vista === 'fim') this.vista = 'tacada';
   }
 
+  /** A câmera passa à do menu, na pose `pose` (que quem chama refaz a cada quadro): ela guarda a vista de antes para `sairDoMenu`. */
+  entrarNoMenu(pose: Readonly<PoseDaCameraDoMenu>): void {
+    if (this.vista !== 'menu') {
+      this.vistaAntesDoMenu = this.vista;
+      this.encerrarOrbita();
+    }
+    this.vista = 'menu';
+    Object.assign(this.poseDoMenu, pose);
+  }
+
+  /** Volta à vista de antes do menu (tacada, de cima ou do fim). */
+  sairDoMenu(): void {
+    if (this.vista !== 'menu') return;
+    this.vista = this.vistaAntesDoMenu;
+  }
+
   iniciarOrbita(): void {
-    if (this.orbitandoAgora) return;
+    if (this.orbitandoAgora || this.vista === 'menu') return;
     this.orbitandoAgora = true;
     const d = this.posicaoAlvo.copy(this.camera.position).sub(CENTRO_DA_MESA);
     this.raio = MathUtils.clamp(d.length(), this.cfg.orbital.raioInicialMin, RAIO_ORBITAL_MAX);
@@ -127,8 +158,8 @@ export class CameraRig {
   zoomar(sinal: number): void {
     const fator = 1 + Math.sign(sinal) * this.cfg.passoZoom;
     if (this.orbitandoAgora) {
-      this.raio = MathUtils.clamp(this.raio * fator, RAIO_ORBITAL_MIN, RAIO_ORBITAL_MAX);
-    } else if (this.vista === 'fim') {
+      this.raio = MathUtils.clamp(this.raio * fator, RAIO_ORBITAL_MIN, Math.min(RAIO_ORBITAL_MAX, this.raioDaSala()));
+    } else if (this.vista === 'fim' || this.vista === 'menu') {
       return;
     } else if (this.vista === 'cima') {
       this.zoomCima = MathUtils.clamp(this.zoomCima * fator, this.cfg.zoomMin, this.cfg.zoomMax);
@@ -145,7 +176,8 @@ export class CameraRig {
     const suavizacao = this.primeiroQuadro ? 1 : fatorDeSuavizacao(this.cfg.taxaSuavizacao, dt);
     this.anguloSuave += diferencaAngular(this.anguloSuave, angulo) * (this.primeiroQuadro ? 1 : fatorDeSuavizacao(this.cfg.taxaSuavizacao * 1.5, dt));
 
-    if (this.orbitandoAgora) this.alvoOrbital();
+    if (this.vista === 'menu') this.alvoDoMenu();
+    else if (this.orbitandoAgora) this.alvoOrbital();
     else if (this.vista === 'cima') this.alvoDeCima();
     else if (this.vista === 'fim') this.alvoDoFim();
     else this.alvoDeTacada(ancora, taco);
@@ -183,6 +215,7 @@ export class CameraRig {
     this.olharAlvo.set(pose.olharX, pose.olharY, pose.olharZ);
     this.paraCimaAlvo.copy(PARA_CIMA);
     this.deslocamentoAlvo = 0;
+    this.manterNaSala(ancora.x, ancora.y, ancora.z);
   }
 
   private alvoDoFim(): void {
@@ -191,6 +224,28 @@ export class CameraRig {
     this.olharAlvo.set(p.olharX, p.olharY, p.olharZ);
     this.paraCimaAlvo.copy(PARA_CIMA);
     this.deslocamentoAlvo = 0;
+    this.manterNaSala(0, 0, 0);
+  }
+
+  private alvoDoMenu(): void {
+    const p = this.poseDoMenu;
+    this.posicaoAlvo.set(p.x, p.y, p.z);
+    this.olharAlvo.set(p.olharX, p.olharY, p.olharZ);
+    this.paraCimaAlvo.copy(PARA_CIMA);
+    this.deslocamentoAlvo = 0;
+  }
+
+  /** Puxa a posição alvo para o pivô, na mesma direção, até caber na sala (sem alocar). */
+  private manterNaSala(pivoX: number, pivoY: number, pivoZ: number): void {
+    if (this.limites === null) return;
+    const pivo = this.pivo.set(pivoX, pivoY, pivoZ);
+    const fracao = fracaoDentroDaSala(pivo, this.posicaoAlvo, this.limites);
+    if (fracao < 1) this.posicaoAlvo.sub(pivo).multiplyScalar(fracao).add(pivo);
+  }
+
+  /** O raio da órbita que cabe na sala, na direção de agora (sem boteco, sem limite). */
+  private raioDaSala(): number {
+    return this.limites === null ? Number.POSITIVE_INFINITY : raioMaximoNaDirecao(this.azimute, this.elevacao, this.limites);
   }
 
   private alvoDeCima(): void {
@@ -212,10 +267,11 @@ export class CameraRig {
   }
 
   private alvoOrbital(): void {
-    const plano = Math.cos(this.elevacao) * this.raio;
+    const raio = Math.min(this.raio, this.raioDaSala());
+    const plano = Math.cos(this.elevacao) * raio;
     this.posicaoAlvo.set(
       CENTRO_DA_MESA.x + plano * Math.cos(this.azimute),
-      CENTRO_DA_MESA.y + Math.sin(this.elevacao) * this.raio,
+      CENTRO_DA_MESA.y + Math.sin(this.elevacao) * raio,
       CENTRO_DA_MESA.z + plano * Math.sin(this.azimute),
     );
     this.olharAlvo.copy(CENTRO_DA_MESA);

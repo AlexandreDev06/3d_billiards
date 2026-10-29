@@ -5,7 +5,11 @@
  * Todo mundo no servidor vê as mesmas 3 missões no dia (uma fácil, uma média e uma difícil), e cada uma paga o `PREMIO_POR_NIVEL`
  * dela uma vez por dia, na tacada que a cumpre. O que cada missão exige é conferido pela sala (`apps/sala/src/missoes.ts`);
  * aqui estão o nome, o texto da tela, a meta e os limiares como dado, para trocar uma missão sem mexer na conta.
+ *
+ * A vitrine do dia (L34) mora aqui também: ela é sorteada pelo mesmo dia, do mesmo jeito (hash do texto, sem estado) e é igual
+ * para todo mundo.
  */
+import { SKINS_DE_TACO, ordemDaSkin, type SkinTaco } from './carteira';
 
 export type NivelDaMissao = 'facil' | 'media' | 'dificil';
 
@@ -29,6 +33,13 @@ export interface Missao {
    * puxada), metros (de-longe) ou tabelas da branca (volta-ao-mundo).
    */
   readonly limiar?: number;
+  /**
+   * Tabelada e Volta ao mundo (L34): a velocidade normal mínima (m/s) de cada batida na tabela que conta. Abaixo dela a bola só
+   * raspa ou rola colada na tabela, e isso não é tabela. Medida com a física real (o resumo está em `docs/decisoes.md`, L34).
+   */
+  readonly batida?: number;
+  /** Tabelada (L34): metros, em linha reta, da batida na tabela até onde a bola cai (o "caminho" da tabelada). */
+  readonly caminho?: number;
 }
 
 /** Quanto cada missão paga, pelo nível, uma vez por dia (até 220 por dia: uma de cada nível). */
@@ -50,9 +61,9 @@ export const MISSOES = [
   { id: 'siga', nome: 'Siga!', descricao: 'Mate uma bola com efeito para cima.', nivel: 'media', meta: 1, acumulo: 'soma', limiar: 0.5 },
   { id: 'puxada', nome: 'Puxada', descricao: 'Mate uma bola com efeito para baixo.', nivel: 'media', meta: 1, acumulo: 'soma', limiar: 0.5 },
   { id: 'fecha-a-conta', nome: 'Fecha a conta', descricao: 'Ganhe uma partida.', nivel: 'media', meta: 1, acumulo: 'soma' },
-  { id: 'tabelada', nome: 'Tabelada', descricao: 'Mate uma bola que bateu na tabela antes de cair.', nivel: 'dificil', meta: 1, acumulo: 'soma' },
+  { id: 'tabelada', nome: 'Tabelada', descricao: 'Mate uma bola de tabelada: ela bate forte na tabela e vai direto à caçapa.', nivel: 'dificil', meta: 1, acumulo: 'soma', batida: 1.0, caminho: 0.5 },
   { id: 'de-longe', nome: 'De longe', descricao: 'Mate uma bola que estava a mais de 1,5 m da branca.', nivel: 'dificil', meta: 1, acumulo: 'soma', limiar: 1.5 },
-  { id: 'volta-ao-mundo', nome: 'Volta ao mundo', descricao: 'Faça a branca bater em 3 tabelas antes de tocar uma bola.', nivel: 'dificil', meta: 1, acumulo: 'soma', limiar: 3 },
+  { id: 'volta-ao-mundo', nome: 'Volta ao mundo', descricao: 'Faça a branca bater em 3 tabelas, de verdade, antes de tocar uma bola.', nivel: 'dificil', meta: 1, acumulo: 'soma', limiar: 3, batida: 1.0 },
   { id: 'limpinho', nome: 'Limpinho', descricao: 'Ganhe uma partida sem cometer falta.', nivel: 'dificil', meta: 1, acumulo: 'soma' },
 ] as const satisfies readonly Missao[];
 
@@ -134,6 +145,67 @@ export function missoesDoDia(dia: string): readonly [MissaoDoCatalogo, MissaoDoC
     return candidatas[hash(`${dia}/${nivel}`) % candidatas.length]!;
   });
   return [facil!, media!, dificil!];
+}
+
+// ---------------------------------------------------------------- a vitrine do dia (L34)
+
+/** Quantas skins entram na vitrine do dia. */
+export const SKINS_NA_VITRINE = 3;
+
+/** O desconto da vitrine, em porcentagem do preço cheio. */
+export const DESCONTO_DA_VITRINE = 20;
+
+/** O preço com o desconto da vitrine: o cheio menos 20%, arredondado para inteiro (os preços do catálogo são múltiplos de 5, então não há empate). */
+export const precoComDesconto = (precoCheio: number): number => precoCheio - Math.round((precoCheio * DESCONTO_DA_VITRINE) / 100);
+
+export interface ItemDaVitrine {
+  readonly skin: SkinTaco;
+  /** O preço do catálogo. */
+  readonly precoCheio: number;
+  /** O preço de hoje, com o desconto: é o que a sala cobra. */
+  readonly preco: number;
+}
+
+/** As skins com desconto num dia. */
+export interface VitrineDoDia {
+  /** O dia da missão, 'AAAA-MM-DD' em UTC−3 (o mesmo das missões). */
+  readonly dia: string;
+  /** Quando o dia termina e a vitrine troca (ms desde 1970, o relógio do servidor). */
+  readonly fimMs: number;
+  /** O desconto em porcentagem (`DESCONTO_DA_VITRINE`). */
+  readonly desconto: number;
+  /** As 3 skins, na ordem da loja. */
+  readonly itens: readonly ItemDaVitrine[];
+}
+
+/**
+ * A vitrine de um dia: `SKINS_NA_VITRINE` skins pagas (nunca a clássica, nem nenhuma de preço 0), sorteadas por um hash do texto
+ * do dia sem repetir skin, cada uma com `DESCONTO_DA_VITRINE`% de desconto. O mesmo dia dá a mesma vitrine em qualquer lugar e
+ * a qualquer hora. Lança se `dia` não for uma data 'AAAA-MM-DD'.
+ */
+export function vitrineDoDia(dia: string): VitrineDoDia {
+  if (numeroDoDia(dia) === null) throw new RangeError(`dia inválido: ${dia}`);
+  const pagas = SKINS_DE_TACO.filter((s) => s.preco > 0);
+  const sorteadas: SkinTaco[] = [];
+  for (let k = 0; k < SKINS_NA_VITRINE && pagas.length > 0; k++) {
+    const [tirada] = pagas.splice(hash(`${dia}/vitrine/${k}`) % pagas.length, 1);
+    sorteadas.push(tirada!.id);
+  }
+  sorteadas.sort((a, b) => ordemDaSkin(a) - ordemDaSkin(b));
+  return {
+    dia,
+    fimMs: fimDoDia(dia),
+    desconto: DESCONTO_DA_VITRINE,
+    itens: sorteadas.map((skin) => {
+      const precoCheio = SKINS_DE_TACO.find((s) => s.id === skin)!.preco;
+      return { skin, precoCheio, preco: precoComDesconto(precoCheio) };
+    }),
+  };
+}
+
+/** O preço que a sala cobra por esta skin neste dia: o da vitrine se ela está nela, senão o cheio. */
+export function precoDaSkinNoDia(skin: SkinTaco, dia: string): number {
+  return vitrineDoDia(dia).itens.find((i) => i.skin === skin)?.preco ?? SKINS_DE_TACO.find((s) => s.id === skin)!.preco;
 }
 
 // ---------------------------------------------------------------- o que a carteira mostra

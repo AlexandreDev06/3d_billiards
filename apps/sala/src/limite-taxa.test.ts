@@ -25,6 +25,20 @@ describe('BaldeDeTokens', () => {
     expect(b.tentar(2)).toBe(true);
   });
 
+  it('cheio() diz se a recarga já devolveu tudo o que foi gasto (e não gasta nada)', () => {
+    let agora = 0;
+    const b = new BaldeDeTokens(10, 2, () => agora);
+    expect(b.cheio()).toBe(true);
+    b.tentar(4);
+    expect(b.cheio()).toBe(false);
+    agora = 1_900;
+    expect(b.cheio()).toBe(false);
+    agora = 2_000;
+    expect(b.cheio()).toBe(true);
+    expect([...Array(10)].map(() => b.tentar())).toEqual(Array(10).fill(true));
+    expect(b.tentar()).toBe(false);
+  });
+
   it('relógio que anda para trás não cria tokens', () => {
     let agora = 1000;
     const b = new BaldeDeTokens(1, 1, () => agora);
@@ -35,6 +49,25 @@ describe('BaldeDeTokens', () => {
 });
 
 describe('BaldesPorChave', () => {
+  it('limparCheios esquece só quem já recarregou por inteiro: o que sobra é quem ainda deve (e tamanho diz quantos)', () => {
+    let agora = 0;
+    const b = new BaldesPorChave(10, 1, () => agora);
+    b.tentar('pouco', 1);
+    b.tentar('muito', 10);
+    expect(b.tamanho).toBe(2);
+    b.limparCheios();
+    expect(b.tamanho).toBe(2);
+    agora = 1_000;
+    b.limparCheios();
+    expect(b.tamanho).toBe(1);
+    agora = 9_999;
+    b.limparCheios();
+    expect(b.tamanho).toBe(1);
+    agora = 10_000;
+    b.limparCheios();
+    expect(b.tamanho).toBe(0);
+  });
+
   it('cada chave tem o seu balde', () => {
     const b = new BaldesPorChave(2, 1, () => 0);
     expect([b.tentar('a'), b.tentar('a'), b.tentar('a'), b.tentar('b')]).toEqual([true, true, false, true]);

@@ -14,14 +14,24 @@ export class BaldeDeTokens {
 
   /** Gasta `custo` fichas e devolve `true`, ou devolve `false` sem gastar se não houver. */
   tentar(custo = 1): boolean {
+    this.recarregar();
+    if (this.fichas < custo) return false;
+    this.fichas -= custo;
+    return true;
+  }
+
+  /** O balde voltou a ficar cheio (nada gasto que a recarga já não tenha devolvido). */
+  cheio(): boolean {
+    this.recarregar();
+    return this.fichas >= this.capacidade;
+  }
+
+  private recarregar(): void {
     const t = this.agora();
     if (t > this.ultimo) {
       this.fichas = Math.min(this.capacidade, this.fichas + ((t - this.ultimo) / 1000) * this.porSegundo);
       this.ultimo = t;
     }
-    if (this.fichas < custo) return false;
-    this.fichas -= custo;
-    return true;
   }
 }
 
@@ -54,5 +64,13 @@ export class BaldesPorChave {
     const recarga = this.porSegundo > 0 ? (this.capacidade / this.porSegundo) * 1000 : Infinity;
     const t = this.agora();
     for (const [chave, item] of this.baldes) if (t - item.gastouEm >= recarga) this.baldes.delete(chave);
+  }
+
+  /**
+   * Esquece as chaves cujo balde já voltou a ficar cheio (o que sobra é quem ainda está devendo). Quem precisa que o estado do
+   * balde sobreviva (o objeto não pode hibernar com balde por encher: a hibernação zera a memória) olha o `tamanho` depois disto.
+   */
+  limparCheios(): void {
+    for (const [chave, item] of this.baldes) if (item.balde.cheio()) this.baldes.delete(chave);
   }
 }

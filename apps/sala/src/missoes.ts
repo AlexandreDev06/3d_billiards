@@ -13,7 +13,13 @@
  *   nada: ninguém comemora a tacada que perdeu o jogo;
  * - "seguidas" do Embalado: no par ou ímpar são as bolas de quem fica com a mesa; no mata-mata, onde a vez passa a cada tacada,
  *   são tacadas dele seguidas que mataram (as dos outros no meio não interrompem), e errar a dele zera;
- * - a velocidade e o efeito são os `parametros` que o cliente mandou (a sala não re-simula, e é o mesmo risco aceito da aposta).
+ * - a velocidade e o efeito são os `parametros` que o cliente mandou (a sala não re-simula, e é o mesmo risco aceito da aposta);
+ * - **tabela é só o nariz** (L34, o A1 da revisão do L31): o raspão na boca da caçapa (`parte: 'boca'`) não vale, e uma batida de
+ *   verdade tem a velocidade normal do evento no mínimo igual à `batida` do catálogo (raspar ou rolar colado na tabela não é
+ *   tabela). A *Tabelada* é a tacada de tabela: a branca manda a bola à tabela (o último choque dela antes da batida é com a
+ *   branca), a batida é de verdade, ela cai direto (nenhum outro choque dela depois) e a caçapa fica a `caminho` metros da
+ *   batida (o que a gravação diz das posições). Os números saíram de uma varredura com a física real (o resumo está em `docs/decisoes.md`, L34);
+ * - a *Volta ao mundo* não vale na tacada que perde a partida, como as bolas.
  */
 import type { EventoTacada, Gravacao, IdBola, ParametrosTacada } from '@sinuca/fisica';
 import { MISSOES, missaoDoCatalogo, type IdMissao } from '@sinuca/protocolo';
@@ -54,14 +60,42 @@ export interface ConferenciaDaTacada {
 }
 
 const limiarDe = (id: IdMissao): number => missaoDoCatalogo(id).limiar!;
+const batidaDe = (id: IdMissao): number => missaoDoCatalogo(id).batida!;
+const caminhoDe = (id: IdMissao): number => missaoDoCatalogo(id).caminho!;
 
 const indiceDaCacapa = (eventos: readonly EventoTacada[], bola: IdBola): number => eventos.findIndex((e) => e.tipo === 'cacapa' && e.bola === bola);
 
-/** A bola foi tocada (por qualquer outra) antes de cair, depois bateu na tabela e só então caiu. */
-function bateuNaTabelaDepoisDeTocada(eventos: readonly EventoTacada[], bola: IdBola, caiuEm: number): boolean {
-  const toque = eventos.findIndex((e) => e.tipo === 'bola-bola' && (e.a === bola || e.b === bola));
-  if (toque < 0 || toque >= caiuEm) return false;
-  return eventos.some((e, i) => i > toque && i < caiuEm && e.tipo === 'bola-tabela' && e.bola === bola);
+/** Onde a bola está no instante `t` (o quadro mais próximo da gravação), ou `null` se ela não está na gravação. */
+function posicaoEm(gravacao: Gravacao, bola: IdBola, t: number): { x: number; z: number } | null {
+  const i = gravacao.ids.indexOf(bola);
+  if (i < 0) return null;
+  const quadro = Math.max(0, Math.min(gravacao.quadros - 1, Math.round(t * gravacao.frequencia)));
+  const k = (quadro * gravacao.ids.length + i) * 3;
+  return { x: gravacao.posicoes[k]!, z: gravacao.posicoes[k + 2]! };
+}
+
+/** Choque bola-bola em que a bola participa. */
+const choqueDa = (e: EventoTacada, bola: IdBola): boolean => e.tipo === 'bola-bola' && (e.a === bola || e.b === bola);
+
+/**
+ * A bola que caiu em `caiuEm` fez uma tabelada: bateu no nariz da tabela com a `batida` de verdade, o último choque dela antes
+ * da batida foi com a branca, nenhum outro choque até cair e a caçapa fica a `caminho` metros da batida.
+ */
+function foiTabelada(gravacao: Gravacao, bola: IdBola, caiuEm: number): boolean {
+  const eventos = gravacao.eventos;
+  const queda = eventos[caiuEm];
+  if (queda?.tipo !== 'cacapa') return false;
+  const fim = posicaoEm(gravacao, bola, queda.t);
+  if (fim === null) return false;
+  const choques = eventos.flatMap((e, i) => (i < caiuEm && choqueDa(e, bola) ? [i] : []));
+  return eventos.some((e, i) => {
+    if (i >= caiuEm || e.tipo !== 'bola-tabela' || e.bola !== bola || e.parte !== 'nariz' || e.velocidade < batidaDe('tabelada')) return false;
+    const ultimo = eventos[choques.filter((c) => c < i).at(-1) ?? -1];
+    if (ultimo?.tipo !== 'bola-bola' || (ultimo.a !== BOLAO && ultimo.b !== BOLAO)) return false;
+    if (choques.some((c) => c > i)) return false;
+    const ini = posicaoEm(gravacao, bola, e.t);
+    return ini !== null && Math.hypot(ini.x - fim.x, ini.z - fim.z) >= caminhoDe('tabelada');
+  });
 }
 
 /** Distância da branca à bola no primeiro quadro da gravação (m), ou `null` se uma das duas não está nela. */
@@ -73,14 +107,20 @@ function distanciaNoPrimeiroQuadro(gravacao: Gravacao, bola: IdBola): number | n
   return Math.hypot(p[a * 3]! - p[b * 3]!, p[a * 3 + 1]! - p[b * 3 + 1]!, p[a * 3 + 2]! - p[b * 3 + 2]!);
 }
 
-/** As tabelas que a branca bateu antes do primeiro choque dela com outra bola. */
+/** As batidas de verdade no nariz da tabela que a branca deu antes do primeiro choque dela com outra bola. */
 function tabelasDaBrancaAntesDeTocar(eventos: readonly EventoTacada[]): number {
   let tabelas = 0;
   for (const e of eventos) {
-    if (e.tipo === 'bola-bola' && (e.a === BOLAO || e.b === BOLAO)) break;
-    if (e.tipo === 'bola-tabela' && e.bola === BOLAO) tabelas++;
+    if (choqueDa(e, BOLAO)) break;
+    if (e.tipo === 'bola-tabela' && e.bola === BOLAO && e.parte === 'nariz' && e.velocidade >= batidaDe('volta-ao-mundo')) tabelas++;
   }
   return tabelas;
+}
+
+/** No par ou ímpar, a tacada acabou a partida com a vitória do outro lado (a bola final antes da hora, por exemplo). */
+function perdeuAPartida(t: TacadaParaConferir): boolean {
+  const { antes, depois } = t;
+  return antes.config.modalidade !== 'mata-mata' && depois.vencedor !== null && depois.vencedor !== antes.jogadores[antes.vez]!.equipe;
 }
 
 /** As bolas que esta tacada matou (ver o texto do módulo); vazio se houve falta ou se quem tacou perdeu a partida com ela. */
@@ -89,7 +129,7 @@ function bolasMatadas(t: TacadaParaConferir): IdBola[] {
   if (consequencias.faltas.length > 0) return [];
   const equipe = antes.jogadores[antes.vez]!.equipe;
   const mataMata = antes.config.modalidade === 'mata-mata';
-  if (!mataMata && depois.vencedor !== null && depois.vencedor !== equipe) return [];
+  if (perdeuAPartida(t)) return [];
   const jaCaidas = new Set(antes.encacapadas.map((e) => e.bola));
   const volta = new Set(consequencias.recolocar.map((r) => r.bola));
   const castigo = bolaDeCastigo(antes.config);
@@ -134,9 +174,9 @@ export function conferirTacada(t: TacadaParaConferir): ConferenciaDaTacada {
     puxada: mataSe(vertical <= -limiarDe('puxada')),
     'fecha-a-conta': 0,
     // difíceis
-    tabelada: contar((bola, i) => bateuNaTabelaDepoisDeTocada(eventos, bola, i)),
+    tabelada: contar((bola, i) => foiTabelada(gravacao, bola, i)),
     'de-longe': contar((bola) => (distanciaNoPrimeiroQuadro(gravacao, bola) ?? 0) > limiarDe('de-longe')),
-    'volta-ao-mundo': consequencias.faltas.length === 0 && tabelasDaBrancaAntesDeTocar(eventos) >= limiarDe('volta-ao-mundo') ? 1 : 0,
+    'volta-ao-mundo': consequencias.faltas.length === 0 && !perdeuAPartida(t) && tabelasDaBrancaAntesDeTocar(eventos) >= limiarDe('volta-ao-mundo') ? 1 : 0,
     limpinho: 0,
   };
 

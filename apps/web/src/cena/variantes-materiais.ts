@@ -26,7 +26,8 @@ function paraStandard(fisico: MeshPhysicalMaterial): MeshStandardMaterial {
   simples.name = `${fisico.name}~standard`;
   // O Standard só tem o reflexo fixo, branco e de 4%: um preto que o físico fez refletir pouco e azulado (a luz quente da sala o
   // tingia de marrom) voltaria marrom. Um pouco de metal dá o reflexo menor e no tom da própria cor.
-  if (fisico.specularIntensity < 1 && fisico.metalness < METAL) simples.metalness = Math.max(fisico.metalness, REFLEXO_PARCIAL);
+  // O látex (`userData.latex`, do pacote de personagens) tem o reflexo baixo de propósito e é dielétrico: não leva esse metal.
+  if (fisico.specularIntensity < 1 && fisico.metalness < METAL && fisico.userData.latex !== true) simples.metalness = Math.max(fisico.metalness, REFLEXO_PARCIAL);
   return simples;
 }
 
@@ -116,6 +117,19 @@ export class VariantesDeMateriais {
       if (antigo !== undefined && antigo !== objeto.material) this.soltar(antigo);
       this.originais.set(objeto, objeto.material);
       if (!this.malhas.includes(objeto)) this.malhas.push(objeto);
+    });
+  }
+
+  /** A raiz saiu da cena (outro nível do boteco): esquece as malhas dela e solta as variantes dos materiais que eram dela. */
+  esquecer(raiz: Object3D): void {
+    raiz.traverse((objeto) => {
+      if (!(objeto instanceof Mesh)) return;
+      const original = this.originais.get(objeto);
+      if (original !== undefined) this.soltar(original);
+      this.originais.delete(objeto);
+      this.deDetalhe.delete(objeto);
+      const i = this.malhas.indexOf(objeto);
+      if (i >= 0) this.malhas.splice(i, 1);
     });
   }
 

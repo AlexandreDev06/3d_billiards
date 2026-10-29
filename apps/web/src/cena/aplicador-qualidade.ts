@@ -1,7 +1,8 @@
 import type { NivelDeDetalhe } from '@sinuca/personagens/three';
 import { Material, Mesh, Texture, type Object3D, type WebGLRenderer } from 'three';
 import type { PerfilDeQualidade } from '../config';
-import { haloDoTacoNoNivel, ladosDosPersonagens, razaoDePixels, segmentosDoTaco, detalheDasMaos } from '../qualidade/perfis';
+import { detalheDoTacoNoNivel, haloDoTacoNoNivel, ladosDosPersonagens, razaoDePixels, segmentosDoTaco, detalheDasMaos } from '../qualidade/perfis';
+import { mesmoDetalhe, type DetalheDoTaco } from './detalhe-do-taco';
 import type { Ambiente } from './ambiente';
 import type { Bolas } from './bola';
 import type { VariantesDeMateriais } from './variantes-materiais';
@@ -14,7 +15,12 @@ export interface DependenciasDoAplicador {
   /** O que tem texturas a ajustar (mesa, bolas, taco). */
   readonly raizes: readonly Object3D[];
   /** O taco: com menos lados em cada peça nos níveis baixos (opcional: sem ele, nada a refazer). */
-  readonly taco?: { definirSegmentos(segmentos: number): void; definirHalo?(ligado: boolean): void };
+  readonly taco?: {
+    definirSegmentos(segmentos: number): void;
+    definirHalo?(ligado: boolean): void;
+    /** O que o taco desenha no nível (L35): quem o refaz também renova as variantes dos materiais que saíram. */
+    definirDetalhe?(detalhe: DetalheDoTaco): void;
+  };
   /** Os balões e o giz com menos lados e as mãos com a malha baixa no nível baixo (opcional). */
   readonly personagens?: { definirLados(lados: number): void; definirDetalheDasMaos?(nivel: NivelDeDetalhe): void };
   /** O tamanho da janela e o pixelRatio do navegador, lidos na hora (podem mudar). */
@@ -50,6 +56,9 @@ export class AplicadorDeQualidade {
     this.perfilAtual = perfil;
     this.redimensionar();
     this.d.ambiente.aplicarQualidade(perfil);
+    // O detalhe do taco troca os materiais originais: vem antes das variantes, que se fazem sobre os novos.
+    const detalhe = detalheDoTacoNoNivel(perfil);
+    if (anterior === null || !mesmoDetalhe(detalheDoTacoNoNivel(anterior), detalhe)) this.d.taco?.definirDetalhe?.(detalhe);
     this.d.variantes.aplicar({ materiais: perfil.materiais, ambiente: perfil.ambiente });
     if (anterior === null || anterior.anisotropiaMax !== perfil.anisotropiaMax) this.aplicarAnisotropia(perfil.anisotropiaMax);
     if (anterior !== null && (anterior.segmentosEsfera[0] !== perfil.segmentosEsfera[0] || anterior.segmentosEsfera[1] !== perfil.segmentosEsfera[1])) {

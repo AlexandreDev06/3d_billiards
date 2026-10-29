@@ -46,6 +46,22 @@ describe('VariantesDeMateriais', () => {
     expect(preto.metalness).toBe(0); // o original não muda
   });
 
+  it('o látex (userData.latex) com reflexo baixo de propósito não ganha o metal do preto: continua dielétrico no standard', () => {
+    const latex = new MeshPhysicalMaterial({ color: 0xff3030, roughness: 0.2, specularIntensity: 0.5, clearcoat: 1, sheen: 0.25 });
+    latex.userData.latex = true;
+    const preto = new MeshPhysicalMaterial({ color: 0x090c13, roughness: 0.28, specularIntensity: 0.5 });
+    const grupo = new Group();
+    const a = new Mesh(new BoxGeometry(), latex);
+    const b = new Mesh(new BoxGeometry(), preto);
+    grupo.add(a, b);
+    new VariantesDeMateriais([grupo], [grupo]).aplicar({ materiais: 'standard', ambiente: true });
+    const standard = a.material as MeshStandardMaterial;
+    expect(standard).not.toBe(latex);
+    expect(standard.metalness).toBe(0);
+    expect(standard.roughness).toBeCloseTo(0.2);
+    expect((b.material as MeshStandardMaterial).metalness).toBeGreaterThan(0.5);
+  });
+
   it('o mesmo original dá a mesma variante (uma só por material, compartilhada entre malhas)', () => {
     const c = cena();
     const v = new VariantesDeMateriais([c.grupo]);
@@ -271,5 +287,27 @@ describe('VariantesDeMateriais: o taco (peças que acendem e somem perto da câm
     expect(c.haste.material).toBe(novo);
     // Sem trocar nada, renovar é inofensivo.
     expect(() => v.renovar(c.taco)).not.toThrow();
+  });
+
+  it('esquecer solta as variantes e as malhas de uma raiz que saiu (outro nível do boteco), sem tocar nas dos outros', () => {
+    const a = cena();
+    const b = cena();
+    const cenaToda = new Group(); // como o `boteco.grupo`: a raiz registrada fica, o arquivo de dentro vem e vai
+    cenaToda.add(a.grupo, b.grupo);
+    const v = new VariantesDeMateriais([cenaToda]);
+    v.aplicar({ materiais: 'standard', ambiente: true });
+    const deB = b.pano.material;
+    const discartado: string[] = [];
+    (a.pano.material as MeshStandardMaterial).addEventListener('dispose', () => discartado.push('a'));
+    v.esquecer(a.grupo);
+    cenaToda.remove(a.grupo);
+    expect(discartado).toEqual(['a']);
+    v.aplicar({ materiais: 'leves', ambiente: false });
+    expect(b.pano.material).not.toBe(deB);
+    expect((b.pano.material as unknown as MeshLambertMaterial).isMeshLambertMaterial).toBe(true);
+    // A malha esquecida não volta ao aplicador (nem vaza memória nele).
+    const antes = a.pano.material;
+    v.aplicar({ materiais: 'standard', ambiente: true });
+    expect(a.pano.material).toBe(antes);
   });
 });

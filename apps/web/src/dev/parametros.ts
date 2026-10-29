@@ -1,22 +1,15 @@
 import type { ConfigFisica } from '@sinuca/fisica';
+import { CHAVES_DA_FISICA_DA_SALA, FAIXAS_DA_FISICA_DA_SALA, type ChaveDaFisicaDaSala } from '@sinuca/protocolo';
 import { apagarJson, gravarJson, lerJson, type ArmazenamentoMinimo } from '../armazenamento';
 import type { ConfigPrevisao, ConfigTacada } from '../config';
 import { CONTROLE_DE_FORCA_PADRAO, type ControleForca } from '../controles/forca-linha';
 
-const CHAVES_FISICA = [
-  'atritoDeslizamento',
-  'atritoRolamento',
-  'desaceleracaoGiro',
-  'fatorEfeitoLateral',
-  'restituicaoBolaBola',
-  'restituicaoBolaTabela',
-  'atritoBolaTabela',
-  'velocidadeMaxTaco',
-] as const satisfies readonly (keyof ConfigFisica)[];
+/** As 8 chaves da física que o painel mexe: as da física da sala (o anfitrião manda as mesmas à sala), com as faixas e passos do protocolo. */
+const CHAVES_FISICA = CHAVES_DA_FISICA_DA_SALA;
 
 const CHAVES_FORCA = ['expoenteForca', 'velocidadeEntradaMax', 'velocidadeMin', 'velocidadeMax'] as const satisfies readonly (keyof ConfigTacada)[];
 
-type ChaveFisica = (typeof CHAVES_FISICA)[number];
+type ChaveFisica = ChaveDaFisicaDaSala;
 type ChaveForca = (typeof CHAVES_FORCA)[number];
 type ChavePrevisao = 'forcaPrevisao' | 'previsaoLigada' | 'previsaoBolaAtingida';
 /** 1 = força pela linha, 0 = empurrar (o interruptor do painel; o `?forca=` da URL vale por cima). */
@@ -40,16 +33,27 @@ export interface Descritor {
   readonly passo: number;
 }
 
-/** Faixas: as da skill `sinuca-fisica`, com folga nas pontas para o ouvido do usuário decidir. */
+/** O rótulo, a dica e a unidade (do web) de cada chave de física; a faixa e o passo vêm do protocolo, a mesma que a sala aceita. */
+const TEXTOS_DA_FISICA: Readonly<Record<ChaveFisica, Pick<Descritor, 'rotulo' | 'dica' | 'unidade'>>> = {
+  atritoDeslizamento: { rotulo: 'Atrito de deslizamento', dica: 'μ bola-pano com a bola escorregando', unidade: '' },
+  atritoRolamento: { rotulo: 'Atrito de rolamento', dica: 'μ bola-pano rolando: quanto o pano é lento', unidade: '' },
+  desaceleracaoGiro: { rotulo: 'Desaceleração do giro', dica: 'giro em torno de Y parando', unidade: 'rad/s²' },
+  fatorEfeitoLateral: { rotulo: 'Efeito lateral', dica: 'quanto do lado do mini-bolão chega ao contato (0,6 = 60%); o miscue segue o mini-bolão inteiro', unidade: '' },
+  restituicaoBolaBola: { rotulo: 'Restituição bola-bola', dica: 'quanto da velocidade volta no choque', unidade: '' },
+  restituicaoBolaTabela: { rotulo: 'Restituição bola-tabela', dica: 'quanto a tabela devolve', unidade: '' },
+  atritoBolaTabela: { rotulo: 'Atrito bola-tabela', dica: 'efeito se perdendo na tabela', unidade: '' },
+  velocidadeMaxTaco: { rotulo: 'Velocidade máx. do taco', dica: 'teto da física: a curva de força tem o seu, abaixo', unidade: 'm/s' },
+};
+
+/** Os 8 descritores do grupo `fisica`, na ordem do protocolo, com a faixa e o passo dele. */
+export const DESCRITORES_DA_FISICA: readonly Descritor[] = CHAVES_FISICA.map((chave) => {
+  const { min, max, passo } = FAIXAS_DA_FISICA_DA_SALA[chave];
+  return { chave, grupo: 'fisica', ...TEXTOS_DA_FISICA[chave], min, max, passo };
+});
+
+/** Todos os controles do painel: a física (do protocolo) e, só em dev, a força e a previsão. */
 export const DESCRITORES: readonly Descritor[] = [
-  { chave: 'atritoDeslizamento', grupo: 'fisica', rotulo: 'Atrito de deslizamento', dica: 'μ bola-pano com a bola escorregando', unidade: '', min: 0.1, max: 0.5, passo: 0.005 },
-  { chave: 'atritoRolamento', grupo: 'fisica', rotulo: 'Atrito de rolamento', dica: 'μ bola-pano rolando: quanto o pano é lento', unidade: '', min: 0.002, max: 0.05, passo: 0.0005 },
-  { chave: 'desaceleracaoGiro', grupo: 'fisica', rotulo: 'Desaceleração do giro', dica: 'giro em torno de Y parando', unidade: 'rad/s²', min: 2, max: 25, passo: 0.5 },
-  { chave: 'fatorEfeitoLateral', grupo: 'fisica', rotulo: 'Efeito lateral', dica: 'quanto do lado do mini-bolão chega ao contato (0,6 = 60%); o miscue segue o mini-bolão inteiro', unidade: '', min: 0.2, max: 1, passo: 0.05 },
-  { chave: 'restituicaoBolaBola', grupo: 'fisica', rotulo: 'Restituição bola-bola', dica: 'quanto da velocidade volta no choque', unidade: '', min: 0.85, max: 0.99, passo: 0.005 },
-  { chave: 'restituicaoBolaTabela', grupo: 'fisica', rotulo: 'Restituição bola-tabela', dica: 'quanto a tabela devolve', unidade: '', min: 0.5, max: 0.95, passo: 0.01 },
-  { chave: 'atritoBolaTabela', grupo: 'fisica', rotulo: 'Atrito bola-tabela', dica: 'efeito se perdendo na tabela', unidade: '', min: 0.05, max: 0.5, passo: 0.01 },
-  { chave: 'velocidadeMaxTaco', grupo: 'fisica', rotulo: 'Velocidade máx. do taco', dica: 'teto da física: a curva de força tem o seu, abaixo', unidade: 'm/s', min: 3, max: 12, passo: 0.1 },
+  ...DESCRITORES_DA_FISICA,
   { chave: 'forcaPorLinha', grupo: 'forca', tipo: 'chave', rotulo: 'Força pela linha', dica: 'ligada: segura o botão, puxa o mouse para trás e solta para tacar; desligada: puxa e empurra para bater (também ?forca=linha|empurrar)', unidade: '', min: 0, max: 1, passo: 1 },
   { chave: 'expoenteForca', grupo: 'forca', rotulo: 'Expoente da força', dica: '> 1: tacada leve pede movimento mais lento', unidade: '', min: 1, max: 3, passo: 0.05 },
   { chave: 'velocidadeEntradaMax', grupo: 'forca', rotulo: 'Mouse para força máxima', dica: 'velocidade do mouse que dá a força cheia', unidade: 'm/s', min: 1, max: 10, passo: 0.1 },

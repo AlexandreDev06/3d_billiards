@@ -1,11 +1,13 @@
 import boteco from '../presets/boteco.json';
 import mataMata from '../presets/mata-mata.json';
+import treino from '../presets/treino.json';
 import { bolaDeCastigo, bolasDaCasa, grupoDaBola } from './leitura';
 import type { ConfigRegras, PresetRegras } from './tipos';
 
-export type OpcoesRegras = { readonly [K in keyof ConfigRegras]: readonly ConfigRegras[K][] };
+/** `treino` não é opção da casa: marca o preset local do treino e fica fora desta lista (e da tela "Regras da casa"). */
+export type OpcoesRegras = { readonly [K in Exclude<keyof ConfigRegras, 'treino'>]: readonly ConfigRegras[K][] };
 
-/** Valores aceitos em cada chave de `ConfigRegras`, na ordem em que a tela "Regras da casa" mostra. */
+/** Valores aceitos em cada chave de `ConfigRegras` (menos `treino`), na ordem em que a tela "Regras da casa" mostra. */
 export const OPCOES_REGRAS: OpcoesRegras = {
   modalidade: ['par-ou-impar', 'mata-mata'],
   bolas: ['2-14', '1-15', '2-15'],
@@ -38,15 +40,24 @@ export const OPCOES_REGRAS: OpcoesRegras = {
   quemContinua: ['mesmo-jogador', 'parceiro'],
 };
 
-const CHAVES = Object.keys(OPCOES_REGRAS) as (keyof ConfigRegras)[];
+const CHAVES = Object.keys(OPCOES_REGRAS) as Exclude<keyof ConfigRegras, 'treino'>[];
 
 const ehObjeto = (x: unknown): x is Record<string, unknown> =>
   typeof x === 'object' && x !== null && !Array.isArray(x);
 
-const ehChave = (x: unknown): x is keyof ConfigRegras => typeof x === 'string' && Object.hasOwn(OPCOES_REGRAS, x);
+const ehChave = (x: unknown): x is keyof ConfigRegras => x === 'treino' || (typeof x === 'string' && Object.hasOwn(OPCOES_REGRAS, x));
+
+/** O que mais `validarPreset` pode aceitar. */
+export interface OpcoesDeValidacao {
+  /**
+   * Aceita `regras.treino: true` (o preset local do treino). Sem isto, `treino` é recusado: a sala valida as regras que o
+   * cliente manda com `validarPreset(dado)`, e o treino é só local.
+   */
+  readonly aceitaTreino?: boolean;
+}
 
 /** Confere um preset lido de JSON e devolve uma cópia congelada. Lança `Error` listando todos os problemas. */
-export function validarPreset(dado: unknown): PresetRegras {
+export function validarPreset(dado: unknown, opcoes: OpcoesDeValidacao = {}): PresetRegras {
   if (!ehObjeto(dado)) throw new Error('preset inválido: não é um objeto');
   const { nome, provisorio, regras, ...resto } = dado;
   const erros = Object.keys(resto).map((chave) => `${chave}: chave desconhecida`);
@@ -66,6 +77,10 @@ export function validarPreset(dado: unknown): PresetRegras {
       }
     }
     for (const chave of Object.keys(regras)) if (!ehChave(chave)) erros.push(`regras.${chave}: chave desconhecida`);
+    if (Object.hasOwn(regras, 'treino')) {
+      if (regras.treino !== true) erros.push('regras.treino: precisa ser true (ou ficar de fora)');
+      else if (opcoes.aceitaTreino !== true) erros.push('regras.treino: o treino é só local e não entra numa sala');
+    }
     if (erros.length === 0) erros.push(...incoerenciasDaConfig(regras as unknown as ConfigRegras));
   }
 
@@ -83,6 +98,7 @@ export function validarPreset(dado: unknown): PresetRegras {
  * sejam as 15 bolas e nenhuma bola final. Lista vazia = coerente.
  */
 export function incoerenciasDaConfig(c: ConfigRegras): string[] {
+  if (c.treino === true) return incoerenciasDoTreino(c);
   if (c.modalidade === 'mata-mata') {
     const erros: string[] = [];
     if (c.bolas !== '1-15') erros.push(`regras.bolas: o mata-mata joga com as 15 bolas (1-15), não com ${c.bolas}`);
@@ -101,11 +117,32 @@ export function incoerenciasDaConfig(c: ConfigRegras): string[] {
   return erros;
 }
 
+/**
+ * O treino (L39) é o mata-mata de uma pessoa: as 15 bolas, sem bola final, e nenhuma pena (as duas do mata-mata em `sem-pena`,
+ * senão a config prometeria uma pena que o treino não cobra).
+ */
+function incoerenciasDoTreino(c: ConfigRegras): string[] {
+  const erros: string[] = [];
+  if (c.modalidade !== 'mata-mata') erros.push(`regras.treino: o treino é o mata-mata de uma pessoa (modalidade "mata-mata"), não ${JSON.stringify(c.modalidade)}`);
+  if (c.bolas !== '1-15') erros.push(`regras.bolas: o treino joga com as 15 bolas (1-15), não com ${c.bolas}`);
+  if (c.bolaFinal !== 'ultima-do-grupo') erros.push(`regras.bolaFinal: o treino não tem bola final (ultima-do-grupo), não ${JSON.stringify(c.bolaFinal)}`);
+  for (const chave of ['suicidioNoMataMata', 'cegarNoMataMata'] as const) {
+    if (c[chave] !== 'sem-pena') erros.push(`regras.${chave}: o treino não tem pena ("sem-pena"), não ${JSON.stringify(c[chave])}`);
+  }
+  return erros;
+}
+
 /** Preset de fábrica: estudo §1, último parágrafo, com as respostas do usuário (2026-10-09: a 8 é a final, sem a 1 e a 15). */
 export const PRESET_BOTECO: PresetRegras = validarPreset(boteco);
 
 /** Preset do mata-mata (L15): de 2 a 4 pessoas, cada uma por si, as 15 bolas; ganha quem matar mais bolas, falta sem pena (respostas do usuário, 2026-10-14). */
 export const PRESET_MATA_MATA: PresetRegras = validarPreset(mataMata);
 
-/** Os presets de fábrica, um por modalidade, na ordem em que a escolha de modo os mostra. */
+/**
+ * Preset do treino (L39): uma pessoa sozinha com as 15 bolas, sem pena nenhuma. Fica fora de `PRESETS_DE_FABRICA` de propósito:
+ * o treino é só local e não entra no catálogo de modos da sala (`validarPreset` o recusa sem `aceitaTreino`).
+ */
+export const PRESET_TREINO: PresetRegras = validarPreset(treino, { aceitaTreino: true });
+
+/** Os presets de fábrica, um por modalidade, na ordem em que a escolha de modo os mostra. Sem o treino (`PRESET_TREINO`). */
 export const PRESETS_DE_FABRICA: readonly PresetRegras[] = Object.freeze([PRESET_BOTECO, PRESET_MATA_MATA]);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MisturaDePoses } from './mistura';
+import { TEMPO_DO_PERFILADOR_MS, provarSemAlocar } from './alocacao-para-testes';
 
 const soma = (m: MisturaDePoses): number => m.pesos.reduce((a, b) => a + b, 0);
 
@@ -175,20 +176,17 @@ describe('MisturaDePoses', () => {
     expect(m.gesto).toBeNull();
   });
 
-  it('não aloca: cem mil quadros não deixam lixo', () => {
+  it('não aloca por quadro: nenhum objeto novo no código do pacote (perfilador de alocação)', async () => {
     const m = new MisturaDePoses(['a', 'b', 'c'], 'a');
-    const memoria = (): number => (globalThis as unknown as { process: { memoryUsage(): { heapUsed: number } } }).process.memoryUsage().heapUsed;
     m.ir('b', 0.2);
     m.atualizar(0.01);
-    const antes = memoria();
-    for (let i = 0; i < 100_000; i++) {
+    await provarSemAlocar((i) => {
       if (i % 50 === 0) {
         m.ir(i % 100 === 0 ? 'b' : 'c', 0.2);
         m.fazerGesto('g', 0.5, 0.1, 0.1);
       }
       m.misturar('a', 'b', (i % 10) / 10);
       m.atualizar(0.016);
-    }
-    expect(memoria() - antes).toBeLessThan(6_000_000);
-  });
+    });
+  }, TEMPO_DO_PERFILADOR_MS);
 });

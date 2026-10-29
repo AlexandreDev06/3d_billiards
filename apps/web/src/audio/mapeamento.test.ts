@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { EventoTacada } from '@sinuca/fisica';
 import { CONFIG_WEB, type ConfigAudio } from '../config';
-import { pedidoDeAviso, pedidoDoEvento, SONS_DE_AVISO, tomDaVelocidade, volumeDaVelocidade } from './mapeamento';
+import { pedidoDeAviso, pedidoDoEvento, pedidoDoMenu, SONS_DE_AVISO, SONS_DO_MENU, tomDaVelocidade, volumeDaVelocidade } from './mapeamento';
 
 const CFG: ConfigAudio = {
   volumeGeral: 0.8,
@@ -63,7 +63,7 @@ describe('pedidoDoEvento', () => {
   it('taco-bola, bola-bola e bola-tabela viram o som do mesmo nome, com volume e tom da velocidade', () => {
     const tacoBola: EventoTacada = { tipo: 'taco-bola', t: 0, bola: 0, velocidade: 5, miscue: false };
     const bolaBola: EventoTacada = { tipo: 'bola-bola', t: 0.1, a: 0, b: 3, velocidade: 2.5 };
-    const bolaTabela: EventoTacada = { tipo: 'bola-tabela', t: 0.2, bola: 3, tabela: 1, velocidade: 1 };
+    const bolaTabela: EventoTacada = { tipo: 'bola-tabela', t: 0.2, bola: 3, tabela: 1, parte: 'nariz', velocidade: 1 };
     expect(pedidoDoEvento(tacoBola, CFG)).toEqual({ som: 'taco-bola', volume: 1, tom: tomDaVelocidade(5, CFG), intensidade: 1 });
     expect(pedidoDoEvento(bolaBola, CFG)).toEqual({
       som: 'bola-bola',
@@ -110,5 +110,16 @@ describe('pedidoDeAviso', () => {
 
   it('são três: vez de outro, a sua vez e tempo esgotado', () => {
     expect([...SONS_DE_AVISO].sort()).toEqual(['moedas', 'tempo-esgotado', 'vez-outro', 'vez-sua']);
+  });
+});
+
+describe('pedidoDoMenu (L40)', () => {
+  it('são dois sons, no volume cheio e sem mudar o tom', () => {
+    expect([...SONS_DO_MENU].sort()).toEqual(['menu-clique', 'menu-passa']);
+    for (const som of SONS_DO_MENU) expect(pedidoDoMenu(som)).toEqual({ som, volume: 1, tom: 1, intensidade: 0.5 });
+  });
+
+  it('os sons do menu não entram na lista dos avisos do jogo (não têm amostra)', () => {
+    for (const som of SONS_DO_MENU) expect((SONS_DE_AVISO as readonly string[]).includes(som)).toBe(false);
   });
 });

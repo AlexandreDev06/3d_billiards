@@ -1,6 +1,10 @@
+import type { Group } from 'three';
 import type { ConfigFisica, EstadoMesa, EventoTacada, Gravacao, ParametrosTacada } from '@sinuca/fisica';
-import type { LinhaSala, PlacarSala } from '@sinuca/protocolo';
+import type { AparenciaDoBalao, LinhaSala, MissoesDoDia, PlacarSala } from '@sinuca/protocolo';
+import type { PreviaDoBalao } from './cena/previa-do-balao';
+import type { CategoriaDoBalao } from './online/balao-modelo';
 import type { Consequencias, EstadoPartida } from '@sinuca/regras';
+import type { CaraDoBalao } from './baloes/rosto';
 import type { EstatisticasDeAudio } from './audio/motor-audio';
 import type { ConfigCamera, ConfigMira, ConfigTacada, NivelDeQualidade, PerfilDeQualidade } from './config';
 import type { ChaveDeConfiguracao, ConfiguracoesDoJogador } from './configuracoes/modelo';
@@ -9,11 +13,14 @@ import type { RegrasGiz } from './controles/regras-giz';
 import type { FaseTacada } from './controles/tacada';
 import type { ResumoDeDesempenho } from './diag/resumo';
 import type { PlacarParaMostrar } from './hud/confronto-modelo';
+import type { HudTreino } from './hud/treino';
+import type { MissoesNaTela } from './online/missoes-modelo';
 import type { TempoDaTacadaS } from './relogio/modelo';
 import type { PoseDeMao } from './maos/pose-das-maos';
 import type { PreferenciaDeQualidade } from './qualidade/perfis';
 import type { MotorDeRegras } from './jogo/regras';
 import type { PlanoDaTransicao } from './jogo/transicao-modelo';
+import type { ModoDaMao } from './treino/sessao-de-treino';
 
 /** Gancho de teste para o QA dirigir o jogo sem mouse; só existe em `import.meta.env.DEV` ou com `?dev=1`. */
 export interface GanchoSinuca {
@@ -85,9 +92,12 @@ export interface GanchoSinuca {
   elevacaoDoTaco(): { readonly atual: number; readonly alvo: number; readonly minima: number; readonly maxima: number; readonly calculos: number };
   /**
    * A skin do taco desenhado (o id do catálogo; `undefined` só lê). Com um id fixa a skin, para capturas (id que o web não desenha
-   * cai na clássica); `null` solta e volta à da sala (a de quem segura o taco) ou à clássica no mesmo PC.
+   * cai na clássica), com a semente (0 a 999) e o contador de bolas se vierem; `null` solta e volta à da sala (a de quem segura o
+   * taco) ou à clássica no mesmo PC.
    */
-  skinDoTaco(id?: string | null): string;
+  skinDoTaco(id?: string | null, semente?: number | null, bolas?: number | null): string;
+  /** O que o taco desenha agora: a skin, a semente e o contador de bolas (`null` = sem). */
+  desenhoDoTaco(): { skin: string; semente: number | null; bolas: number | null };
   /**
    * O giz que a ponta do taco mostra, de 0 (couro) a 1 (azul cheio): com um número (ou `null` para voltar ao do jogador) fixa o
    * valor, para capturas; devolve o que a ponta mostra.
@@ -153,6 +163,21 @@ export interface GanchoSinuca {
     readonly acao: string | null;
     readonly bolaOlhada: number | null;
     readonly tempoDeCargaMs: number | null;
+    /** (L46) Por que o corpo faz o que faz (o momento da tabela de reações), se os olhos estão num ponto, a vez demorando, o que ele sabe fazer neste arquivo e quanto vale cada vaga de interesse (`INTERESSE`: branca, bola que anda, caçapa, mira, câmera). */
+    readonly momento: string | null;
+    readonly olhando: boolean;
+    /** Há quanto tempo (s) a ação do corpo toca. */
+    readonly tempoDaAcao: number;
+    readonly impaciente: boolean;
+    readonly recursos: { readonly [recurso: string]: boolean } | null;
+    readonly interesses: readonly number[];
+    /** (L46c) A cara que o balão do artista mostra de verdade (a do arquivo: `cara_concentrado`...), o peso de cada forma do rosto que não é zero e a elevação do olho (graus, positiva para cima). */
+    readonly caraDoArquivo: string | null;
+    readonly rosto: { readonly formas: Readonly<Record<string, number>>; readonly pitchDoOlhoGraus: number } | null;
+    /** (L48) O que o balão veste de verdade (ids do chapéu, do bigode, do estilo e da cor de olho). */
+    readonly aparencia: { readonly acessorio: string | null; readonly bigode: string | null; readonly estiloDeOlho: string | null; readonly corDosOlhos: string | null } | null;
+    /** (L46) Onde o balão está na tela (px: centro e altura), ou `null` se não está à vista: para recortar capturas. */
+    readonly tela: { readonly x: number; readonly y: number; readonly altura: number } | null;
   };
   /**
    * L23, o giz passado na ponta (G): a fase do gesto (parado, pegar, levar, girar, trazer, voltar) e quanto dela passou, se o cubo
@@ -197,7 +222,9 @@ export interface GanchoSinuca {
   /** L23: pinta o balão (e as mãos) com a cor desta equipe (0 a 3) em vez da do jogador, para capturas das quatro cores; `null` solta. */
   forcarEquipeDoBalao(equipe: number | null): void;
   /** L23: faz o balão mostrar esta cara em vez da que a tacada provoca (`null` solta), para capturas. */
-  forcarCaraDoBalao(cara: 'neutro' | 'sorriso' | 'susto' | 'bravo' | 'triste' | null): void;
+  forcarCaraDoBalao(cara: CaraDoBalao | null): void;
+  /** L46: os olhos do balão só olham isto (a bola branca ou a câmera) em vez do que o jogo escolhe (`null` solta), para capturas. */
+  forcarOlharDoBalao(alvo: 'branca' | 'camera' | null): void;
   /** Liga ou desliga a elevação que desvia o taco do que ele atravessaria (desligada, o taco fica sempre a 5°): para comparar antes e depois. */
   elevacaoLivre(ligada: boolean): void;
   /** O alerta de espirro (miscue) como está na tela: "Espirrou! Faltou giz" ou "Espirrou! Efeito demais". */
@@ -213,6 +240,8 @@ export interface GanchoSinuca {
    * só os eventos: para um teste achar uma tacada que faça o que ele quer (encaçapar a 8, por exemplo).
    */
   preverEventos(parametros: ParametrosTacada): readonly EventoTacada[];
+  /** L46: os momentos de rosto que a tacada `parametros` provocaria (sorriso, comemorando, susto, ufa, bravo e quando), pela mesma previsão: para escolher tacadas em capturas. */
+  preverMomentos(parametros: ParametrosTacada): readonly { readonly t: number; readonly rosto: string; readonly duracao: number }[];
   /**
    * A linha de previsão: o último cálculo (quantos já rodaram, quanto custou, o caminho do bolão em pontos (x, z), a bola
    * atingida, a gravação prevista); `visivel` diz se a linha está na cena.
@@ -246,6 +275,36 @@ export interface GanchoSinuca {
    * (L27) e ficam onde a câmera do jogo as poria: só o desenho vem da câmera livre.
    */
   vista(pose: { readonly posicao: readonly [number, number, number]; readonly alvo: readonly [number, number, number] } | null, opcoes?: { readonly maos?: boolean }): void;
+  /**
+   * O boteco em 3D (L44): se está na cena (`falhou`: o arquivo não veio), de que nível, que luzes de ponto estão acesas, quantas câmeras
+   * do menu o arquivo tem, se o menu está sobre o 3D, se o 3D está pausado (loja ou perfil por cima), se o piso do jogo está
+   * escondido (o do arquivo o substitui) e se o forro e as vigas estão à vista.
+   */
+  boteco(): {
+    readonly carregado: boolean;
+    readonly falhou: boolean;
+    readonly nivel: NivelDeQualidade | null;
+    readonly luzes: readonly string[];
+    readonly camerasDoMenu: number;
+    readonly menu3D: boolean;
+    readonly pausado3D: boolean;
+    readonly pisoDoJogoVisivel: boolean | null;
+    readonly tetoVisivel: boolean;
+  };
+  /**
+   * O grupo do boteco na cena (L45): para ajustar nas capturas, sem recompilar, a intensidade das luzes de ponto (`PointLight`) e a cor
+   * (`color`) dos materiais sem luz, e ler as texturas. Só leitura e experimento: o valor que fica vai para `CONFIG_WEB.boteco`.
+   */
+  grupoDoBoteco(): Group;
+  /** A câmera de agora: a vista (`tacada`, `cima`, `fim`, `menu`), se orbita e onde está (m). */
+  cameraDeAgora(): { readonly vista: string; readonly orbitando: boolean; readonly posicao: readonly [number, number, number]; readonly zoom: number };
+  /** Orbita como o botão direito com o mouse mexendo `pixelsX`/`pixelsY` (e a roda `zoom` vezes; positivo afasta); continua orbitando até `encerrarOrbita`. */
+  orbitar(pixelsX: number, pixelsY: number, zoom?: number): void;
+  encerrarOrbita(): void;
+  /** Tab: de tacada para de cima e de volta. */
+  alternarVista(): void;
+  /** Onde um ponto do mundo cai na tela (px do canvas) e se está dentro dela. */
+  projetar(x: number, y: number, z: number): { readonly x: number; readonly y: number; readonly profundidade: number; readonly naTela: boolean };
   /** Onde a bola está na cena agora (inclusive durante a queda: `escala` encolhe e `y` afunda). */
   posicaoBola(id: number): { readonly x: number; readonly y: number; readonly z: number; readonly escala: number; readonly visivel: boolean };
   /** Estado do cliente online (sala, lugar, vez, conexão, mira do outro, chat); `null` fora de uma sala. */
@@ -343,11 +402,58 @@ export interface GanchoSinuca {
     readonly saldo: number | null;
     readonly skins: readonly string[];
     readonly skin: string | null;
+    /** (L48) O balão da carteira: os itens comprados e a aparência equipada; `null` sem carteira ou com sala que não o manda. Sem código nenhum. */
+    readonly balao: { readonly itens: readonly string[]; readonly aparencia: AparenciaDoBalao } | null;
     readonly aviso: string | null;
     readonly loja: { readonly aberta: boolean; readonly texto: string };
   };
+  /**
+   * As missões do dia (L32): o quadro que o aparelho sabe (`null` sem carteira lida), o texto do painel do lobby (`null` com outra
+   * tela aberta), o modelo que o desenha, os avisos que estão na tela ("Mão quente 3/5", "Missão cumprida! ...") e os que esperam
+   * as bolas pararem. L37: `ajuda` é a seção "Missões do dia" que o H abre durante a partida: se está aberta, quantas vezes foi
+   * desenhada (fechada não desenha) e o texto que está na tela (vazio fechada).
+   */
+  missoes(): {
+    readonly quadro: MissoesDoDia | null;
+    readonly painel: string | null;
+    readonly modelo: MissoesNaTela;
+    readonly avisos: readonly { readonly tipo: string; readonly texto: string }[];
+    readonly pendentes: readonly string[];
+    readonly ajuda: { readonly aberta: boolean; readonly desenhos: number; readonly texto: string };
+  };
+  /** O menu com cara de jogo (L40): a tela aberta (`null` com o menu fechado) e o texto da barra de cima (apelido, saldo e taco em uso). */
+  menu(): { readonly tela: string | null; readonly barra: string | null };
   /** Abre ou fecha a loja de tacos, como o botão "Loja". */
   abrirLoja(aberta: boolean): void;
+  /**
+   * O perfil (L43): se está aberto, se o bloco do link da carteira está à mostra, o texto que ele mostra e a pergunta "Usar esta carteira
+   * neste aparelho?" (aberta e o texto). Nunca leva o link nem o código da carteira.
+   */
+  perfil(): {
+    readonly aberto: boolean;
+    readonly linkAberto: boolean;
+    readonly texto: string;
+    readonly pergunta: { readonly aberta: boolean; readonly texto: string };
+  };
+  /** Abre ou fecha o perfil, como o botão "Perfil" e o apelido da barra de cima. */
+  abrirPerfil(aberto: boolean): void;
+  /**
+   * O editor "Meu balão" (L48): se está aberto, o que ele mostra em texto, o rascunho que a prévia veste, o diagnóstico da prévia 3D
+   * (o que o balão faz e veste; `null` enquanto ela não existe) e o estado do arquivo dos chapéus. Nunca leva o código da carteira.
+   */
+  meuBalao(): {
+    readonly aberto: boolean;
+    readonly texto: string;
+    readonly rascunho: AparenciaDoBalao;
+    readonly previa: (ReturnType<PreviaDoBalao['diagnostico']>) | null;
+    readonly chapeus: string;
+  };
+  /** (L48) Todos os balões vestem esta aparência em vez da que a sala manda (`null` solta): para medir o custo e fotografar. */
+  forcarAparenciaDoBalao(aparencia: AparenciaDoBalao | null): void;
+  /** Abre ou fecha o editor "Meu balão", como o botão do perfil. */
+  abrirMeuBalao(aberto: boolean): void;
+  /** Escolhe um item no editor, como o clique nele (item bloqueado leva à loja). */
+  escolherNoMeuBalao(categoria: CategoriaDoBalao, id: string | null): void;
   /** A aposta e os saldos da sala como o cliente os sabe: `null` fora da sala. */
   apostaDaSala(): {
     readonly aposta: number;
@@ -391,6 +497,25 @@ export interface GanchoSinuca {
   desenharCasa(casa: { readonly bolas: '1-15' | '2-15' | '2-14'; readonly bolaFinal: 1 | 8 | 'ultima-do-grupo' }): void;
   /** Põe uma bola da cena num lugar (só visual: a física e as regras não sabem); `escala` < 1 imita a queda. */
   colocarBola(id: number, x: number, y: number, z: number, escala?: number): void;
+  /**
+   * O modo treino (L42), ou `null` fora dele: o que a mão faz, as tacadas, o cenário, as bolas na mesa e na bandeja e, para o
+   * teste clicar e arrastar, onde cada bola da mesa que se vê está na tela (px da janela). `hud` é o que o HUD do treino mostra.
+   */
+  treino(): {
+    readonly modo: ModoDaMao;
+    readonly tacadas: number;
+    readonly cenario: string | null;
+    readonly podeRefazer: boolean;
+    readonly fase: 'jogando' | 'tocando' | 'fim';
+    readonly naMesa: readonly number[];
+    readonly bandeja: readonly number[];
+    readonly naMao: { readonly id: number; readonly valido: boolean } | null;
+    readonly vista: string;
+    readonly bolasNaTela: readonly { readonly id: number; readonly x: number; readonly y: number }[];
+    /** Onde cada bola da mesa que se vê está (m): a do editor enquanto a mão está na mesa (o `jogo` só a recebe ao sair). */
+    readonly posicoes: readonly { readonly id: number; readonly x: number; readonly z: number }[];
+    readonly hud: ReturnType<HudTreino['estado']>;
+  } | null;
 }
 
 declare global {

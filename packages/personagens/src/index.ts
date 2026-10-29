@@ -14,13 +14,42 @@ export type { ApoioDoContato, ContatoDeCilindro, ContatoDeGesto, ContatoDePalma,
 export type { GestoDaMeta, MetaDoPersonagem } from './meta';
 export { lerMeta } from './meta';
 export { lerContatos, raioNoPonto } from './contatos';
-export type { AcaoDoRosto, AncoraDaMeta, MetaDoRosto, OlhoDaMeta } from './meta-do-rosto';
+export type {
+  AcaoDoRosto,
+  AncoraDaMeta,
+  AncoraDeAcessorioDaMeta,
+  CoresDeOlhoDaMeta,
+  CordinhaDaMeta,
+  EstiloDeOlhoDaMeta,
+  EstilosDeOlhoDaMeta,
+  LatexProposto,
+  MetaDoRosto,
+  OlhoDaMeta,
+  PalpebrasDaMeta,
+  RegraDeEscalaDoAcessorio,
+  TamanhoDeRepouso,
+  VarianteDaMeta,
+} from './meta-do-rosto';
 export { lerMetaDoRosto } from './meta-do-rosto';
+export type { AcessorioDaMeta, MetaDosAcessorios } from './meta-dos-acessorios';
+export { lerMetaDosAcessorios } from './meta-dos-acessorios';
+export { escalaDoAcessorio } from './escala-do-acessorio';
 export type { DefinicaoDaAcao, OpcoesDaAcao } from './acoes';
 export { MisturaDeAcoes } from './acoes';
-export type { OpcoesDoPiscador } from './rosto';
-export { MisturaDeCaras, Piscador } from './rosto';
+export type { OpcoesDasPalpebras, OpcoesDoPiscador } from './rosto';
+export { MisturaDeCaras, PalpebrasDoOlhar, Piscadinha, Piscador } from './rosto';
 export { girarOlho } from './olhar';
+/** L46: o que faz o personagem parecer vivo, sem three (uma mola exata, ruído, o olhar, a atenção, o corpo e a cordinha). */
+export { MolaAmortecida } from './mola';
+export { RuidoSuave } from './ruido';
+export type { EstadoDoOlhar, OpcoesDaPerseguicao, OpcoesDoOlhar, OpcoesParciaisDoOlhar } from './olhar-vivo';
+export { OlharVivo, anguloDeVergencia } from './olhar-vivo';
+export type { OpcoesDaAtencao } from './atencao';
+export { Atencao } from './atencao';
+export type { OpcoesDaGelatina, OpcoesDoCorpo, OpcoesDoFlutuar } from './movimento-secundario';
+export { Flutuar, GelatinaDoCorpo, SeguidorDoCorpo } from './movimento-secundario';
+export type { OpcoesDaCordinha } from './cordinha';
+export { CordinhaSimulada } from './cordinha';
 export { ancoraDaMatriz } from './ancora';
 export type { AlvoDeCilindro, AlvoDePinca, AlvoDePlano, Colocacao, Quadro } from './alinhar';
 export {

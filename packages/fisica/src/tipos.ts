@@ -90,12 +90,16 @@ export interface EventoBolaBola {
   readonly velocidade: number;
 }
 
-/** Bola bateu numa tabela. `tabela` = índice em `tabelas(mesa)`; `velocidade` = componente normal (m/s). */
+/** Onde a bola bateu na tabela: `nariz` é o trecho reto de `tabelas(mesa)`; `boca` é a face que entra na caçapa ou o arredondado da ponta. */
+export type ParteDaTabela = 'nariz' | 'boca';
+
+/** Bola bateu numa tabela. `tabela` = índice em `tabelas(mesa)`; `parte` = nariz ou boca da caçapa; `velocidade` = componente normal (m/s). */
 export interface EventoBolaTabela {
   readonly tipo: 'bola-tabela';
   readonly t: number;
   readonly bola: IdBola;
   readonly tabela: number;
+  readonly parte: ParteDaTabela;
   readonly velocidade: number;
 }
 

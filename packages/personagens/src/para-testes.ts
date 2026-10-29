@@ -46,3 +46,15 @@ export function malhaDeBrinquedo(): MalhaComPele {
   }
   return { posicoes: new Float64Array(posicoes), ossos: new Uint16Array(ossos), pesos: new Float64Array(pesos) };
 }
+
+/** Um sorteio de 0 a 1 que repete a mesma sequência para a mesma semente (mulberry32): o RNG injetado dos testes. */
+export function sorteioDeTeste(semente: number): () => number {
+  let a = semente >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}

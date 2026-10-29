@@ -83,6 +83,28 @@ describe('configDoAmbiente', () => {
     for (const bruto of ['', 'sim', 'false', '2']) expect(() => configDoAmbiente({ MISSOES_DIARIAS: bruto }), bruto).toThrow(/MISSOES_DIARIAS/);
   });
 
+  it('presente de teste (L34c): desligado por padrão; PRESENTE_DE_TESTE liga com o valor e exige o rótulo; 0 desliga; rótulo sozinho é ignorado', () => {
+    expect(configDoAmbiente({}).presenteDeTeste).toBeNull();
+    expect(configDoAmbiente({ PRESENTE_DE_TESTE: '10000', PRESENTE_DE_TESTE_ROTULO: 'skins-cs' }).presenteDeTeste).toEqual({ valor: 10_000, rotulo: 'skins-cs' });
+    expect(configDoAmbiente({ PRESENTE_DE_TESTE: '1000000', PRESENTE_DE_TESTE_ROTULO: 'a' }).presenteDeTeste).toEqual({ valor: 1_000_000, rotulo: 'a' });
+    expect(configDoAmbiente({ PRESENTE_DE_TESTE: '0', PRESENTE_DE_TESTE_ROTULO: 'skins-cs' }).presenteDeTeste).toBeNull();
+    expect(configDoAmbiente({ PRESENTE_DE_TESTE_ROTULO: 'skins-cs' }).presenteDeTeste).toBeNull();
+    expect(CONFIG_SALA_PADRAO.presenteDeTeste).toBeNull();
+  });
+
+  it('presente de teste: valor ruim, rótulo faltando ou fora do formato dizem qual variável', () => {
+    for (const bruto of ['', '-5', '1.5', 'muito', '1000001']) {
+      expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: bruto, PRESENTE_DE_TESTE_ROTULO: 'skins-cs' }), bruto).toThrow(/PRESENTE_DE_TESTE/);
+    }
+    expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: '10000' })).toThrow(/PRESENTE_DE_TESTE_ROTULO/);
+    for (const rotulo of ['', ' ', 'Skins-CS', 'com espaço', '-comeca', '_comeca', 'á', 'a'.repeat(41), '__proto__', 'a/b']) {
+      expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: '10000', PRESENTE_DE_TESTE_ROTULO: rotulo }), rotulo).toThrow(/PRESENTE_DE_TESTE_ROTULO/);
+    }
+    for (const rotulo of ['skins-cs', 'v1.2_b', '0', 'a'.repeat(40)]) {
+      expect(configDoAmbiente({ PRESENTE_DE_TESTE: '5', PRESENTE_DE_TESTE_ROTULO: rotulo }).presenteDeTeste, rotulo).toEqual({ valor: 5, rotulo });
+    }
+  });
+
   it('PASTA_DADOS relativa resolve a partir da pasta em que o processo roda (com o pnpm, apps/sala)', () => {
     expect(configDoAmbiente({ PASTA_DADOS: 'dados-relativos' }).pastaDados).toBe(join(process.cwd(), 'dados-relativos'));
   });

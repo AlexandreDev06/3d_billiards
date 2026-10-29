@@ -19,6 +19,7 @@ const servidor = await iniciarServidor(config, { log }).catch((e: unknown) => {
 
 console.log(`Sala no ar: http://${config.host}:${servidor.porta}  (WebSocket em /sala)`);
 console.log(`Carteiras em ${config.pastaDados}`);
+if (config.presenteDeTeste) console.log(`Presente de teste LIGADO: ${config.presenteDeTeste.valor} moedas por carteira, uma vez por rótulo "${config.presenteDeTeste.rotulo}".`);
 if (existsSync(join(config.pastaWeb, 'index.html'))) console.log(`Servindo o cliente de ${config.pastaWeb}`);
 else console.log(`Aviso: sem build do cliente em ${config.pastaWeb}. Rode "pnpm build" (ou use "pnpm online") ou o Vite com proxy para /sala.`);
 console.log(`Para publicar: ngrok http --inspect=false ${servidor.porta}`);

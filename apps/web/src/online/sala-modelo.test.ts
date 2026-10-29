@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { FISICA_DA_SALA_PADRAO } from '@sinuca/protocolo';
 import type { ConfrontoPlacar, LugarSala, ModoSala, MsgEstadoSala, MsgTempoEsgotado, PlacarSala } from '@sinuca/protocolo';
 import { avisoDeTempoEsgotado, avisosDePresenca, faixaDeVez, formacaoSentada, jogadoresOnline, modeloDaSala, quantosLugares, tituloDaSala } from './sala-modelo';
 
@@ -116,6 +117,34 @@ describe('modeloDaSala: saldos, skins e aposta', () => {
   it('a aposta da sala vem nas regras; sem ela, os 10 de fábrica', () => {
     expect(modeloDaSala(comCarteira({ aposta: 20 }), 0, true).regras.aposta).toBe(20);
     expect(modeloDaSala(comCarteira(), 0, true).regras.aposta).toBe(10);
+  });
+});
+
+describe('modeloDaSala: o resumo das estatísticas de cada lugar (L43)', () => {
+  const comResumos = (): MsgEstadoSala => {
+    const base = estado('1x1x1x1', ['Ana', 'Beto', 'Caio']);
+    const lugares = base.lugares.map((l) =>
+      l.lugar === 0
+        ? { ...l, estatisticas: { partidas: 30, vitorias: 12, bolas: 85 } }
+        : l.lugar === 1
+          ? { ...l, estatisticas: { partidas: 0, vitorias: 0, bolas: 0 } }
+          : l.lugar === 2
+            ? { ...l, estatisticas: null }
+            : { ...l, estatisticas: { partidas: 5, vitorias: 5, bolas: 40 } },
+    );
+    return { ...base, lugares };
+  };
+
+  it('cada lugar leva a linha curta; sem carteira (null) ou sem o campo fica sem a linha', () => {
+    const m = modeloDaSala(comResumos(), 0, true);
+    expect(m.assentos.map((a) => a.resumo)).toEqual(['12 vitórias em 30 · 85 bolas', 'sem partidas contadas', null, null]);
+    expect(modeloDaSala(estado('1x1', ['Ana', 'Beto']), 0, true).assentos.map((a) => a.resumo)).toEqual([null, null]);
+  });
+
+  it('lugar vago nunca tem resumo, mesmo que a sala mande um', () => {
+    const m = modeloDaSala(comResumos(), 0, true);
+    expect(m.assentos[3]!.nome).toBeNull();
+    expect(m.assentos[3]!.resumo).toBeNull();
   });
 });
 
@@ -389,5 +418,25 @@ describe('modeloDaSala: as regras da sala (modalidade, tempo, linha, giz e forç
     expect(modeloDaSala(estado('1x1', ['Ana', 'Beto']), 0, true).podeConfigurar).toBe(true);
     expect(modeloDaSala(estado('1x1', ['Ana', 'Beto']), 1, false).podeConfigurar).toBe(false);
     expect(modeloDaSala(estado('1x1', ['Ana', 'Beto'], { fase: 'jogando' }), 0, true).podeConfigurar).toBe(false);
+  });
+});
+
+describe('modeloDaSala: a física da sala (L42)', () => {
+  const mexida = { ...FISICA_DA_SALA_PADRAO, atritoDeslizamento: 0.3 };
+
+  it('sem física no estado ou com a padrão, a linha diz "Física: padrão" e não destaca', () => {
+    expect(modeloDaSala(estado('1x1', ['Ana', 'Beto']), 0, true).fisica).toEqual({ texto: 'Física: padrão', destaque: false, mexida: false, souAnfitriao: true });
+    expect(modeloDaSala(estado('1x1', ['Ana', 'Beto'], { fisica: FISICA_DA_SALA_PADRAO, fisicaMexida: false }), 1, false).fisica).toMatchObject({ texto: 'Física: padrão', destaque: false, souAnfitriao: false });
+  });
+
+  it('com a física mexida, a linha avisa que missões e estatísticas não contam, em destaque, para o anfitrião e para o outro', () => {
+    const e = estado('1x1', ['Ana', 'Beto'], { fisica: mexida, fisicaMexida: true });
+    expect(modeloDaSala(e, 0, true).fisica).toMatchObject({ texto: 'Física mexida: missões e estatísticas não contam', destaque: true, mexida: true, souAnfitriao: true });
+    expect(modeloDaSala(e, 1, false).fisica).toMatchObject({ texto: 'Física mexida: missões e estatísticas não contam', destaque: true, souAnfitriao: false });
+  });
+
+  it('o `fisicaMexida` da sala vale; sem ele, a conta dos valores', () => {
+    expect(modeloDaSala(estado('1x1', ['Ana', 'Beto'], { fisica: mexida }), 0, true).fisica.mexida).toBe(true);
+    expect(modeloDaSala(estado('1x1', ['Ana', 'Beto'], { fisica: mexida, fisicaMexida: false }), 0, true).fisica.mexida).toBe(false);
   });
 });

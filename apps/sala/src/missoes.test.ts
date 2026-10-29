@@ -4,9 +4,25 @@
  * conta também tem teste: falta, bola do adversário, bola que volta à mesa, a derrota de quem tacou.
  */
 import { describe, expect, it } from 'vitest';
-import { CONFIG_FISICA_PADRAO, cacapas, criarRng, mesaInicial, simularTacada, type EventoTacada, type Gravacao, type ParametrosTacada } from '@sinuca/fisica';
+import {
+  CONFIG_FISICA_PADRAO,
+  ID_BOLAO,
+  MESA_BAR,
+  bolaParada,
+  cacapas,
+  criarRng,
+  lugares,
+  mesaInicial,
+  simularTacada,
+  type EstadoMesa,
+  type EventoTacada,
+  type Gravacao,
+  type IdBola,
+  type ParametrosTacada,
+  type Rng,
+} from '@sinuca/fisica';
 import { MISSOES } from '@sinuca/protocolo';
-import { PRESET_BOTECO, PRESET_MATA_MATA, aplicarTacada, novaPartida, type EstadoPartida, type Jogador } from '@sinuca/regras';
+import { PRESET_BOTECO, PRESET_MATA_MATA, aplicarTacada, novaPartida, type Consequencias, type EstadoPartida, type Jogador } from '@sinuca/regras';
 import { conferirFimDaPartida, conferirTacada, PREFIXO_DAS_CACAPAS_DO_MEIO, type ConferenciaDaTacada } from './missoes';
 import { acharTacada, tacadaDaVisao } from './para-testes';
 
@@ -32,22 +48,72 @@ type SemT<E> = E extends unknown ? Omit<E, 't'> : never;
 type Passo = SemT<EventoTacada>;
 const bate = (v = 2): Passo => ({ tipo: 'taco-bola', bola: 0, velocidade: v, miscue: false });
 const toca = (a: number, b: number): Passo => ({ tipo: 'bola-bola', a, b, velocidade: 1 });
-const tabela = (bola: number): Passo => ({ tipo: 'bola-tabela', bola, tabela: 0, velocidade: 1 });
+/** Batida no nariz de verdade (2 m/s, bem acima da `batida` do catálogo); `parte` e `v` trocam o que o teste quer provar. */
+const tabela = (bola: number, v = 2, parte: 'nariz' | 'boca' = 'nariz'): Passo => ({ tipo: 'bola-tabela', bola, tabela: 0, parte, velocidade: v });
 const cai = (bola: number, cacapa = CANTO): Passo => ({ tipo: 'cacapa', bola, cacapa });
 const parou: Passo = { tipo: 'parou' };
 
 /** Eventos em ordem de `t`: um a cada 0,1 s, e o `parou` no fim. */
 const eventos = (...passos: Passo[]): EventoTacada[] => [...passos, parou].map((p, i) => ({ ...p, t: i / 10 }) as EventoTacada);
 
-/** Gravação de 2 quadros com as bolas parados em `onde` (a branca em `branca`); só o primeiro quadro importa para as missões. */
-function gravar(evs: readonly EventoTacada[], onde: Readonly<Record<number, readonly [number, number]>> = {}, branca: readonly [number, number] = [-1, 0]): Gravacao {
+const QUADROS = 101;
+
+/** O quadro (a 100 Hz) de um instante de evento. */
+const quadroDe = (t: number): number => Math.round(t * 100);
+
+/**
+ * Gravação de 101 quadros a 100 Hz (1 s) com as bolas em `onde` (a branca em `branca`) no primeiro quadro. Uma bola de `ate` fica
+ * onde está até a primeira batida dela na tabela, anda reto até lá e chega no quadro em que cai (a Tabelada mede o caminho da
+ * tabela à caçapa); as outras ficam paradas.
+ */
+function gravar(
+  evs: readonly EventoTacada[],
+  onde: Readonly<Record<number, readonly [number, number]>> = {},
+  branca: readonly [number, number] = [-1, 0],
+  ate: Readonly<Record<number, readonly [number, number]>> = {},
+): Gravacao {
   const ids = [0, ...Array.from({ length: 15 }, (_, i) => i + 1)];
-  const posicoes = new Float32Array(2 * ids.length * 3);
+  const posicoes = new Float32Array(QUADROS * ids.length * 3);
   ids.forEach((id, i) => {
     const [x, z] = id === 0 ? branca : (onde[id] ?? [0.5 + id * 0.01, 0.2]);
-    for (const q of [0, 1]) posicoes.set([x, 0.03, z], (q * ids.length + i) * 3);
+    const [fx, fz] = ate[id] ?? [x, z];
+    const batida = evs.find((e) => e.tipo === 'bola-tabela' && e.bola === id);
+    const queda = evs.find((e) => e.tipo === 'cacapa' && e.bola === id);
+    const q0 = batida ? quadroDe(batida.t) : 0;
+    const q1 = queda ? quadroDe(queda.t) : QUADROS - 1;
+    for (let q = 0; q < QUADROS; q++) {
+      const f = q <= q0 ? 0 : q >= q1 ? 1 : (q - q0) / (q1 - q0);
+      posicoes.set([x + (fx - x) * f, 0.03, z + (fz - z) * f], (q * ids.length + i) * 3);
+    }
   });
-  return { frequencia: 100, ids, quadros: 2, duracao: 1, posicoes, orientacoes: new Float32Array(2 * ids.length * 4), naMesa: new Uint8Array(2 * ids.length).fill(1), eventos: evs };
+  return {
+    frequencia: 100,
+    ids,
+    quadros: QUADROS,
+    duracao: 1,
+    posicoes,
+    orientacoes: new Float32Array(QUADROS * ids.length * 4),
+    naMesa: new Uint8Array(QUADROS * ids.length).fill(1),
+    eventos: evs,
+  };
+}
+
+/**
+ * A `gravacao` com a bola `bola` seguindo os `pontos` [t, x, z]: em reta de um ponto ao seguinte, parada no primeiro antes dele e
+ * no último depois dele. Para as tacadas em que a bola anda ANTES da batida (o `gravar` a deixa parada até lá).
+ */
+function comTrajeto(g: Gravacao, bola: number, pontos: readonly (readonly [number, number, number])[]): Gravacao {
+  const i = g.ids.indexOf(bola);
+  const posicoes = new Float32Array(g.posicoes);
+  for (let q = 0; q < g.quadros; q++) {
+    const t = q / g.frequencia;
+    const k = pontos.findIndex((p) => p[0] >= t);
+    const [t1, x1, z1] = pontos[k < 0 ? pontos.length - 1 : k]!;
+    const [t0, x0, z0] = pontos[Math.max(0, k - 1)]!;
+    const f = k <= 0 || t1 === t0 ? 1 : (t - t0) / (t1 - t0);
+    posicoes.set([x0 + (x1 - x0) * (k < 0 ? 1 : f), 0.03, z0 + (z1 - z0) * (k < 0 ? 1 : f)], (q * g.ids.length + i) * 3);
+  }
+  return { ...g, posicoes };
 }
 
 const rng = () => criarRng(7);
@@ -64,7 +130,11 @@ interface Opcoes {
   readonly parametros?: ParametrosTacada;
   readonly onde?: Readonly<Record<number, readonly [number, number]>>;
   readonly branca?: readonly [number, number];
+  /** Onde cada bola chega no último quadro (anda em linha reta desde `onde`). */
+  readonly ate?: Readonly<Record<number, readonly [number, number]>>;
   readonly seguidasAntes?: number;
+  /** A bola anda por estes pontos [t, x, z] em vez do vaivém simples de `onde` a `ate` (ver `comTrajeto`). */
+  readonly trajeto?: { readonly bola: number; readonly pontos: readonly (readonly [number, number, number])[] };
 }
 
 /** Aplica as regras de verdade aos eventos e confere a tacada; devolve também a partida de depois. */
@@ -73,7 +143,7 @@ function conferir(antes: EstadoPartida, passos: readonly Passo[], o: Opcoes = {}
   const r = aplicarTacada(antes, evs);
   const c = conferirTacada({
     parametros: o.parametros ?? PARADA,
-    gravacao: gravar(evs, o.onde, o.branca),
+    gravacao: o.trajeto ? comTrajeto(gravar(evs, o.onde, o.branca, o.ate), o.trajeto.bola, o.trajeto.pontos) : gravar(evs, o.onde, o.branca, o.ate),
     consequencias: r.consequencias,
     antes,
     depois: r.partida,
@@ -285,29 +355,95 @@ describe('Efeito inglês, Siga! e Puxada (o efeito do taco)', () => {
   });
 });
 
-describe('Tabelada (a bola bate na tabela depois de tocada e antes de cair)', () => {
-  it('tocada pela branca, bate na tabela e cai', () => {
-    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2), cai(2)]).valores.tabelada).toBe(1);
+describe('Tabelada (a branca manda a bola à tabela, de verdade, e ela vai direto à caçapa)', () => {
+  /** A bola 2 sai de x = 0,5 e cai 0,8 m depois da batida: uma tabelada com tudo certo. */
+  const longe = { onde: { 2: [0.5, 0] as const }, ate: { 2: [-0.3, 0] as const } };
+  const boa = [bate(), toca(0, 2), tabela(2), cai(2)];
+
+  it('a branca bate na bola, ela bate no nariz da tabela com força e cai longe dali: vale', () => {
+    expect(conferir(boteco(true), boa, longe).valores.tabelada).toBe(1);
   });
 
-  it('tocada por outra bola (a branca bateu na 3, a 3 na 2) também vale', () => {
-    expect(conferir(boteco(true), [bate(), toca(0, 4), toca(4, 2), tabela(2), cai(2)]).valores.tabelada).toBe(1);
+  it('raspão não vale: batida abaixo de 1,0 m/s (a normal), e 1,0 exato vale; uma batida boa entre raspões basta', () => {
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 0.99), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 1.0), cai(2)], longe).valores.tabelada).toBe(1);
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 0.2), tabela(2, 1.5), tabela(2, 0.1), cai(2)], longe).valores.tabelada).toBe(1);
   });
 
-  it('a tabela tem de ser da bola que caiu, depois do primeiro toque nela', () => {
-    expect(conferir(boteco(true), [bate(), tabela(2), toca(0, 2), cai(2)]).valores.tabelada).toBeUndefined();
-    expect(conferir(boteco(true), [bate(), tabela(0), toca(0, 2), cai(2)]).valores.tabelada).toBeUndefined();
-    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(4), cai(2)]).valores.tabelada).toBeUndefined();
+  it('a boca da caçapa (face ou quina) não é tabela, nem forte (o A1 da revisão do L31)', () => {
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 3, 'boca'), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 3, 'boca'), tabela(2, 0.3), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2, 1.5), tabela(2, 3, 'boca'), cai(2)], longe).valores.tabelada).toBe(1);
   });
 
-  it('sem tabela entre o toque e a caçapa, nada; e a tabela depois de cair não existe', () => {
-    expect(conferir(boteco(true), [bate(), toca(0, 2), cai(2)]).valores.tabelada).toBeUndefined();
+  it('precisa de caminho: cai a menos de 0,5 m do ponto da batida, não vale; 0,5 m exato vale', () => {
+    expect(conferir(boteco(true), boa, { onde: { 2: [0.5, 0] }, ate: { 2: [0.25, 0] } }).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), boa, { onde: { 2: [0.5, 0] }, ate: { 2: [0, 0] } }).valores.tabelada).toBe(1);
+    expect(conferir(boteco(true), boa, { onde: { 2: [0, 0.6] }, ate: { 2: [0.1, 0.3] } }).valores.tabelada).toBeUndefined();
+  });
+
+  describe('o caminho conta a partir da batida no nariz, não do ponto de partida nem do toque (L34b)', () => {
+    // eventos: toque da branca em t = 0,1; batida no nariz em t = 0,2; queda em t = 0,3
+    const NARIZ: readonly [number, number] = [-0.5, 0];
+
+    it('a bola anda antes da batida e cai a 0,1 m dela: não vale, mesmo com 1,1 m do ponto de partida e do toque até a caçapa', () => {
+      const trajeto = { bola: 2, pontos: [[0.1, 0.5, 0], [0.2, ...NARIZ], [0.3, -0.6, 0]] as const };
+      expect(conferir(boteco(true), boa, { trajeto }).valores.tabelada).toBeUndefined();
+    });
+
+    it('o mesmo trajeto cai a 0,6 m da batida: vale (o teste acima não é vazio)', () => {
+      const trajeto = { bola: 2, pontos: [[0.1, 0.5, 0], [0.2, ...NARIZ], [0.3, -1.1, 0]] as const };
+      expect(conferir(boteco(true), boa, { trajeto }).valores.tabelada).toBe(1);
+    });
+
+    it('0,5 m da batida à caçapa vale e um pouco menos não, com a bola andando antes da batida', () => {
+      const de = (fim: number) => ({ bola: 2, pontos: [[0.1, 0.5, 0], [0.2, ...NARIZ], [0.3, fim, 0]] as const });
+      expect(conferir(boteco(true), boa, { trajeto: de(-1.0) }).valores.tabelada).toBe(1);
+      expect(conferir(boteco(true), boa, { trajeto: de(-0.99) }).valores.tabelada).toBeUndefined();
+    });
+
+    it('a bola sai perto da caçapa, vai ao nariz longe e volta: o caminho da batida passa de 0,5 m e vale, ainda que partida e queda estejam a 0,1 m', () => {
+      const trajeto = { bola: 2, pontos: [[0.1, -0.4, 0], [0.2, 0.4, 0], [0.3, -0.5, 0]] as const };
+      expect(conferir(boteco(true), boa, { trajeto }).valores.tabelada).toBe(1);
+    });
+
+    it('com mais de uma batida, vale a que cumpre tudo, medida do próprio ponto dela', () => {
+      const dois = [bate(), toca(0, 2), tabela(2, 1.5), tabela(2, 1.5), cai(2)];
+      // a 1ª batida (t = 0,2) fica no ponto da queda; a 2ª (t = 0,3), a 0,8 m dela
+      const trajeto = { bola: 2, pontos: [[0.1, 0.5, 0], [0.2, -0.5, 0], [0.3, 0.3, 0], [0.4, -0.5, 0]] as const };
+      expect(conferir(boteco(true), dois, { trajeto }).valores.tabelada).toBe(1);
+      const curto = { bola: 2, pontos: [[0.1, 0.5, 0], [0.2, -0.5, 0], [0.3, -0.4, 0], [0.4, -0.5, 0]] as const };
+      expect(conferir(boteco(true), dois, { trajeto: curto }).valores.tabelada).toBeUndefined();
+    });
+  });
+
+  it('a bola vem da branca: se o último choque dela antes da tabela foi com outra bola, não vale', () => {
+    expect(conferir(boteco(true), [bate(), toca(0, 4), toca(4, 2), tabela(2), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), toca(4, 2), toca(0, 2), tabela(2), cai(2)], longe).valores.tabelada).toBe(1);
+  });
+
+  it('direto à caçapa: outro choque da bola depois da tabela e antes de cair tira o valor', () => {
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(2), toca(2, 4), cai(2)], longe).valores.tabelada).toBeUndefined();
+  });
+
+  it('a tabela tem de ser da bola que caiu, depois do toque da branca nela', () => {
+    expect(conferir(boteco(true), [bate(), tabela(2), toca(0, 2), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), tabela(0), toca(0, 2), cai(2)], longe).valores.tabelada).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), toca(0, 2), tabela(4), cai(2)], longe).valores.tabelada).toBeUndefined();
+  });
+
+  it('sem tabela entre o toque e a caçapa, nada', () => {
+    expect(conferir(boteco(true), [bate(), toca(0, 2), cai(2)], longe).valores.tabelada).toBeUndefined();
   });
 
   it('só a bola que bateu na tabela conta, não a do lado dela (2 bateu, 4 não)', () => {
-    const c = conferir(boteco(true), [bate(), toca(0, 2), toca(0, 4), tabela(2), cai(2), cai(4)]);
+    const c = conferir(boteco(true), [bate(), toca(0, 2), toca(0, 4), tabela(2), cai(2), cai(4)], longe);
     expect(c.valores.tabelada).toBe(1);
     expect(c.valores['mao-quente']).toBe(2);
+  });
+
+  it('no mata-mata vale igual', () => {
+    expect(conferir(mataMata(), [bate(), toca(0, 2), tabela(2), cai(2)], longe).valores.tabelada).toBe(1);
   });
 });
 
@@ -334,7 +470,7 @@ describe('De longe (a bola estava a mais de 1,5 m da branca)', () => {
   });
 });
 
-describe('Volta ao mundo (3 tabelas da branca antes de tocar bola, sem falta)', () => {
+describe('Volta ao mundo (3 tabelas da branca, de verdade, antes de tocar bola, sem falta)', () => {
   it('três tabelas e depois toca: conta, mesmo sem matar nada', () => {
     const c = conferir(boteco(true), [bate(), tabela(0), tabela(0), tabela(0), toca(0, 2)]);
     expect(c.valores['volta-ao-mundo']).toBe(1);
@@ -356,6 +492,180 @@ describe('Volta ao mundo (3 tabelas da branca antes de tocar bola, sem falta)', 
   it('mais de três também conta', () => {
     expect(conferir(boteco(true), [bate(), tabela(0), tabela(0), tabela(0), tabela(0), toca(0, 2)]).valores['volta-ao-mundo']).toBe(1);
   });
+
+  it('raspão não é tabela: batida abaixo de 1,0 m/s não entra na conta, e 1,0 exato entra', () => {
+    expect(conferir(boteco(true), [bate(), tabela(0), tabela(0), tabela(0, 0.99), toca(0, 2)]).valores['volta-ao-mundo']).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), tabela(0), tabela(0), tabela(0, 1.0), toca(0, 2)]).valores['volta-ao-mundo']).toBe(1);
+    expect(conferir(boteco(true), [bate(), tabela(0), tabela(0, 0.3), tabela(0), tabela(0, 0.2), tabela(0), toca(0, 2)]).valores['volta-ao-mundo']).toBe(1);
+  });
+
+  it('a boca da caçapa não é tabela (o A1 da revisão do L31): duas no nariz e uma na boca não bastam', () => {
+    expect(conferir(boteco(true), [bate(), tabela(0), tabela(0, 3, 'boca'), tabela(0), toca(0, 2)]).valores['volta-ao-mundo']).toBeUndefined();
+    expect(conferir(boteco(true), [bate(), tabela(0), tabela(0, 3, 'boca'), tabela(0), tabela(0), toca(0, 2)]).valores['volta-ao-mundo']).toBe(1);
+  });
+
+  it('não vale na tacada que perde a partida (a bola final antes da hora), mesmo sem falta', () => {
+    const passos = [bate(), tabela(0), tabela(0), tabela(0), toca(0, 2), cai(8)];
+    const antes = boteco(true);
+    const r = aplicarTacada(antes, eventos(...passos));
+    expect(r.consequencias.faltas, 'a tacada não pode ter falta, para só a derrota tirar o valor').toEqual([]);
+    expect(r.partida.vencedor).toBe(1);
+    expect(conferir(antes, passos).valores['volta-ao-mundo']).toBeUndefined();
+    // e a mesma tacada sem a 8 cair vale
+    expect(conferir(antes, [bate(), tabela(0), tabela(0), tabela(0), toca(0, 2)]).valores['volta-ao-mundo']).toBe(1);
+  });
+});
+
+// ---------------------------------------------------------------- a tabela de verdade, com a física real (L34)
+
+/** Uma tacada da física real, já com as regras e a conferência (mata-mata: qualquer bola conta). */
+interface TacadaReal {
+  readonly gravacao: Gravacao;
+  readonly c: ConferenciaDaTacada;
+  readonly consequencias: Consequencias;
+}
+
+/**
+ * Joga tacadas reais em sequência (a mesma amostra com que os limiares do catálogo foram medidos: sorteadas com a velocidade
+ * do taco na faixa do jogo, 1 a 4 m/s; refaz o triângulo quando sobram menos de 3 bolas e recoloca a branca na saída) e devolve cada
+ * uma conferida. `mirada`: o ângulo vai a uma bola sorteada, com até 0,2 rad de erro; senão sai em qualquer direção.
+ */
+function* tacadasReais(semente: number, mirada: boolean): Generator<TacadaReal> {
+  const rng: Rng = criarRng(semente);
+  const ids: IdBola[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  const cfg = CONFIG_FISICA_PADRAO;
+  let estado: EstadoMesa = mesaInicial(ids, cfg, rng);
+  for (;;) {
+    if (estado.bolas.filter((b) => b.id !== ID_BOLAO && b.naMesa).length < 3) estado = mesaInicial(ids, cfg, rng);
+    const branca = estado.bolas.find((b) => b.id === ID_BOLAO)!.posicao;
+    const alvos = estado.bolas.filter((b) => b.id !== ID_BOLAO && b.naMesa);
+    const alvo = alvos[Math.floor(rng.proximo() * alvos.length)]!.posicao;
+    const angulo = mirada ? Math.atan2(alvo.z - branca.z, alvo.x - branca.x) + (rng.proximo() - 0.5) * 0.4 : (rng.proximo() - 0.5) * 2 * Math.PI;
+    const parametros: ParametrosTacada = { angulo, velocidadeTaco: 1 + 3 * rng.proximo(), efeito: { lateral: 0, vertical: 0 }, elevacao: 0, giz: 1 };
+    const naMesa = estado.bolas.filter((b) => b.id !== ID_BOLAO && b.naMesa).map((b) => b.id);
+    const antes: EstadoPartida = { ...mataMata(), naMesa };
+    const sim = simularTacada(estado, parametros, rng, cfg);
+    const r = aplicarTacada(antes, sim.eventos);
+    const c = conferirTacada({ parametros, gravacao: sim.gravacao, consequencias: r.consequencias, antes, depois: r.partida, seguidasAntes: 0 });
+    yield { gravacao: sim.gravacao, c, consequencias: r.consequencias };
+    estado = { bolas: sim.estadoFinal.bolas.map((b) => (b.id === ID_BOLAO && !b.naMesa ? bolaParada(ID_BOLAO, lugares(MESA_BAR).marcaSaida, cfg) : b)) };
+  }
+}
+
+/** A primeira tacada real (até `max`) que `serve`; falha dizendo que a amostra não deu o caso. */
+function acharReal(semente: number, mirada: boolean, serve: (t: TacadaReal) => boolean, max = 1500): TacadaReal {
+  let n = 0;
+  for (const t of tacadasReais(semente, mirada)) {
+    if (serve(t)) return t;
+    if (++n >= max) break;
+  }
+  throw new Error(`a física real não deu o caso em ${max} tacadas (semente ${semente})`);
+}
+
+/** Os eventos de uma bola entre o primeiro toque nela e a queda dela (que a bola tenha caído numa caçapa). */
+function entreOToqueEAQueda(eventos: readonly EventoTacada[], bola: IdBola): EventoTacada[] {
+  const toque = eventos.findIndex((e) => e.tipo === 'bola-bola' && (e.a === bola || e.b === bola));
+  const queda = eventos.findIndex((e) => e.tipo === 'cacapa' && e.bola === bola);
+  return toque < 0 || queda <= toque ? [] : eventos.slice(toque + 1, queda);
+}
+const batidasDe = (eventos: readonly EventoTacada[], bola: IdBola) =>
+  eventos.filter((e): e is Extract<EventoTacada, { tipo: 'bola-tabela' }> => e.tipo === 'bola-tabela' && e.bola === bola);
+
+/** A conferência do L31 (que a revisão reprovou): qualquer `bola-tabela` entre o primeiro toque e a queda vale Tabelada. */
+const tabeladaDoL31 = (t: TacadaReal): boolean => t.c.mortas.some((b) => batidasDe(entreOToqueEAQueda(t.gravacao.eventos, b), b).length > 0);
+/** Só o nariz, sem velocidade nem caminho: o que o L31b mediu (40% das bolas encaçapadas). */
+const tabeladaSoDoNariz = (t: TacadaReal): boolean => t.c.mortas.some((b) => batidasDe(entreOToqueEAQueda(t.gravacao.eventos, b), b).some((e) => e.parte === 'nariz'));
+
+describe('Tabelada e Volta ao mundo com a física real (A1 e o raspão colado, L34)', () => {
+  it('uma tabelada de verdade, achada na amostra: a branca manda a bola ao nariz, forte, e ela cai direto, longe dali', () => {
+    const t = acharReal(31, true, (x) => (x.c.valores.tabelada ?? 0) > 0);
+    const { eventos } = t.gravacao;
+    const g = t.gravacao;
+    const pos = (bola: IdBola, instante: number) => {
+      const i = g.ids.indexOf(bola);
+      const q = Math.round(instante * g.frequencia);
+      return { x: g.posicoes[(q * g.ids.length + i) * 3]!, z: g.posicoes[(q * g.ids.length + i) * 3 + 2]! };
+    };
+    const certa = t.c.mortas.some((bola) => {
+      const queda = eventos.findIndex((e) => e.tipo === 'cacapa' && e.bola === bola);
+      return eventos.slice(0, queda).some((e, i) => {
+        if (e.tipo !== 'bola-tabela' || e.bola !== bola || e.parte !== 'nariz' || e.velocidade < 1) return false;
+        const choques = eventos.flatMap((x, j) => (x.tipo === 'bola-bola' && (x.a === bola || x.b === bola) ? [{ j, x }] : []));
+        const ultimo = choques.filter((k) => k.j < i).at(-1)?.x;
+        const depois = choques.some((k) => k.j > i && k.j < queda);
+        const ini = pos(bola, e.t);
+        const fim = pos(bola, eventos[queda]!.t);
+        return ultimo?.tipo === 'bola-bola' && (ultimo.a === 0 || ultimo.b === 0) && !depois && Math.hypot(ini.x - fim.x, ini.z - fim.z) >= 0.5;
+      });
+    });
+    expect(certa, 'a bola da Tabelada tem a branca, o nariz com força, a queda direta e o caminho').toBe(true);
+  });
+
+  it('A1: a bola que só raspa a boca da caçapa antes de cair não é tabelada, e a conferência do L31 a premiava', () => {
+    const t = acharReal(31, true, (x) =>
+      x.c.mortas.length > 0 &&
+      x.c.mortas.every((b) => {
+        const entre = batidasDe(entreOToqueEAQueda(x.gravacao.eventos, b), b);
+        return entre.every((e) => e.parte === 'boca');
+      }) &&
+      tabeladaDoL31(x),
+    );
+    expect(tabeladaDoL31(t)).toBe(true);
+    expect(tabeladaSoDoNariz(t)).toBe(false);
+    expect(t.c.valores.tabelada).toBeUndefined();
+  });
+
+  it('raspão colado: a bola que bate no nariz sem força (abaixo de 1,0 m/s, a normal) e cai não é tabelada, e só o nariz a premiava', () => {
+    const t = acharReal(31, true, (x) =>
+      x.c.mortas.length > 0 &&
+      tabeladaSoDoNariz(x) &&
+      x.c.mortas.every((b) => batidasDe(entreOToqueEAQueda(x.gravacao.eventos, b), b).every((e) => e.parte === 'boca' || e.velocidade < 1)),
+    );
+    expect(tabeladaSoDoNariz(t)).toBe(true);
+    expect(t.c.valores.tabelada).toBeUndefined();
+  });
+
+  it('a Tabelada é rara: das bolas mortas na amostra mirada, uma minoria (bem abaixo dos 40% que só o nariz dava)', () => {
+    let mortas = 0;
+    let tabeladas = 0;
+    let soNariz = 0;
+    let n = 0;
+    for (const t of tacadasReais(31, true)) {
+      mortas += t.c.mortas.length;
+      tabeladas += t.c.valores.tabelada ?? 0;
+      soNariz += t.c.mortas.filter((b) => batidasDe(entreOToqueEAQueda(t.gravacao.eventos, b), b).some((e) => e.parte === 'nariz')).length;
+      if (++n >= 1500) break;
+    }
+    expect(mortas).toBeGreaterThan(80);
+    expect(soNariz / mortas).toBeGreaterThan(0.25);
+    expect(tabeladas / mortas).toBeLessThan(0.2);
+    expect(tabeladas).toBeGreaterThan(0);
+  }, 120_000);
+
+  it('uma Volta ao mundo de verdade: a branca bate 3 vezes no nariz, com força, antes de tocar, e não há falta', () => {
+    const t = acharReal(31, false, (x) => x.c.valores['volta-ao-mundo'] === 1);
+    expect(t.consequencias.faltas).toEqual([]);
+    const batidas = [];
+    for (const e of t.gravacao.eventos) {
+      if (e.tipo === 'bola-bola' && (e.a === 0 || e.b === 0)) break;
+      if (e.tipo === 'bola-tabela' && e.bola === 0 && e.parte === 'nariz' && e.velocidade >= 1) batidas.push(e);
+    }
+    expect(batidas.length).toBeGreaterThanOrEqual(3);
+  }, 120_000);
+
+  it('A1 na Volta ao mundo: 3 batidas da branca contando a boca ou o raspão não valem (o L31 premiava), sem falta', () => {
+    const contaTudo = (x: TacadaReal): number => {
+      let n = 0;
+      for (const e of x.gravacao.eventos) {
+        if (e.tipo === 'bola-bola' && (e.a === 0 || e.b === 0)) break;
+        if (e.tipo === 'bola-tabela' && e.bola === 0) n++;
+      }
+      return n;
+    };
+    const t = acharReal(31, false, (x) => x.consequencias.faltas.length === 0 && contaTudo(x) >= 3 && x.c.valores['volta-ao-mundo'] === undefined);
+    expect(contaTudo(t)).toBeGreaterThanOrEqual(3);
+    expect(t.c.valores['volta-ao-mundo']).toBeUndefined();
+  }, 120_000);
 });
 
 // ---------------------------------------------------------------- fim da partida
@@ -479,7 +789,7 @@ describe('com a física real (a mesa arrumada, o taco batendo)', () => {
       return toque >= 0 && banda > toque && queda > banda;
     });
     expect(bola, 'a bola da Tabelada tem toque, tabela e queda nessa ordem').toBeDefined();
-  });
+  }, 60_000); // com o limiar da batida a tabelada é rara: a varredura dura ~4 s sozinha e passava de 5 s com a suíte inteira
 
   it('o efeito e a força vêm dos parâmetros da tacada: a mesma quebra com efeito lateral 0,6 também vale Efeito inglês', () => {
     const base = acharTacada(visao, (t) => {

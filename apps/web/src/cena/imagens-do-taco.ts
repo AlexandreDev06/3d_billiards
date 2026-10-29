@@ -1,6 +1,7 @@
 import { criarRng } from '@sinuca/fisica';
 import type { DesenhoDoAntebraco, Faixa, PecaDeMadeira, Punho } from './aparencia-do-taco';
 import { ruidoPeriodico } from './grao';
+import { SEM_VARIACAO, type VariacaoDaSemente } from './variacao-da-semente';
 
 /**
  * As imagens das texturas do taco, geradas em código (nada de arquivo): pixels RGBA, `largura` em volta da peça (x, de 0 a 1 de
@@ -23,6 +24,7 @@ type Cor = readonly [number, number, number];
 const rgb = (cor: number): Cor => [(cor >> 16) & 255, (cor >> 8) & 255, cor & 255];
 const mistura = (a: Cor, b: Cor, t: number): Cor => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
 const limitar = (x: number, de = 0, ate = 1): number => Math.min(Math.max(x, de), ate);
+const frac = (x: number): number => x - Math.floor(x);
 const suave = (de: number, ate: number, x: number): number => {
   const t = limitar((x - de) / (ate - de));
   return t * t * (3 - 2 * t);
@@ -66,15 +68,19 @@ const voltaEntre = (a: number, b: number): number => {
  * Veio de madeira: veios compridos e anéis de crescimento ao longo da peça, poros finos. `contraste` de 0 (cor lisa) a 1 (veio forte).
  * Ladrilha em volta (u).
  */
-export function imagemDeMadeira(t: TamanhoDaImagem, cor: number, contraste: number, semente: number): ImagemRGBA {
+export function imagemDeMadeira(t: TamanhoDaImagem, cor: number, contraste: number, semente: number, variacao: Pick<VariacaoDaSemente, 'rolo' | 'deslocamento' | 'escala'> = SEM_VARIACAO): ImagemRGBA {
   const rng = criarRng(semente);
   const fino = ruidoPeriodico(rng, 24);
   const largo = ruidoPeriodico(rng, 8);
   const base = rgb(cor);
   const img = nova(t);
-  pintar(img, (u, v, x, y) => {
+  // A semente do taco (L35) gira o veio em volta, o corre ao longo e muda quantos anéis de crescimento a peça tem.
+  const aneis = Math.max(Math.round(7 * variacao.escala), 3);
+  pintar(img, (u0, v0, x, y) => {
+    const u = frac(u0 + variacao.rolo);
+    const v = frac(v0 * 0.07 + variacao.deslocamento) / 0.07;
     const n = 0.62 * fino(u, v * 0.07) + 0.38 * largo(u, v * 0.03);
-    const anel = 0.5 + 0.5 * Math.sin(2 * Math.PI * (u * 7 + n * 2.4));
+    const anel = 0.5 + 0.5 * Math.sin(2 * Math.PI * (u * aneis + n * 2.4));
     const poro = hash(x, y) - 0.5;
     const tom = 1 + contraste * ((n - 0.5) * 1.3 + (anel - 0.5) * 0.9 + poro * 0.16);
     return [base[0] * tom, base[1] * tom, base[2] * tom];
@@ -248,9 +254,9 @@ export function pintarChamas(img: ImagemRGBA, cores: readonly [number, number], 
  * punho (o fim da imagem, v = 1) e afinam até um bico. `chamas`: línguas que sobem do punho, claras na raiz e escuras na ponta.
  * `linhas`: faixas e anéis neon. A emissiva só existe nas linhas.
  */
-export function imagemDoAntebraco(t: TamanhoDaImagem, base: PecaDeMadeira, desenho: DesenhoDoAntebraco, semente: number, proporcao = 1): ImagemComEmissao {
+export function imagemDoAntebraco(t: TamanhoDaImagem, base: PecaDeMadeira, desenho: DesenhoDoAntebraco, semente: number, proporcao = 1, variacao: Pick<VariacaoDaSemente, 'rolo' | 'deslocamento' | 'escala'> = SEM_VARIACAO): ImagemComEmissao {
   const fundo =
-    base.trama === 'carbono' ? imagemDeCarbono(t, base.cor, base.contraste, 6, proporcao) : base.trama === 'lisa' ? imagemLisa(t, base.cor) : imagemDeMadeira(t, base.cor, base.contraste, semente);
+    base.trama === 'carbono' ? imagemDeCarbono(t, base.cor, base.contraste, 6, proporcao) : base.trama === 'lisa' ? imagemLisa(t, base.cor) : imagemDeMadeira(t, base.cor, base.contraste, semente, variacao);
   const img = nova(t);
   const lado = t.largura;
   if (desenho.tipo === 'bicos') {

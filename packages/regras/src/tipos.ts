@@ -167,6 +167,16 @@ export interface ConfigRegras {
    * (`EstadoPartida.vezDaRoda`). Na equipe de 1 (e no 1×1) não muda nada.
    */
   readonly quemContinua: 'mesmo-jogador' | 'parceiro';
+  /**
+   * Só o treino (L39): uma pessoa sozinha na mesa, com as 15 bolas do `mata-mata` (por isso
+   * `modalidade: 'mata-mata'`; `Modalidade` não ganhou valor para o catálogo da sala seguir igual). A vez nunca
+   * passa; a falta é informada em `Consequencias.faltas` mas não custa nada; a branca que cai ou sai volta
+   * à mão (`Consequencias.brancaNaMao`); a partida acaba quando a tacada encaçapa a última bola. Ausente = jogo normal.
+   * É local: não está em `OPCOES_REGRAS` nem em `PRESETS_DE_FABRICA`, e `validarPreset` só o aceita com
+   * `aceitaTreino` (a sala não o aceita). O treino exige as penas do mata-mata em `sem-pena`
+   * (`incoerenciasDaConfig`).
+   */
+  readonly treino?: true;
 }
 
 /** Preset carregado de `presets/*.json`. */
@@ -251,7 +261,7 @@ export interface EstadoPartida {
   readonly naMesa: readonly IdBola[];
   /** Em ordem de queda. */
   readonly encacapadas: readonly Encacapada[];
-  /** Tiradas da mesa como pena, sem terem sido encaçapadas. */
+  /** Tiradas da mesa como pena, sem terem sido encaçapadas (no treino, também as que o jogador tirou com a mão: `sincronizarMesa`). */
   readonly retiradas: readonly IdBola[];
   /** Equipe vencedora. */
   readonly vencedor: number | null;
@@ -302,6 +312,11 @@ export interface Consequencias {
   readonly proximo: number;
   /** Equipe vencedora, se a partida acabou nesta tacada. */
   readonly vencedor: number | null;
+  /**
+   * Só no treino, quando a branca caiu ou saiu da mesa: ela volta à mão, isto é, o jogador a põe onde quiser.
+   * `recolocar` traz a branca no lugar de partida (`brancaAposSuicidio`), para quem não souber da mão. Ausente = não.
+   */
+  readonly brancaNaMao?: true;
   /** Frase curta para o HUD. */
   readonly texto: string;
 }

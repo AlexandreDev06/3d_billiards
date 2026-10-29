@@ -49,12 +49,17 @@ function cartaoDaMissao(c: CartaoDeMissao): HTMLLIElement {
   return li;
 }
 
+export interface OpcoesDoPainelDeMissoes {
+  /** A versão do H durante a partida (L37): os mesmos elementos, com a classe `missoes-compactas` para o CSS apertar as folgas. */
+  readonly compacto?: boolean;
+}
+
 /**
  * O painel "Missões do dia" (L32): três cartões (nível com cor própria, nome, descrição, prêmio, barra de progresso e o visto das
  * cumpridas), quanto falta para virar o dia e quantas moedas as missões já deram hoje. Só DOM: o que escreve vem do modelo.
  */
-export function criarPainelDeMissoes(): PainelDeMissoes {
-  const raiz = el('section', 'missoes');
+export function criarPainelDeMissoes(opcoes: OpcoesDoPainelDeMissoes = {}): PainelDeMissoes {
+  const raiz = el('section', opcoes.compacto === true ? 'missoes missoes-compactas' : 'missoes');
   raiz.setAttribute('aria-label', 'Missões do dia');
   return {
     raiz,

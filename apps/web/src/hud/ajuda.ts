@@ -1,3 +1,4 @@
+import { TECLAS_DO_TREINO } from '../treino/teclas';
 import type { ModeloDaAjuda } from './ajuda-modelo';
 
 export interface LinhaDeAjuda {
@@ -23,13 +24,26 @@ export const LINHAS_DE_AJUDA: readonly LinhaDeAjuda[] = [
   { teclas: ['M'], texto: 'Som / mudo' },
   { teclas: ['C'], texto: 'Configurações' },
   { teclas: ['F3'], texto: 'Diagnóstico de FPS' },
-  { teclas: ['H'], texto: 'Esta ajuda' },
+  { teclas: ['H'], texto: 'Ajuda e missões do dia' },
   { teclas: ['Enter'], texto: 'Chat (online)' },
   { teclas: ['1 a 8'], texto: 'Emoji (online); C ou ✎ escolhe quais' },
   { teclas: ['Esc'], texto: 'Soltar o mouse' },
 ];
 
+const rotuloDaTecla = (code: string): string => (code.startsWith('Key') ? code.slice(3) : code);
+
+/** As teclas do modo treino (L42), que a ajuda só mostra no treino: as mesmas de `TECLAS_DO_TREINO`, que o jogo escuta. */
+export const LINHAS_DO_TREINO: readonly LinhaDeAjuda[] = [
+  { teclas: [rotuloDaTecla(TECLAS_DO_TREINO.bolaNaMao)], texto: 'Treino: bola na mão (arraste a branca)' },
+  { teclas: [rotuloDaTecla(TECLAS_DO_TREINO.arrumar), rotuloDaTecla(TECLAS_DO_TREINO.tirarBola)], texto: 'Treino: arrumar a mesa; X tira a bola sob o mouse' },
+  { teclas: [rotuloDaTecla(TECLAS_DO_TREINO.refazer)], texto: 'Treino: refazer a última tacada' },
+  { teclas: [rotuloDaTecla(TECLAS_DO_TREINO.novoTriangulo)], texto: 'Treino: novo triângulo' },
+  { teclas: [rotuloDaTecla(TECLAS_DO_TREINO.cenarios)], texto: 'Treino: cenários prontos' },
+];
+
 export interface HudAjuda {
+  /** Mostra (ou esconde) as linhas do treino. */
+  definirTreino(ativo: boolean): void;
   /** Troca o texto da linha do botão esquerdo (a tacada) quando o controle de força muda. */
   definirTacada(controle: 'linha' | 'empurrar'): void;
   dispose(): void;
@@ -45,6 +59,7 @@ export function criarAjuda(
   modelo: ModeloDaAjuda,
   linhas: readonly LinhaDeAjuda[],
   aoCreditos?: () => void,
+  linhasDoTreino: readonly LinhaDeAjuda[] = [],
 ): HudAjuda {
   const chip = document.createElement('button');
   chip.type = 'button';
@@ -77,6 +92,23 @@ export function criarAjuda(
     }
     lista.append(teclas, texto);
   }
+  // As linhas do treino entram no fim da lista e ficam escondidas fora do treino.
+  const doTreino: HTMLElement[] = [];
+  for (const linha of linhasDoTreino) {
+    const teclas = document.createElement('dt');
+    teclas.hidden = true;
+    for (const tecla of linha.teclas) {
+      const kbd = document.createElement('kbd');
+      kbd.className = 'hud-tecla';
+      kbd.textContent = tecla;
+      teclas.append(kbd);
+    }
+    const texto = document.createElement('dd');
+    texto.hidden = true;
+    texto.textContent = linha.texto;
+    doTreino.push(teclas, texto);
+    lista.append(teclas, texto);
+  }
   cartao.append(titulo, lista);
   let botaoCreditos: HTMLButtonElement | null = null;
   const aoClicarCreditos = (): void => {
@@ -107,6 +139,9 @@ export function criarAjuda(
   mostrar(modelo.aberta);
 
   return {
+    definirTreino(ativo) {
+      for (const el of doTreino) el.hidden = !ativo;
+    },
     definirTacada(controle) {
       if (tacadaEl) tacadaEl.textContent = TEXTO_DA_TACADA[controle];
     },

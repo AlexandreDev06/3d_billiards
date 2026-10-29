@@ -1,0 +1,5 @@
+# L41: a cópia do build do web que o Worker serve (dist/cf-assets, feita por preparar-assets-cf.mjs; o `dist` já é ignorado pelo ESLint), o estado local do `wrangler dev` e os segredos locais
+dist/
+.wrangler/
+.dev.vars*
+!.dev.vars.example

@@ -9,6 +9,7 @@ import { raioNoPonto } from '../contatos';
 import { pelarMalha } from '../malha';
 import { fichaDoGltf, malhaDoNivel, malhasDoNivel, NOMES_DAS_MALHAS_PADRAO } from './ficha-do-gltf';
 import { carregarPersonagemDeBytes, type BaseDoPersonagem } from './carregar';
+import { TEMPO_DO_PERFILADOR_MS, provarSemAlocar } from '../alocacao-para-testes';
 
 const PASTA = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../arte/personagens/exportados');
 const glb = readFileSync(resolve(PASTA, 'mao.glb'));
@@ -21,7 +22,6 @@ beforeAll(async () => {
   base = await carregarPersonagemDeBytes(bytes.slice(0), contatos, { cor: 0xd03030, meta });
 });
 
-const memoria = (): number => (globalThis as unknown as { process: { memoryUsage(): { heapUsed: number } } }).process.memoryUsage().heapUsed;
 
 describe('mão do artista', () => {
   it('traz as poses e o gesto combinados, com as duas malhas', () => {
@@ -287,7 +287,7 @@ describe('mão do artista', () => {
     expect(() => p.girarOsso('nada', 1, 0, 0, 1)).toThrow(/nada/);
   });
 
-  it('nada aloca por quadro: pose, mistura, gesto e dobra', () => {
+  it('nada aloca por quadro: pose, mistura, gesto e dobra (perfilador de alocação)', async () => {
     const p = base.instanciar(false);
     const quadro = { px: 0.1, py: 0.2, pz: 0.3, xx: 1, xy: 0, xz: 0, yx: 0, yy: 1, yz: 0, zx: 0, zy: 0, zz: 1 };
     const passo = (i: number): void => {
@@ -300,11 +300,8 @@ describe('mão do artista', () => {
       p.colocar(quadro, 0.8);
       p.atualizar(0.016);
     };
-    for (let i = 0; i < 500; i++) passo(i);
-    const antes = memoria();
-    for (let i = 0; i < 20_000; i++) passo(i);
-    expect(memoria() - antes).toBeLessThan(25_000_000);
-  });
+    await provarSemAlocar(passo);
+  }, TEMPO_DO_PERFILADOR_MS);
 });
 
 describe('contatos do artista contra a pele', () => {

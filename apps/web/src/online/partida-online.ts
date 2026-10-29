@@ -3,6 +3,8 @@ import type {
   ApostaSala,
   CodigoErro,
   EmojiSala,
+  FisicaParcial,
+  FisicaSala,
   ForcaSala,
   GizSala,
   LinhaSala,
@@ -17,12 +19,14 @@ import type {
   MsgEmojiRetransmitido,
   MsgErro,
   MsgEstadoSala,
+  MsgFisicaAlterada,
   MsgMiraRetransmitida,
   MsgRetrato,
   MsgTacadaRetransmitida,
   MsgTempoEsgotado,
   RelogioSala,
 } from '@sinuca/protocolo';
+import { FISICA_DA_SALA_PADRAO } from '@sinuca/protocolo';
 import type { Consequencias, EstadoPartida, Modalidade } from '@sinuca/regras';
 import { Jogo, type DependenciasJogo } from '../jogo/jogo';
 import { limitarAoTempo, restanteDoPrazo } from '../relogio/modelo';
@@ -60,6 +64,11 @@ export interface OuvintesPartida {
   aoTempoEsgotado?(aviso: MsgTempoEsgotado): void;
   /** A partida apostada acabou e a sala pagou (ou anulou) a aposta; vem antes do `estado-sala` que já leva os saldos novos. */
   aoApostaPaga?(aposta: MsgApostaPaga): void;
+  /**
+   * O anfitrião mudou a física no meio da partida (L38): vale a que o aviso traz (e o `estado-sala` que vem logo depois), da próxima
+   * tacada em diante. `fisicaDaSala` já é a nova quando este ouvinte roda.
+   */
+  aoFisicaAlterada?(aviso: MsgFisicaAlterada): void;
   /** Uma missão do dia andou ou fechou nesta tacada (L32); só quem tem carteira recebe. Vem depois do `aposta-paga` e antes do `estado-sala`, que já leva o saldo com o prêmio. */
   aoMissoes?(missoes: MsgMissoes): void;
   aoErro?(erro: MsgErro): void;
@@ -110,8 +119,18 @@ export class PartidaOnline {
   private readonly baldeEmoji = new BaldeDeEmojis();
   /** A aposta que a sala pagou ao fim da partida de agora; a partida seguinte (`inicio`, `nova-partida`) a esquece. */
   private apostaPagaAtual: MsgApostaPaga | null = null;
+  /** A física que a sala manda (o `estado-sala` e o `fisica-alterada` a trazem completa); `null` até a primeira. */
+  private fisicaAtual: FisicaSala | null = null;
 
   constructor(private readonly deps: DependenciasPartidaOnline) {}
+
+  /**
+   * A física da sala, os 8 valores com que este cliente simula a tacada e a previsão (sem `seq`: vale a de agora). `null` até a sala
+   * dizer; um `estado-sala` sem ela (só montagem de teste) é a padrão.
+   */
+  get fisicaDaSala(): FisicaSala | null {
+    return this.fisicaAtual;
+  }
 
   /** `null` até o primeiro `retrato` (partida ainda não começou). */
   get jogo(): Jogo | null {
@@ -222,6 +241,7 @@ export class PartidaOnline {
         return;
       case 'estado-sala':
         this.estado = mensagem;
+        this.fisicaAtual = mensagem.fisica ?? FISICA_DA_SALA_PADRAO;
         this.estadoRecebidoEm = this.deps.agora();
         this.reconhecerMeuLugar(mensagem);
         this.deps.ouvintes.aoEstadoSala?.(mensagem);
@@ -247,6 +267,10 @@ export class PartidaOnline {
       case 'aposta-paga':
         this.apostaPagaAtual = mensagem;
         this.deps.ouvintes.aoApostaPaga?.(mensagem);
+        return;
+      case 'fisica-alterada':
+        this.fisicaAtual = mensagem.fisica;
+        this.deps.ouvintes.aoFisicaAlterada?.(mensagem);
         return;
       case 'missoes':
         this.deps.ouvintes.aoMissoes?.(mensagem);
@@ -320,6 +344,8 @@ export class PartidaOnline {
     readonly giz?: Partial<GizSala>;
     readonly forca?: ForcaSala;
     readonly aposta?: ApostaSala;
+    /** Só do anfitrião: parcial; `null` restaura a padrão. Na partida é o único campo que a sala aceita (e só sem aposta valendo). */
+    readonly fisica?: FisicaParcial | null;
   }): void {
     this.deps.conexao.enviar({ tipo: 'configurar-sala', ...mudanca });
   }

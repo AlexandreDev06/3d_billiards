@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import type { EventoTacada } from '@sinuca/fisica';
 import type { ArmazenamentoMinimo } from '../armazenamento';
 import { CONFIG_WEB } from '../config';
-import type { PedidoDeSom } from './mapeamento';
+import { GERADORES_DO_MENU } from './geradores';
+import { pedidoDoMenu, SONS_DO_MENU, type PedidoDeSom } from './mapeamento';
 import { MotorDeAudio, type Gerador, type Geradores, type Sessao } from './motor-audio';
 
 const CFG = { ...CONFIG_WEB.audio, maxVozes: 3 };
@@ -92,7 +93,7 @@ function montar(opcoes: { armazenamento?: ArmazenamentoMinimo | null; cfg?: type
 }
 
 const bolaBola = (velocidade: number, t = 0): EventoTacada => ({ tipo: 'bola-bola', t, a: 0, b: 2, velocidade });
-const tabela = (velocidade: number): EventoTacada => ({ tipo: 'bola-tabela', t: 0, bola: 2, tabela: 0, velocidade });
+const tabela = (velocidade: number): EventoTacada => ({ tipo: 'bola-tabela', t: 0, bola: 2, tabela: 0, parte: 'nariz', velocidade });
 
 describe('MotorDeAudio — gesto do usuário', () => {
   it('antes de destravar não abre o contexto nem toca, mas conta o evento', () => {
@@ -306,6 +307,15 @@ describe('MotorDeAudio — lembrar a escolha', () => {
     expect(fora.mudo).toBe(false);
   });
 
+  it('um volume "ambiente" salvo por versão antiga é ignorado sem erro e some na próxima gravação', () => {
+    const arm = memoria({ 'sinuca.audio': '{"volume":0.4,"mudo":true,"ambiente":0.35}' });
+    const { motor } = montar({ armazenamento: arm });
+    expect(motor.volume).toBe(0.4);
+    expect(motor.mudo).toBe(true);
+    motor.definirVolume(0.5);
+    expect(JSON.parse(arm.dados.get('sinuca.audio')!)).toEqual({ volume: 0.5, mudo: true });
+  });
+
   it('armazenamento bloqueado não impede de mexer no volume', () => {
     const bloqueado: ArmazenamentoMinimo = {
       getItem() {
@@ -374,6 +384,70 @@ describe('MotorDeAudio — avisos de interface', () => {
     expect(e.avisos).toBe(12);
     expect(e.tocados + e.recusadas + e.inaudiveis + e.silenciados + e.semContexto + e.semGerador).toBe(e.pedidos);
     expect(e.tocados).toBe(CFG.maxVozes);
+  });
+});
+
+describe('MotorDeAudio — sons do menu (L40)', () => {
+  function comMenu() {
+    const toques: Toque[] = [];
+    const sessao = sessaoFalsa();
+    const gerador = (som: string): Gerador => ({
+      preparar: (pedido: PedidoDeSom) => ({ id: `menu:${som}`, duracaoS: 0.1, tocar: (_s: unknown, quandoS: number) => (toques.push({ som, pedido, quandoS, parada: false }), () => undefined) }),
+    });
+    const motor = new MotorDeAudio({
+      cfg: CFG,
+      geradores: geradoresDeEspia([]),
+      geradoresDoMenu: { 'menu-passa': gerador('menu-passa'), 'menu-clique': gerador('menu-clique') },
+      abrir: () => sessao,
+      armazenamento: null,
+    });
+    return { motor, toques, sessao };
+  }
+
+  it('toca o gerador do menu pelo nome, no volume cheio, e conta como aviso de interface', () => {
+    const { motor, toques, sessao } = comMenu();
+    motor.destravar();
+    sessao.agora = 30;
+    motor.tocarDoMenu('menu-passa');
+    motor.tocarDoMenu('menu-clique');
+    expect(toques.map((t) => t.som)).toEqual(['menu-passa', 'menu-clique']);
+    expect(toques[0]).toMatchObject({ quandoS: 30, pedido: { volume: 1, tom: 1 } });
+    expect(motor.estatisticas()).toMatchObject({ avisos: 2, pedidos: 2, tocados: 2, eventos: 0 });
+  });
+
+  it('respeita o mudo e o contexto que ainda não abriu', () => {
+    const { motor, toques } = comMenu();
+    motor.tocarDoMenu('menu-passa');
+    expect(motor.estatisticas()).toMatchObject({ semContexto: 1, tocados: 0 });
+    motor.destravar();
+    motor.definirMudo(true);
+    motor.tocarDoMenu('menu-clique');
+    expect(toques).toHaveLength(0);
+    expect(motor.estatisticas()).toMatchObject({ silenciados: 1 });
+  });
+
+  it('sem geradores passados, usa os sintetizados: cada som do menu existe, dura menos de 0,15 s e monta nós no contexto', () => {
+    const criados: string[] = [];
+    const param = { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {}, cancelScheduledValues() {} };
+    const no = (tipo: string) => {
+      criados.push(tipo);
+      const n: Record<string, unknown> = { gain: param, frequency: param, Q: param, connect: (alvo: unknown) => alvo, disconnect() {}, start() {}, stop() {} };
+      return n;
+    };
+    const ctx = { currentTime: 0, createGain: () => no('ganho'), createBufferSource: () => no('ruido'), createBiquadFilter: () => no('filtro'), createOscillator: () => no('tom') };
+    const sessao = sessaoFalsa();
+    (sessao as { saida: unknown }).saida = { ctx, destino: {}, ruido: {} };
+    const motor = new MotorDeAudio({ cfg: CFG, geradores: geradoresDeEspia([]), abrir: () => sessao, armazenamento: null });
+    motor.destravar();
+    for (const som of SONS_DO_MENU) {
+      const preparado = GERADORES_DO_MENU[som].preparar(pedidoDoMenu(som));
+      expect(preparado?.id).toBe(`sintetizado:${som}`);
+      expect(preparado?.duracaoS).toBeLessThan(0.15);
+      motor.tocarDoMenu(som);
+    }
+    expect(motor.estatisticas()).toMatchObject({ tocados: 2, semGerador: 0, porId: { 'sintetizado:menu-passa': 1, 'sintetizado:menu-clique': 1 } });
+    expect(criados).toContain('tom');
+    expect(criados).toContain('ruido');
   });
 });
 

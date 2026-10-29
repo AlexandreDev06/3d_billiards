@@ -1,0 +1,4 @@
+# Copie para .dev.vars (que o git ignora) para o `pnpm --filter @sinuca/sala dev:cf`. Nunca ponha o segredo de verdade aqui.
+SEGREDO_ADMIN=troque-por-um-segredo-longo-so-para-teste-local
+# PRESENTE_DE_TESTE=10000
+# PRESENTE_DE_TESTE_ROTULO=skins-cs

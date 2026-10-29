@@ -29,12 +29,13 @@ Cada pasta tem o seu `CLAUDE.md` com o mapa dos arquivos, as fronteiras e o que 
 | `packages/regras` | regras puras, modalidades e presets JSON | Dev | `packages/regras/CLAUDE.md` |
 | `packages/protocolo` | contrato cliente↔sala, codec da gravação, carteira e aposta | Backend | `packages/protocolo/CLAUDE.md` |
 | `packages/personagens` | camada genérica dos personagens (.glb, látex, poses e gestos, contatos); sem nada de sinuca | Frontend | `packages/personagens/CLAUDE.md` |
-| `apps/sala` | servidor Node + `ws` da sala online; ngrok e variáveis | Backend | `apps/sala/CLAUDE.md` |
+| `apps/sala` | sala online: um núcleo e duas entradas (Node + `ws` com ngrok; Worker com Durable Object na Cloudflare); variáveis e deploy | Backend | `apps/sala/CLAUDE.md` |
+| `apps/portal` | portal `becogames.app`: site estático (Worker só de assets) com a página inicial, privacidade, termos, ads.txt e CSP | Frontend | `apps/portal/CLAUDE.md` |
 | `apps/web` | cliente three.js, HUD, áudio, lobby, cliente online; atalhos do jogo | Frontend | `apps/web/CLAUDE.md` |
 
 Quem criar, mover ou renomear estrutura atualiza o `CLAUDE.md` da pasta mexida e `docs/decisoes.md` na mesma tarefa.
 
-Alvo (ainda não existe): `e2e/` e `testes/cenarios/` (QA); a sala em Cloudflare Durable Objects (PartyServer), se o auto-hospedado não bastar.
+Alvo (ainda não existe): `e2e/` e `testes/cenarios/` (QA).
 
 ## Comandos
 
@@ -51,6 +52,10 @@ pnpm online       build do apps/web + sala: cliente e WebSocket /sala em http://
 pnpm --filter @sinuca/sala dev   só a sala (tsx watch), para o Vite fazer proxy de /sala
 ```
 
+## Repositório
+
+Git local desde 2026-10-26 (commit-base `b8ce47c`, sem remote). Use-o para se organizar: `git status` e `git diff --stat` mostram o que mudou desde a linha de base do lote (o índice, `git add -A` ao aprovar); `git log` e `git show <commit>:<arquivo>` dão o histórico e o estado anterior. A árvore é compartilhada e outros subagentes têm mudanças não commitadas: nunca `git reset --hard`, `checkout .`, `clean` nem `stash`; para desfazer algo seu, reverta só os seus arquivos. Commit e push seguem só a pedido do usuário (regra abaixo).
+
 ## Regras invioláveis (valem em TODO prompt)
 
 - **Física:** nunca motor genérico (Rapier, cannon-es, Ammo, Havok, Jolt). Nunca copiar código do tailuge/billiards (GPL-3.0); só comparar comportamento.
@@ -65,19 +70,19 @@ pnpm --filter @sinuca/sala dev   só a sala (tsx watch), para o Vite fazer proxy
 - **Assets:** só CC0, Pixabay ou CC-BY com crédito em `docs/creditos.md`.
 - **Código:** identificadores do domínio em português sem acento (`bola`, `tacada`, `cacapa`, `castigo`); TSDoc só na API pública dos pacotes; sem comentário que repete o código.
 
-## Time multiagente (Maestri)
+## Time multiagente (subagentes)
 
-O jogo é desenvolvido por um time no Maestri: Principal (este chat, só planeja/despacha/revisa), Brainstormer, Dev, Frontend, Backend, QA e Revisor. Carregue `sinuca-maestri-time` para orquestrar, ou ao rodar sob um role `Sinuca *`. Recrutas rodam em `.maestri/roles/<id>/`: se as skills `sinuca-*` não aparecerem na sua lista, leia o `SKILL.md` direto em `.claude/skills/<nome>/` da raiz do projeto.
+O jogo é desenvolvido por um time de papéis: Principal (este chat, só planeja/despacha/revisa), Brainstormer, Dev, Frontend, Backend, QA, Artista e Revisor, cada um um subagente do Claude Code com prompt de lote em `.outros/prompts/` e status em `.outros/status.md`. Carregue `sinuca-maestri-time` para orquestrar, ou ao ser despachado sob um papel. O fluxo com terminais do Maestri está parado (licença travada desde 2026-10-12) e descrito em `maestri.md` da mesma skill.
 
-**Modelo por tarefa (economia de tokens, pedido do usuário em 2026-10-14).** Opus só para o Principal (este chat) e o Revisor (Juiz). Todo o resto, inclusive o Dev da física e das regras e o Brainstormer, sobe com Sonnet. Busca e coleta de dados (Explore) vão com Haiku. Subagente do Claude Code (ferramenta Agent) **sempre** com `model` explícito: omitido, ele herda o Opus do Principal, e foi esse o desperdício. Revisão do Juiz só em lote de risco (física, contrato, segurança); ajuste pequeno não passa por ela. Esforço: todo recruta sobe com `--effort high` (`time.sh`); lote difícil (física, malha de personagem) passa a `xhigh` com `time.sh esforco <papel> xhigh` e volta com `time.sh religar <papel>`. Nunca `/effort` no terminal: ele grava o nível como padrão global do usuário.
+**Modelo por tarefa (economia de tokens, pedido do usuário em 2026-10-14).** Opus só para o Principal (este chat) e o Revisor (Juiz). Todo o resto, inclusive o Dev da física e das regras e o Brainstormer, sobe com Sonnet. Busca e coleta de dados (Explore) vão com Haiku. Subagente do Claude Code (ferramenta Agent) **sempre** com `model` e `effort` explícitos: `model` omitido herda o Opus do Principal, e foi esse o desperdício; `effort` omitido cai no `xhigh` do `modelSettings` global. **Esforço por tarefa (pedido do usuário em 2026-10-28):** `low` para busca pontual e ajuste mecânico, `medium` para lote bem especificado (padrão), `high` para física, contrato, segurança e bug sem causa, `xhigh` só no Artista e na varredura de fase do Juiz, `max` só a pedido; tabela em "Esforço por tarefa" de `sinuca-maestri-time`. Revisão do Juiz só em lote de risco (física, contrato, segurança); ajuste pequeno não passa por ela. Nunca `/effort` no terminal: ele grava o nível como padrão global do usuário. (Esforço por terminal do Maestri: `time.sh despachar --esforco` e `time.sh esforco`, em `maestri.md`.)
 
 ## Quando carregar cada skill
 
 | Situação | Skill |
 | --- | --- |
-| Orquestrar o time: montar/retomar terminais, despachar lote, revisar, economizar tokens; ou descobrir o protocolo do seu papel | `sinuca-maestri-time` |
+| Orquestrar o time: despachar lote, revisar, economizar tokens, reiniciar a sala; ou descobrir o protocolo do seu papel | `sinuca-maestri-time` |
 | Mexer em `packages/fisica`, ajustar sensação/parâmetros, escrever ou revisar teste de física | `sinuca-fisica` |
 | Mexer em `packages/regras`, presets, tela "Regras da casa", ou testar/revisar uma regra | `sinuca-regras` |
 | Antes de dizer "pronto" ou reportar um lote | `sinuca-fechando-tarefa` |
 
-Globais úteis: `superpowers:test-driven-development` (pacotes), `superpowers:systematic-debugging` (bug), `e2e-testing` e `maestri-portal` (QA), `performance-optimizer` (FPS), `cost-tracking` (fechar fase).
+Globais úteis: `superpowers:test-driven-development` (pacotes), `superpowers:systematic-debugging` (bug), `e2e-testing` e `chrome-devtools-mcp:chrome-devtools` (QA), `performance-optimizer` (FPS), `cost-tracking` (fechar fase).

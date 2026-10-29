@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DESCONTO_DA_VITRINE,
   MISSOES,
   PREMIO_POR_NIVEL,
+  SKINS_DE_TACO,
+  SKINS_NA_VITRINE,
+  precoComDesconto,
+  precoDaSkinNoDia,
+  vitrineDoDia,
   premioDaMissao,
   diaDaMissao,
   ehDiaDaMissao,
@@ -45,6 +51,10 @@ describe('catálogo de missões (L31)', () => {
     for (const id of ['efeito-ingles', 'siga', 'puxada'] as const) expect(m(id).limiar, id).toBe(0.5);
     expect(m('de-longe').limiar).toBe(1.5);
     expect(m('volta-ao-mundo').limiar).toBe(3);
+    // L34: a batida de verdade na tabela (m/s, componente normal) e o caminho da tabelada (m), medidos na física real
+    expect(m('tabelada')).toMatchObject({ batida: 1.0, caminho: 0.5 });
+    expect(m('volta-ao-mundo')).toMatchObject({ limiar: 3, batida: 1.0 });
+    expect(MISSOES.filter((x) => 'batida' in x || 'caminho' in x).map((x) => x.id)).toEqual(['tabelada', 'volta-ao-mundo']);
     expect(m('embalado').acumulo).toBe('maximo');
     expect(m('mao-quente').acumulo).toBe('soma');
   });
@@ -134,6 +144,75 @@ describe('missoesDoDia: o cardápio do dia', () => {
       expect(n, id).toBeGreaterThan(0);
       expect(n, id).toBeLessThan(lista.length * 0.7);
     }
+  });
+});
+
+describe('vitrineDoDia: 3 skins com desconto, iguais para todo mundo (L34)', () => {
+  it('são 3 skins pagas e distintas, na ordem da loja, nunca a clássica nem uma grátis, com 20% de desconto arredondado para inteiro', () => {
+    for (const dia of dias('2026-10-26', 200)) {
+      const v = vitrineDoDia(dia);
+      expect(v.dia).toBe(dia);
+      expect(v.desconto).toBe(20);
+      expect(v.itens).toHaveLength(SKINS_NA_VITRINE);
+      const ids = v.itens.map((i) => i.skin);
+      expect(new Set(ids).size, dia).toBe(3);
+      expect(ids, dia).not.toContain('classico');
+      expect(ids.map((id) => SKINS_DE_TACO.findIndex((s) => s.id === id)), dia).toEqual(ids.map((id) => SKINS_DE_TACO.findIndex((s) => s.id === id)).sort((a, b) => a - b));
+      for (const i of v.itens) {
+        const cheio = SKINS_DE_TACO.find((s) => s.id === i.skin)!.preco;
+        expect(cheio, i.skin).toBeGreaterThan(0);
+        expect(i.precoCheio).toBe(cheio);
+        expect(i.preco, `${dia} ${i.skin}`).toBe(cheio - Math.round(cheio * 0.2));
+        expect(Number.isInteger(i.preco)).toBe(true);
+        expect(i.preco).toBeLessThan(cheio);
+      }
+    }
+  });
+
+  it('o desconto arredonda para inteiro: 20% de 70 = 14, e um preço que não é múltiplo de 5 também fica inteiro', () => {
+    expect(DESCONTO_DA_VITRINE).toBe(20);
+    expect(precoComDesconto(500)).toBe(400);
+    expect(precoComDesconto(70)).toBe(56);
+    expect(precoComDesconto(3000)).toBe(2400);
+    expect(precoComDesconto(123)).toBe(98); // 123 − round(24,6)
+    expect(precoComDesconto(7)).toBe(6); // 7 − round(1,4)
+    expect(precoComDesconto(2)).toBe(2); // 2 − round(0,4)
+  });
+
+  it('é determinística: o mesmo dia dá a mesma vitrine, a qualquer hora, e o fim é o fim do dia da missão', () => {
+    const a = vitrineDoDia('2026-10-26');
+    expect(vitrineDoDia('2026-10-26')).toEqual(a);
+    expect(vitrineDoDia(diaDaMissao(meiaNoite('2026-10-26') + 5 * HORA))).toEqual(a);
+    expect(vitrineDoDia(diaDaMissao(meiaNoite('2026-10-26') + 23 * HORA))).toEqual(a);
+    expect(a.fimMs).toBe(meiaNoite('2026-10-27'));
+  });
+
+  it('muda de um dia para o outro (são 1140 trincas possíveis: em 2 anos sorteadas ao acaso dão ~540 diferentes) e com o tempo toda skin paga aparece', () => {
+    const lista = dias('2026-01-01', 730);
+    const vitrines = lista.map((d) => vitrineDoDia(d).itens.map((i) => i.skin).join('|'));
+    expect(new Set(vitrines).size).toBeGreaterThan(450);
+    expect(vitrines.filter((v, i) => i > 0 && v === vitrines[i - 1]).length).toBeLessThanOrEqual(4);
+    const vezes = new Map<string, number>(SKINS_DE_TACO.filter((s) => s.preco > 0).map((s) => [s.id, 0]));
+    for (const v of vitrines) for (const id of v.split('|')) vezes.set(id, vezes.get(id)! + 1);
+    // 730 dias x 3 skins em 20 pagas = ~110 por skin: nenhuma some nem domina
+    for (const [id, n] of vezes) {
+      expect(n, id).toBeGreaterThan(60);
+      expect(n, id).toBeLessThan(170);
+    }
+    expect(vezes.has('classico')).toBe(false);
+  });
+
+  it('precoDaSkinNoDia: o da vitrine se a skin está nela, senão o cheio (e o clássico segue de graça)', () => {
+    const v = vitrineDoDia('2026-10-26');
+    for (const i of v.itens) expect(precoDaSkinNoDia(i.skin, '2026-10-26')).toBe(i.preco);
+    const fora = SKINS_DE_TACO.find((s) => s.preco > 0 && !v.itens.some((i) => i.skin === s.id))!;
+    expect(precoDaSkinNoDia(fora.id, '2026-10-26')).toBe(fora.preco);
+    expect(precoDaSkinNoDia('classico', '2026-10-26')).toBe(0);
+  });
+
+  it('lança se o dia não é uma data AAAA-MM-DD', () => {
+    expect(() => vitrineDoDia('ontem')).toThrow(RangeError);
+    expect(() => vitrineDoDia('2027-02-29')).toThrow(RangeError);
   });
 });
 

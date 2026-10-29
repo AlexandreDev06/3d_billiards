@@ -72,8 +72,9 @@ describe('BaloesDaCena (o balão do artista, com o procedural de reserva)', () =
       if (o.name.startsWith('balao_baixa')) baixa++;
       else if (o.name.startsWith('balao_alta')) alta++;
     });
-    // cinco malhas por balão (uma por material), em cada um dos quatro
-    expect(baixa).toBe(20);
+    // as malhas da versão baixa do arquivo (uma por material: cinco no v1, mais no v2) em cada um dos quatro balões
+    expect(baixa).toBeGreaterThanOrEqual(20);
+    expect(baixa % 4).toBe(0);
     expect(alta).toBe(0);
     expect(() => b.definirLados(8)).not.toThrow();
     b.descartar();

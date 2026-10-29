@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest';
 import { CONFIG_WEB, type PerfilDeQualidade } from '../config';
 import type { NivelDeDetalhe } from '@sinuca/personagens/three';
 import type { Ambiente } from './ambiente';
-import { segmentosDoTaco, detalheDasMaos } from '../qualidade/perfis';
+import { segmentosDoTaco, detalheDasMaos, detalheDoTacoNoNivel } from '../qualidade/perfis';
+import type { DetalheDoTaco } from './detalhe-do-taco';
 import { AplicadorDeQualidade } from './aplicador-qualidade';
 import type { Bolas } from './bola';
 import type { VariantesDeMateriais } from './variantes-materiais';
@@ -24,6 +25,7 @@ function montar(janela = { largura: 1280, altura: 720, pixelRatio: 1 }, anisotro
   const bolas = { definirSegmentos: (s: readonly [number, number]) => void segmentos.push(s) } as unknown as Bolas;
   const variantes = { aplicar: (e: { materiais: string; ambiente: boolean }) => void chamadas.push(`materiais:${e.materiais}/${e.ambiente}`) } as unknown as VariantesDeMateriais;
   const ladosDoTaco: number[] = [];
+  const detalhesDoTaco: DetalheDoTaco[] = [];
   const detalhesDasMaosPedidos: NivelDeDetalhe[] = [];
   const textura = new Texture();
   textura.anisotropy = 16;
@@ -37,10 +39,10 @@ function montar(janela = { largura: 1280, altura: 720, pixelRatio: 1 }, anisotro
     variantes,
     raizes: [raiz],
     janela: () => estado.janela,
-    ...(comTaco ? { taco: { definirSegmentos: (n: number) => void ladosDoTaco.push(n) } } : {}),
+    ...(comTaco ? { taco: { definirSegmentos: (n: number) => void ladosDoTaco.push(n), definirDetalhe: (d: DetalheDoTaco) => void detalhesDoTaco.push(d) } } : {}),
     ...(comPersonagens ? { personagens: { definirLados() {}, definirDetalheDasMaos: (n: NivelDeDetalhe) => void detalhesDasMaosPedidos.push(n) } } : {}),
   });
-  return { aplicador, chamadas, pixelRatios, tamanhos, segmentos, textura, estado, ladosDoTaco, detalhesDasMaosPedidos };
+  return { aplicador, chamadas, pixelRatios, tamanhos, segmentos, textura, estado, ladosDoTaco, detalhesDoTaco, detalhesDasMaosPedidos };
 }
 
 describe('AplicadorDeQualidade', () => {
@@ -110,6 +112,26 @@ describe('AplicadorDeQualidade', () => {
     expect(ladosDoTaco).toHaveLength(1);
     aplicador.aplicar(media);
     expect(ladosDoTaco).toEqual([segmentosDoTaco(baixa), segmentosDoTaco(media)]);
+  });
+
+  it('L35: o detalhe do taco (trama, película, animação) vai na primeira aplicação (o jogo pode começar na baixa) e depois só quando o nível o muda', () => {
+    const { aplicador, detalhesDoTaco } = montar(undefined, 8, true);
+    aplicador.aplicar(alta);
+    expect(detalhesDoTaco).toEqual([detalheDoTacoNoNivel(alta)]);
+    aplicador.aplicar(baixa);
+    expect(detalhesDoTaco).toEqual([detalheDoTacoNoNivel(alta), detalheDoTacoNoNivel(baixa)]);
+    aplicador.aplicar(baixa);
+    expect(detalhesDoTaco).toHaveLength(2);
+    aplicador.aplicar(media); // a média muda a trama e a película em relação à baixa
+    expect(detalhesDoTaco[2]).toEqual(detalheDoTacoNoNivel(media));
+    aplicador.aplicar(alta); // a alta liga a película de novo
+    expect(detalhesDoTaco).toHaveLength(4);
+  });
+
+  it('L35: o taco que começa na baixa já recebe o detalhe simples na primeira aplicação', () => {
+    const { aplicador, detalhesDoTaco } = montar(undefined, 8, true);
+    aplicador.aplicar(baixa);
+    expect(detalhesDoTaco).toEqual([detalheDoTacoNoNivel(baixa)]);
   });
 
   it('o detalhe das mãos só é refeito quando mudam, e não na primeira aplicação', () => {

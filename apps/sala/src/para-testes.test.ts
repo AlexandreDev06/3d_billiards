@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG_FISICA_PADRAO as C, bolaParada, lugares, medidasDaBola, type EstadoMesa } from '@sinuca/fisica';
-import { ClienteDeTeste, criarAmbiente, mesaDepoisDasConsequencias, sortearDeTeste } from './para-testes';
+import { diaDaMissao, vitrineDoDia } from '@sinuca/protocolo';
+import { ClienteDeTeste, INSTANTE_SEM_VITRINE, SKINS_QUE_OS_TESTES_COMPRAM, criarAmbiente, mesaDepoisDasConsequencias, relogioSemVitrine, sortearDeTeste } from './para-testes';
 import { AmbienteDeRede } from './para-testes-ws';
 
 describe('apoio dos testes — o mapa dos lugares que o cliente web também aplica', () => {
@@ -85,5 +86,20 @@ describe('apoio dos testes — a quebra não depende de sorte', () => {
     } finally {
       await rede.encerrar();
     }
+  });
+});
+
+describe('apoio dos testes — o dia do servidor de teste não tem as skins dos testes na vitrine', () => {
+  it('nenhuma das skins que os testes compram está na vitrine de INSTANTE_SEM_VITRINE (o preço cheio vale)', () => {
+    const vitrine = vitrineDoDia(diaDaMissao(INSTANTE_SEM_VITRINE)).itens.map((i) => i.skin);
+    for (const skin of SKINS_QUE_OS_TESTES_COMPRAM) expect(vitrine, skin).not.toContain(skin);
+  });
+
+  it('o relógio corre em tempo real a partir dele', async () => {
+    const r = relogioSemVitrine();
+    const a = r();
+    expect(a - INSTANTE_SEM_VITRINE).toBeLessThan(1000);
+    await new Promise((f) => setTimeout(f, 20));
+    expect(r() - a).toBeGreaterThanOrEqual(15);
   });
 });

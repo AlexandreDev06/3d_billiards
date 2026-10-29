@@ -11,7 +11,9 @@ import {
 } from '@sinuca/fisica';
 import { PRESET_BOTECO, PRESET_MATA_MATA, aplicarTacada, novaPartida, type ConfigRegras, type EstadoPartida, type Jogador } from '@sinuca/regras';
 import { FORCA_DA_SALA_PADRAO, GIZ_DA_SALA_PADRAO, equipeDoLugar, type MensagemDaSala, type MensagemDoCliente, type LugarSala, type ModoSala } from './tipos';
+import { FISICA_DA_SALA_PADRAO } from './fisica-da-sala';
 import { fimDoDia, missoesDoDia, type MissoesDoDia } from './missoes';
+import { VERSAO_DA_GRAVACAO } from './gravacao-codec';
 import { codificarUtf8 } from './utf8';
 import { PROTOCOLO_VERSAO } from './tipos';
 
@@ -188,6 +190,12 @@ export function exemplosDeMensagens(): { readonly cliente: MensagemDoCliente[]; 
     { tipo: 'entrar', versao: PROTOCOLO_VERSAO, codigo: 'K7M2P', nome: 'Ana', carteira: CARTEIRA_DE_TESTE },
     { tipo: 'entrar', versao: PROTOCOLO_VERSAO, codigo: 'K7M2P', nome: 'Ana', token: 'a1b2c3d4e5f60718293a4b5c6d7e8f90', carteira: CARTEIRA_DE_TESTE },
     { tipo: 'configurar-sala', aposta: 100 },
+    { tipo: 'configurar-sala', fisica: null },
+    { tipo: 'configurar-sala', fisica: {} },
+    { tipo: 'configurar-sala', fisica: { atritoRolamento: 0.03, velocidadeMaxTaco: 9.5 } },
+    // fora da faixa não é erro de forma: a sala corta
+    { tipo: 'configurar-sala', fisica: { atritoDeslizamento: 99, desaceleracaoGiro: -4 } },
+    { tipo: 'configurar-sala', fisica: { restituicaoBolaBola: 0.9 } },
   ];
   const estado = {
     tipo: 'estado-sala',
@@ -292,6 +300,11 @@ export function exemplosDeMensagens(): { readonly cliente: MensagemDoCliente[]; 
     { tipo: 'emoji-retransmitido', lugar: 2, nome: 'Ana', emoji: '🎱' },
     { ...estado, aposta: 20, lugares: estado.lugares.map((l, i) => (i === 0 ? { ...l, saldo: 120, skin: 'ouro' as const } : i === 1 ? { ...l, saldo: -45, skin: 'classico' as const } : l)) },
     { ...estado, aposta: 10, lugares: estado.lugares.map((l) => ({ ...l, saldo: null, skin: 'classico' as const })) },
+    { ...estado, fisica: { ...FISICA_DA_SALA_PADRAO, atritoRolamento: 0.03 }, fisicaMexida: true, fisicaTravada: false },
+    { ...estado, fisica: FISICA_DA_SALA_PADRAO, fisicaMexida: false, fisicaTravada: true },
+    { ...estado, lugares: estado.lugares.map((l, i) => (i === 0 ? { ...l, saldo: 140, skin: 'ouro' as const, estatisticas: { partidas: 12, vitorias: 7, bolas: 63 } } : i === 1 ? { ...l, estatisticas: { partidas: 0, vitorias: 0, bolas: 0 } } : i === 2 ? { ...l, estatisticas: null } : l)) },
+    { tipo: 'fisica-alterada', por: 'Zé', fisica: { ...FISICA_DA_SALA_PADRAO, atritoRolamento: 0.03, velocidadeMaxTaco: 12 }, mexida: true },
+    { tipo: 'fisica-alterada', por: 'Zé', fisica: FISICA_DA_SALA_PADRAO, mexida: false },
     { tipo: 'aposta-paga', valor: 20, variacoes: [{ lugar: 0, nome: 'Zé', delta: 20, saldo: 140 }, { lugar: 1, nome: 'Ana', delta: -20, saldo: -65 }] },
     { tipo: 'aposta-paga', valor: 100, variacoes: [], anulada: 'carteira-repetida' },
     { tipo: 'missoes', missoes: quadroDeMissoes('2026-10-26', [1, 0, 0]), cumpridas: [] },
@@ -320,7 +333,7 @@ function varint(v: number, saida: number[]): void {
  * sem eventos. Decodificar custa alocação e CPU proporcionais a quadros × bolas.
  */
 export function bytesDeGravacaoBomba(quadros: number, bolas = 16, duracao = (quadros - 1) / 60): Uint8Array {
-  const g: number[] = [0x47, 1];
+  const g: number[] = [0x47, VERSAO_DA_GRAVACAO];
   const f64 = (x: number): void => {
     const b = new Uint8Array(8);
     new DataView(b.buffer).setFloat64(0, x, true);

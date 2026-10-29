@@ -15,6 +15,7 @@ import {
   type Material,
 } from 'three';
 import type { ResultadoDoFim } from '../baloes/acao-do-balao';
+import { QUANTOS_INTERESSES, interessesVazios, type InteresseDoBalao } from '../baloes/atencao-do-balao';
 import { CARAS_DO_BALAO, type CaraDoBalao } from '../baloes/rosto';
 import { FAIXA_DO_ROSTO, perfilDoBalao, raioDoBalaoEm } from '../baloes/silhueta';
 import type { ConfigBaloes } from '../config';
@@ -45,17 +46,24 @@ export interface EstadoDoBalao {
   caida: number;
   /** Relógio da página (s), para o balanço (e, no balão do artista, para o passo de cada ação). */
   tempoS: number;
-  /** (L30, só o balão do artista) O outro está mirando: o corpo inclina enquanto durar. */
+  /** (L30, só o balão do artista) O outro está mirando: o corpo se concentra enquanto durar. */
   mirando: boolean;
+  /** (L46, só o balão do artista) A vez dele está demorando: o balão fica impaciente (só vale com `mirando`). */
+  impaciente: boolean;
   /** (L30, só o balão do artista) A partida acabou: quem ganhou estufa, quem perdeu murcha. */
   fim: ResultadoDoFim | null;
-  /** (L30, só o balão do artista) Um ponto do mundo (m) que os olhos miram; `null` olha para a frente. */
-  olhar: { x: number; y: number; z: number } | null;
+  /**
+   * (L46, só o balão do artista) No que os olhos prestam atenção: as vagas de `INTERESSE`, cada uma com o ponto do mundo (m) e a
+   * prioridade (zero a tira). O personagem escolhe com tempo natural; sem nenhuma, olha para a frente.
+   */
+  interesses: InteresseDoBalao[];
 }
 
 export function estadoVazioDoBalao(): EstadoDoBalao {
-  return { x: 0, y: 0, z: 0, yaw: 0, escala: 0, cor: 0xffffff, cara: 'neutro', largura: 1, altura: 1, caida: 0, tempoS: 0, mirando: false, fim: null, olhar: null };
+  return { x: 0, y: 0, z: 0, yaw: 0, escala: 0, cor: 0xffffff, cara: 'neutro', largura: 1, altura: 1, caida: 0, tempoS: 0, mirando: false, impaciente: false, fim: null, interesses: interessesVazios() };
 }
+
+export { QUANTOS_INTERESSES };
 
 /** O que a cena precisa de um conjunto de balões, sejam os do artista ou os procedurais. */
 export interface BaloesEmCena {

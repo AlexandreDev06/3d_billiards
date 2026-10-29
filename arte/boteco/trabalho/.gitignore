@@ -1,0 +1,3 @@
+# Passes e atlas intermediários do Cycles (grandes): nada daqui vai para o git; `00_tudo.sh` refaz.
+*
+!.gitignore

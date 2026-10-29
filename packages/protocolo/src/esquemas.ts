@@ -8,7 +8,8 @@ import type { ConfigRegras, Consequencias, EstadoPartida, Modalidade } from '@si
 import { ALFABETO_CODIGO, LIMITES_PROTOCOLO as L, TAMANHO_CODIGO } from './limites';
 import { LIMITES_GRAVACAO } from './gravacao-codec';
 import { MISSOES } from './missoes';
-import { apostaDaSala, codigoDaCarteira, esquemaMissoesDoDia, idDeMissao, skinDoCatalogo, valorEmMoedas } from './esquemas-carteira';
+import { apostaDaSala, codigoDaCarteira, contadorDeBolas, esquemaAparenciaDoBalao, esquemaMissoesDoDia, esquemaResumoDeEstatisticas, idDeMissao, sementeDoItem, skinDoCatalogo, valorEmMoedas } from './esquemas-carteira';
+import { CHAVES_DA_FISICA_DA_SALA, FAIXAS_DA_FISICA_DA_SALA, type FisicaParcial, type FisicaSala } from './fisica-da-sala';
 import {
   aposValidar,
   booleano,
@@ -54,6 +55,7 @@ import {
   type MsgEstadoSala,
   type MsgExpulsar,
   type MsgExpulso,
+  type MsgFisicaAlterada,
   type MsgIniciar,
   type MsgMira,
   type MsgMiraRetransmitida,
@@ -146,6 +148,19 @@ const esquemaGizParcial: Esquema<Partial<GizSala>> = aposValidar(
   objeto({}, { desgasteMin: desgasteDoGiz, desgasteMax: desgasteDoGiz, passada: passadaDoGiz, passadaS: duracaoDaPassada }),
   desgasteEmOrdem,
 );
+
+/**
+ * O pedido de física do anfitrião (L38): só as 8 chaves conhecidas, cada uma um número finito. O valor NÃO é conferido contra a
+ * faixa nem ao passo aqui: a sala corta à faixa e encaixa no passo (`sanearFisicaDaSala`), então o pedido fora dela não é erro, é
+ * cortado. Chave desconhecida (inclusive um `__proto__` próprio, como o que `JSON.parse` cria) é erro, como em todo o contrato (o
+ * esquema é estrito, e a versão do protocolo muda quando as chaves mudam).
+ */
+const esquemaFisicaParcial: Esquema<FisicaParcial> = objeto({}, Object.fromEntries(CHAVES_DA_FISICA_DA_SALA.map((chave) => [chave, numero({})])));
+
+/** A física completa da sala (`estado-sala`, `fisica-alterada`): as 8 chaves, cada uma dentro da faixa dela. */
+const esquemaFisicaCompleta: Esquema<FisicaSala> = objeto(
+  Object.fromEntries(CHAVES_DA_FISICA_DA_SALA.map((chave) => [chave, numero({ min: FAIXAS_DA_FISICA_DA_SALA[chave].min, max: FAIXAS_DA_FISICA_DA_SALA[chave].max })])),
+) as unknown as Esquema<FisicaSala>;
 
 const modosDe = (modalidade: Modalidade): string => MODOS_POR_MODALIDADE[modalidade].join(', ');
 
@@ -329,6 +344,7 @@ const esquemaConfigurarSala: Esquema<MsgConfigurarSala> = aposValidar(
       giz: esquemaGizParcial,
       forca: forcaDaSala,
       aposta: apostaDaSala,
+      fisica: nulavel(esquemaFisicaParcial),
     },
   ),
   (m, c) => {
@@ -373,7 +389,14 @@ const esquemaBoasVindas: Esquema<MsgBoasVindas> = objeto({
 
 const esquemaLugarSala: Esquema<LugarSala> = objeto(
   { lugar, equipe, nome: nulavel(nome), conectado: booleano, anfitriao: booleano },
-  { saldo: nulavel(valorEmMoedas), skin: skinDoCatalogo },
+  {
+    saldo: nulavel(valorEmMoedas),
+    skin: skinDoCatalogo,
+    semente: nulavel(sementeDoItem),
+    bolas: nulavel(contadorDeBolas),
+    estatisticas: nulavel(esquemaResumoDeEstatisticas),
+    aparencia: nulavel(esquemaAparenciaDoBalao),
+  },
 );
 
 const esquemaLadoPlacar: Esquema<LadoPlacar> = objeto({ nomes: lista(nome, { min: 1, max: 2 }), vitorias: inteiro(0, L.vitoriasNoPlacar) });
@@ -400,6 +423,9 @@ const esquemaEstadoSala: Esquema<MsgEstadoSala> = objeto({
   giz: esquemaGiz,
   forca: forcaDaSala,
   aposta: apostaDaSala,
+  fisica: esquemaFisicaCompleta,
+  fisicaMexida: booleano,
+  fisicaTravada: booleano,
   prazoMs: nulavel(inteiro(0, 600_000)),
   placar: esquemaPlacar,
 });
@@ -434,6 +460,12 @@ const esquemaMissoes: Esquema<MsgMissoes> = aposValidar(
     if (m.cumpridas.some((id) => !fechadas.has(id))) recusar(`${c}.cumpridas`, 'só pode listar missões já cumpridas no quadro');
   },
 );
+const esquemaFisicaAlterada: Esquema<MsgFisicaAlterada> = objeto({
+  tipo: literal('fisica-alterada'),
+  por: nome,
+  fisica: esquemaFisicaCompleta,
+  mexida: booleano,
+});
 const esquemaErro: Esquema<MsgErro> = objeto({
   tipo: literal('erro'),
   codigo: literal(...CODIGOS_DE_ERRO),
@@ -520,6 +552,7 @@ function montarMensagens(esquemaDaGravacao: Esquema<Gravacao>): { cliente: Esque
       'emoji-retransmitido': esquemaEmojiRetransmitido,
       'aposta-paga': esquemaApostaPaga,
       missoes: esquemaMissoes,
+      'fisica-alterada': esquemaFisicaAlterada,
       'tempo-esgotado': esquemaTempoEsgotado,
       expulso: esquemaExpulso,
       erro: esquemaErro,

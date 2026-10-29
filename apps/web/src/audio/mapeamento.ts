@@ -6,11 +6,14 @@ export type SomDeEvento = 'taco-bola' | 'bola-bola' | 'bola-tabela' | 'cacapa';
 /** Os avisos de interface: troca de vez, fim do tempo e missão cumprida (L32). Não têm velocidade nem faixa de intensidade. */
 export type SomDeAviso = 'vez-outro' | 'vez-sua' | 'tempo-esgotado' | 'moedas';
 export type NomeDoSom = SomDeEvento | SomDeAviso;
+/** Os sons curtos do menu (L40): passar o mouse sobre um botão e clicar. Só sintetizados: não têm amostra nem entram em `Geradores`. */
+export type SomDoMenu = 'menu-passa' | 'menu-clique';
 
 export const SONS_DE_AVISO: readonly SomDeAviso[] = ['vez-outro', 'vez-sua', 'tempo-esgotado', 'moedas'];
+export const SONS_DO_MENU: readonly SomDoMenu[] = ['menu-passa', 'menu-clique'];
 
-export interface PedidoDeSom {
-  readonly som: NomeDoSom;
+export interface PedidoDeSom<S extends string = NomeDoSom | SomDoMenu> {
+  readonly som: S;
   /** 0 = inaudível; 1 = impacto cheio. */
   readonly volume: number;
   /** Multiplicador de frequência para o gerador. */
@@ -34,12 +37,17 @@ export function tomDaVelocidade(velocidade: number, cfg: ConfigAudio): number {
 }
 
 /** O pedido de um aviso de interface: volume cheio (o ganho do arquivo e o volume geral decidem o resto), sem mudança de tom. */
-export function pedidoDeAviso(som: SomDeAviso): PedidoDeSom {
+export function pedidoDeAviso(som: SomDeAviso): PedidoDeSom<SomDeAviso> {
+  return { som, volume: 1, tom: 1, intensidade: 0.5 };
+}
+
+/** O pedido de um som do menu: volume cheio (o ganho do gerador e o volume geral decidem o resto), sem mudança de tom. */
+export function pedidoDoMenu(som: SomDoMenu): PedidoDeSom<SomDoMenu> {
   return { som, volume: 1, tom: 1, intensidade: 0.5 };
 }
 
 /** Qual som um evento da tacada pede; `null` para os que não têm (parou, fora-da-mesa). */
-export function pedidoDoEvento(evento: EventoTacada, cfg: ConfigAudio): PedidoDeSom | null {
+export function pedidoDoEvento(evento: EventoTacada, cfg: ConfigAudio): PedidoDeSom<SomDeEvento> | null {
   switch (evento.tipo) {
     case 'taco-bola':
     case 'bola-bola':

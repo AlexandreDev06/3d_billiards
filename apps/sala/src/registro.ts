@@ -7,7 +7,7 @@ import { randomBytes, randomInt } from 'node:crypto';
 import {
   FORCA_DA_SALA_PADRAO,
   MODALIDADE_PADRAO,
-  PROTOCOLO_VERSAO,
+  versaoAceita,
   modoServeAModalidade,
   type CodigoErro,
   type MensagemDoCliente,
@@ -17,9 +17,9 @@ import {
 } from '@sinuca/protocolo';
 import { completarAposta, completarGiz, completarLinha, completarRelogio, textoModoRecusado } from './ajustes';
 import { ROTULO_MODALIDADE, passarVez, validarPreset, type EstadoPartida } from '@sinuca/regras';
-import { ArmazemDeCarteiras } from './carteiras';
+import { CarteirasEmMemoria, type CarteirasBase } from './carteiras-base';
 import { gerarCodigo } from './codigo';
-import type { ConfigSala } from './config';
+import type { ConfigDoNucleo } from './config-nucleo';
 import { PESO_DA_RECUSA, TEXTO_DO_ERRO } from './erros';
 import { BaldesPorChave } from './limite-taxa';
 import { logSilencioso, type Logger } from './log';
@@ -28,7 +28,7 @@ import type { DetalheDeSaida } from './rastro';
 import { Sala, type Conexao } from './sala';
 
 export interface DependenciasRegistro {
-  readonly config: ConfigSala;
+  readonly config: ConfigDoNucleo;
   readonly relogio?: () => number;
   readonly log?: Logger;
   readonly regras?: MotorDeRegras;
@@ -36,7 +36,7 @@ export interface DependenciasRegistro {
   readonly gerarToken?: () => string;
   readonly sortear?: (max: number) => number;
   /** As carteiras (L22). Sem elas, o registro cria um armazém só de memória (os testes das salas). */
-  readonly carteiras?: ArmazemDeCarteiras;
+  readonly carteiras?: CarteirasBase;
 }
 
 const TENTATIVAS_DE_CODIGO = 50;
@@ -44,7 +44,7 @@ const TENTATIVAS_DE_CODIGO = 50;
 export class Registro {
   private readonly salas = new Map<string, Sala>();
   private readonly salaDe = new Map<Conexao, Sala>();
-  private readonly config: ConfigSala;
+  private readonly config: ConfigDoNucleo;
   private readonly relogio: () => number;
   private readonly log: Logger;
   private readonly regras: MotorDeRegras;
@@ -52,7 +52,7 @@ export class Registro {
   private readonly gerarToken: () => string;
   private readonly sortear: (max: number) => number;
   private readonly falhasPorIp: BaldesPorChave;
-  readonly carteiras: ArmazemDeCarteiras;
+  readonly carteiras: CarteirasBase;
 
   constructor(deps: DependenciasRegistro) {
     this.config = deps.config;
@@ -63,11 +63,19 @@ export class Registro {
     this.gerarToken = deps.gerarToken ?? (() => randomBytes(16).toString('hex'));
     this.sortear = deps.sortear ?? ((max) => randomInt(max));
     this.falhasPorIp = new BaldesPorChave(this.config.falhasPorIp.capacidade, this.config.falhasPorIp.porSegundo, this.relogio);
-    this.carteiras = deps.carteiras ?? new ArmazemDeCarteiras({ pasta: null, maxCarteiras: this.config.maxCarteiras, atrasoMs: 0, relogio: this.relogio, log: this.log });
+    this.carteiras = deps.carteiras ?? new CarteirasEmMemoria({ maxCarteiras: this.config.maxCarteiras, relogio: this.relogio, log: this.log, presenteDeTeste: this.config.presenteDeTeste });
     // Mudou o saldo ou a skin de uma carteira (loja, ou o pote de outra sala): quem está sentado com ela na sala vê na hora.
     // A sala que acabou de pagar já manda o estado novo na sua própria sequência, então não é avisada de novo.
     this.carteiras.aoMudar((id, origem) => {
       for (const sala of this.salas.values()) if (sala !== origem) sala.carteiraMudou(id);
+    });
+    // O log da compra diz o apelido de quem comprou, se a carteira está sentada em alguma sala (o HTTP da loja não conhece nome).
+    this.carteiras.usarApelidos((id) => {
+      for (const sala of this.salas.values()) {
+        const apelido = sala.apelidoDaCarteira(id);
+        if (apelido !== null) return apelido;
+      }
+      return null;
     });
   }
 
@@ -134,7 +142,8 @@ export class Registro {
 
   private criar(conn: Conexao, m: MsgCriarSala): void {
     if (this.salaDe.has(conn)) return this.erro(conn, 'ja-na-sala');
-    if (m.versao !== PROTOCOLO_VERSAO) return this.erro(conn, 'versao');
+    if (!versaoAceita(m.versao)) return this.erro(conn, 'versao');
+    conn.versao = m.versao;
     if (this.salas.size >= this.config.maxSalas) return this.erro(conn, 'servidor-cheio');
     if ([...this.salas.values()].filter((s) => s.ipCriador === conn.ip).length >= this.config.maxSalasPorIp) {
       return this.erro(conn, 'servidor-cheio', 'Você já tem salas demais abertas.');
@@ -187,7 +196,8 @@ export class Registro {
 
   private entrar(conn: Conexao, m: MsgEntrar): void {
     if (this.salaDe.has(conn)) return this.erro(conn, 'ja-na-sala');
-    if (m.versao !== PROTOCOLO_VERSAO) return this.erro(conn, 'versao');
+    if (!versaoAceita(m.versao)) return this.erro(conn, 'versao');
+    conn.versao = m.versao;
     const sala = this.salas.get(m.codigo);
     if (!sala) return this.codigoQueNaoExiste(conn);
     // quem volta ao próprio lugar ignora a carteira que mandar: não há o que adivinhar, e uma rede instável não gasta a ficha

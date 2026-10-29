@@ -1,7 +1,8 @@
 import type { EventoTacada } from '@sinuca/fisica';
 import { gravarJson, lerJson, type ArmazenamentoMinimo } from '../armazenamento';
 import type { ConfigAudio } from '../config';
-import { pedidoDeAviso, pedidoDoEvento, type NomeDoSom, type PedidoDeSom, type SomDeAviso } from './mapeamento';
+import { GERADORES_DO_MENU } from './geradores';
+import { pedidoDeAviso, pedidoDoEvento, pedidoDoMenu, type NomeDoSom, type PedidoDeSom, type SomDeAviso, type SomDoMenu } from './mapeamento';
 import { LimitadorDeVozes, type Voz } from './vozes';
 
 /** Onde os geradores ligam seus nós: o contexto, o destino (ganho geral) e um buffer de ruído branco. */
@@ -46,6 +47,8 @@ export interface Sessao {
 export interface OpcoesMotorDeAudio {
   readonly cfg: ConfigAudio;
   readonly geradores: Geradores;
+  /** Os sons do menu (L40); sem isto valem os sintetizados de `GERADORES_DO_MENU`. */
+  readonly geradoresDoMenu?: Readonly<Record<SomDoMenu, Gerador>>;
   /** Abre o contexto; só é chamada depois do primeiro gesto. `null`: sem Web Audio. */
   readonly abrir: () => Sessao | null;
   /** O contexto acabou de abrir (depois do primeiro gesto): hora de carregar as amostras em segundo plano. */
@@ -168,16 +171,22 @@ export class MotorDeAudio {
   aoEvento(evento: EventoTacada): void {
     this.contadores.eventos++;
     const pedido = pedidoDoEvento(evento, this.opcoes.cfg);
-    if (pedido) this.despachar(pedido);
+    if (pedido) this.despachar(pedido, this.opcoes.geradores[pedido.som]);
   }
 
   /** Um aviso de interface (a vez passou, o tempo acabou): passa pelo mesmo mudo, volume geral e limite de vozes dos impactos. */
   avisar(som: SomDeAviso): void {
     this.contadores.avisos++;
-    this.despachar(pedidoDeAviso(som));
+    this.despachar(pedidoDeAviso(som), this.opcoes.geradores[som]);
   }
 
-  private despachar(pedido: PedidoDeSom): void {
+  /** Um som do menu (passar o mouse, clicar): passa pelo mesmo mudo, volume geral e limite de vozes; conta como aviso de interface. */
+  tocarDoMenu(som: SomDoMenu): void {
+    this.contadores.avisos++;
+    this.despachar(pedidoDoMenu(som), (this.opcoes.geradoresDoMenu ?? GERADORES_DO_MENU)[som]);
+  }
+
+  private despachar(pedido: PedidoDeSom, gerador: Gerador): void {
     const c = this.contadores;
     c.pedidos++;
     const sessao = this.sessao;
@@ -193,7 +202,7 @@ export class MotorDeAudio {
       c.inaudiveis++;
       return;
     }
-    const preparado = this.opcoes.geradores[pedido.som].preparar(pedido);
+    const preparado = gerador.preparar(pedido);
     if (!preparado) {
       c.semGerador++;
       return;

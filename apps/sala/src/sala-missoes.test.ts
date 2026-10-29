@@ -45,6 +45,8 @@ function irParaODia(amb: Ambiente, dia: string): void {
 const missoesDe = (c: ClienteDeTeste): MsgMissoes[] => c.conn.todas('missoes');
 const tipos = (c: ClienteDeTeste, desde: number): MensagemDaSala['tipo'][] => c.conn.recebidas.slice(desde).map((m) => m.tipo);
 const saldoDe = (amb: Ambiente, id: string): number => amb.registro.carteiras.ler(id)!.saldo;
+/** O contador de bolas de cada taco que a carteira tem (L34), por skin. */
+const bolasDe = (amb: Ambiente, id: string): Record<string, number> => Object.fromEntries(amb.registro.carteiras.ler(id)!.itens!.map((i) => [i.skin, i.bolas]));
 const premioTotal = (ids: readonly IdMissao[]): number => ids.reduce((soma, id) => soma + premioDaMissao(id), 0);
 
 interface Carteira {
@@ -155,6 +157,7 @@ describe('o que não conta', () => {
     expect(saldoDe(amb, id)).toBe(saldo);
     expect(amb.registro.carteiras.ler(id)!.missoes!.itens.every((i) => i.progresso === 0)).toBe(true);
     expect(amb.logs.some((l) => l.startsWith('missao '))).toBe(false);
+    expect(bolasDe(amb, id), 'o que não conta para a missão não conta para o contador do taco').toEqual({ classico: 0 });
   }
 
   it('partida sem aposta valendo: só uma das duas pessoas tem carteira (sem contraparte, como o pote)', () => {
@@ -191,9 +194,15 @@ describe('o que não conta', () => {
     irParaODia(amb, dia);
     const a = carteira(amb);
     const [ana] = sentar(amb, [a, carteira(amb)]) as [ClienteDeTeste, ClienteDeTeste];
-    ana.enviar(tacadaQueMata(ana));
-    semProgresso(amb, ana, a.id);
+    const quebra = tacadaQueMata(ana);
+    ana.enviar(quebra);
+    expect(missoesDe(ana)).toHaveLength(0);
+    expect(saldoDe(amb, a.id)).toBe(100);
+    expect(amb.registro.carteiras.ler(a.id)!.missoes!.itens.every((i) => i.progresso === 0)).toBe(true);
     expect(amb.registro.carteiras.ler(a.id)!.missoes!.itens).toHaveLength(3);
+    // o contador do taco não depende do interruptor das missões: as bolas matadas valendo moeda contam do mesmo jeito
+    expect(bolasDe(amb, a.id).classico).toBe(numeradasEncacapadas(quebra).length);
+    expect(bolasDe(amb, a.id).classico).toBeGreaterThan(0);
   });
 
   it('tacada com falta não conta, mesmo que uma bola tenha caído (a branca caiu junto)', () => {
@@ -271,6 +280,54 @@ describe('Embalado no mata-mata (a vez passa a cada tacada)', () => {
   });
 });
 
+describe('Embalado na dupla com "parceiro continua" (M1 da revisão do L31)', () => {
+  // A decisão: conta as bolas da pessoa enquanto a equipe dela fica com a mesa, mesmo com o parceiro tacando no meio.
+  const dia = diaCom((ids) => ids[1] === 'embalado');
+  const regras = { ...PRESET_BOTECO.regras, quemContinua: 'parceiro' as const };
+  const item = (amb: Ambiente, id: string) => amb.registro.carteiras.ler(id)!.missoes!.itens.find((i) => i.id === 'embalado')!;
+
+  function dupla(amb: Ambiente) {
+    const [a, b, c] = [carteira(amb), carteira(amb), carteira(amb)] as [Carteira, Carteira, Carteira];
+    const ana = new ClienteDeTeste(amb, 'Ana');
+    ana.criar('2x2', regras, SEM_LIMITE, undefined, { carteira: a.codigo });
+    const beto = new ClienteDeTeste(amb, 'Beto').entrar(ana.codigo, undefined, b.codigo);
+    const cida = new ClienteDeTeste(amb, 'Cida').entrar(ana.codigo, undefined, c.codigo);
+    const davi = new ClienteDeTeste(amb, 'Davi').entrar(ana.codigo);
+    ana.enviar({ tipo: 'iniciar' });
+    return { ana, beto, cida, davi, a, b, c };
+  }
+
+  it('Ana mata, a parceira Cida mata no meio e Ana mata de novo: Ana cumpre (2 bolas dela, a equipe não perdeu a mesa) e a Cida anda 1', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const { ana, cida, a, c } = dupla(amb);
+    expect(ana.estado.lugares.map((l) => l.equipe)).toEqual([0, 1, 0, 1]);
+    ana.enviar(tacadaQueMata(ana));
+    expect(ana.estado.vez).toBe(2); // a mesa passou à parceira, a equipe continua
+    expect(item(amb, a.id)).toMatchObject({ progresso: 1, cumprida: false });
+    cida.enviar(tacadaQueMata(cida));
+    expect(ana.estado.vez).toBe(0);
+    expect(item(amb, c.id)).toMatchObject({ progresso: 1, cumprida: false });
+    expect(item(amb, a.id)).toMatchObject({ progresso: 1, cumprida: false }); // a bola da parceira não é dela
+    ana.enviar(tacadaQueMata(ana, 1));
+    expect(item(amb, a.id)).toMatchObject({ progresso: 2, cumprida: true });
+    expect(ana.conn.ultima('missoes')!.cumpridas).toContain('embalado');
+    expect(item(amb, c.id)).toMatchObject({ progresso: 1, cumprida: false });
+  });
+
+  it('se a equipe perde a mesa no meio (a parceira erra), a sequência de Ana recomeça: mata, parceira erra, Ana mata = 1 de 2', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const { ana, beto, cida, a } = dupla(amb);
+    ana.enviar(tacadaQueMata(ana));
+    cida.enviar(tacadaQueNaoMata(cida));
+    expect(ana.estado.vez).toBe(1); // a mesa passou ao outro lado
+    beto.enviar(tacadaQueNaoMata(beto));
+    ana.enviar(tacadaQueMata(ana));
+    expect(item(amb, a.id)).toMatchObject({ progresso: 1, cumprida: false });
+  });
+});
+
 describe('as missões de partida inteira: Freguês da casa, Fecha a conta e Limpinho', () => {
   const dia = diaCom((ids) => ids[0] === 'fregues-da-casa' && ids[1] === 'fecha-a-conta' && ids[2] === 'limpinho');
 
@@ -344,5 +401,117 @@ describe('as missões de partida inteira: Freguês da casa, Fecha a conta e Limp
     expect(saldoDe(amb, b.id)).toBe(100 - 10 + 50 - 10);
     expect(amb.logs.filter((l) => l.startsWith('missao ')).map((l) => JSON.parse(l.slice(7)).missao)).toEqual(['fecha-a-conta', 'fregues-da-casa', 'limpinho', 'fregues-da-casa']);
     expect(missaoDoCatalogo('limpinho').nivel).toBe('dificil');
+  });
+});
+
+describe('contador de bolas do taco (L34): a mesma definição e o mesmo critério das missões', () => {
+  const dia = diaCom((ids) => ids[0] === 'saida-premiada');
+  /** As bolas que `conferirTacada` conta como mortas (a mesma conta das missões) para esta tacada. */
+  const mortasDa = (c: ClienteDeTeste, m: MsgTacada): number => {
+    const v = c.visao!;
+    const r = aplicarTacada(v.partida, m.gravacao.eventos);
+    return conferirTacada({ parametros: m.parametros, gravacao: m.gravacao, consequencias: r.consequencias, antes: v.partida, depois: r.partida, seguidasAntes: 0 }).mortas.length;
+  };
+  const comTaco = (amb: Ambiente, id: string, skin: string): void => {
+    amb.registro.carteiras.aplicar([{ id, delta: 1000 }]);
+    expect(amb.registro.carteiras.comprar(id, skin)).toMatchObject({ ok: true });
+  };
+
+  it('soma as bolas mortas no taco em uso e o outro lugar vê semente e contador no estado-sala', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    const [ana, beto] = sentar(amb, [a, carteira(amb)]) as [ClienteDeTeste, ClienteDeTeste];
+    const tacada = tacadaQueMata(ana);
+    const mortas = mortasDa(ana, tacada);
+    expect(mortas).toBeGreaterThan(0);
+    const semente = amb.registro.carteiras.ler(a.id)!.itens![0]!.semente;
+    expect(beto.estado.lugares[0]).toMatchObject({ skin: 'classico', semente, bolas: 0 });
+    ana.enviar(tacada);
+    expect(bolasDe(amb, a.id)).toEqual({ classico: mortas });
+    expect(ana.estado.lugares[0]).toMatchObject({ semente, bolas: mortas });
+    expect(beto.estado.lugares[0]).toMatchObject({ semente, bolas: mortas });
+    expect(beto.estado.lugares[1]).toMatchObject({ bolas: 0 }); // o do Beto não andou
+  });
+
+  it('o contador soma no taco que está em uso na tacada: trocar de skin no meio vale para as seguintes e o antigo fica como estava', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    comTaco(amb, a.id, 'ouro');
+    const [ana, beto] = sentar(amb, [a, carteira(amb)], PRESET_MATA_MATA.regras) as [ClienteDeTeste, ClienteDeTeste];
+    amb.registro.carteiras.usar(a.id, 'ouro');
+    const primeira = tacadaQueMata(ana);
+    const m1 = mortasDa(ana, primeira);
+    ana.enviar(primeira);
+    expect(bolasDe(amb, a.id)).toEqual({ classico: 0, ouro: m1 });
+    beto.enviar(tacadaQueNaoMata(beto));
+    amb.registro.carteiras.usar(a.id, 'classico'); // no meio da partida
+    expect(ana.estado.lugares[0]).toMatchObject({ skin: 'classico', bolas: 0 });
+    const segunda = tacadaQueMata(ana);
+    const m2 = mortasDa(ana, segunda);
+    ana.enviar(segunda);
+    expect(bolasDe(amb, a.id)).toEqual({ classico: m2, ouro: m1 });
+    expect(beto.estado.lugares[0]).toMatchObject({ skin: 'classico', bolas: m2 });
+  });
+
+  it('só uma pessoa com carteira: a partida não vale moeda e o contador não anda (nem a semente aparece no outro lugar)', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    const [ana, beto] = sentar(amb, [a, null]) as [ClienteDeTeste, ClienteDeTeste];
+    ana.enviar(tacadaQueMata(ana));
+    expect(bolasDe(amb, a.id)).toEqual({ classico: 0 });
+    expect(beto.estado.lugares[0]!.bolas).toBe(0);
+    expect(beto.estado.lugares[1]).toMatchObject({ semente: null, bolas: null });
+  });
+
+  it('a tacada que não mata nada não soma, e a que mata sem falta soma só as bolas dela (a branca não conta)', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    const [ana, beto] = sentar(amb, [a, carteira(amb)], PRESET_MATA_MATA.regras) as [ClienteDeTeste, ClienteDeTeste];
+    ana.enviar(tacadaQueNaoMata(ana));
+    expect(bolasDe(amb, a.id)).toEqual({ classico: 0 });
+    beto.enviar(tacadaQueNaoMata(beto));
+    const tacada = tacadaQueMata(ana);
+    const mortas = mortasDa(ana, tacada);
+    ana.enviar(tacada);
+    expect(mortas).toBeGreaterThan(0);
+    expect(bolasDe(amb, a.id).classico).toBe(mortas);
+    expect(bolasDe(amb, a.id).classico).toBeLessThanOrEqual(numeradasEncacapadas(tacada).length);
+  });
+
+  it('uma tacada que mata duas bolas soma duas, não uma', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    const [ana] = sentar(amb, [a, carteira(amb)], PRESET_MATA_MATA.regras) as [ClienteDeTeste, ClienteDeTeste];
+    const v = ana.visao!;
+    const dupla = acharTacada(v, (m) => {
+      const r = aplicarTacada(v.partida, m.gravacao.eventos);
+      return conferirTacada({ parametros: m.parametros, gravacao: m.gravacao, consequencias: r.consequencias, antes: v.partida, depois: r.partida, seguidasAntes: 0 }).mortas.length >= 2;
+    });
+    const mortas = mortasDa(ana, dupla);
+    ana.enviar(dupla);
+    expect(mortas).toBeGreaterThanOrEqual(2);
+    expect(bolasDe(amb, a.id).classico).toBe(mortas);
+  });
+
+  it('as bolas e o prêmio entram na mesma gravação: um aviso de carteira só para a tacada, com o saldo e o contador já novos', () => {
+    const amb = criarAmbiente();
+    irParaODia(amb, dia);
+    const a = carteira(amb);
+    const [ana] = sentar(amb, [a, carteira(amb)]) as [ClienteDeTeste, ClienteDeTeste];
+    const vistos: { saldo: number; bolas: number }[] = [];
+    amb.registro.carteiras.aoMudar((id) => {
+      if (id === a.id) vistos.push({ saldo: saldoDe(amb, id), bolas: bolasDe(amb, id).classico! });
+    });
+    ana.enviar(tacadaQueMata(ana));
+    // nenhum aviso mostra o prêmio sem o contador, nem o contador sem o prêmio
+    expect(vistos.length).toBeGreaterThan(0);
+    for (const v of vistos) expect(v.bolas > 0, JSON.stringify(v)).toBe(v.saldo > 100 || v.bolas > 0);
+    expect(vistos.at(-1)!.bolas).toBeGreaterThan(0);
+    expect(vistos.at(-1)!.saldo).toBe(100 + premioTotal(ana.conn.ultima('missoes')!.cumpridas));
   });
 });

@@ -7,6 +7,8 @@
 
 const limitar = (v: number): number => Math.min(Math.max(v, 0), 1);
 const suave = (t: number): number => t * t * (3 - 2 * t);
+/** Pedir de novo uma ação que ainda está saindo só a recomeça do zero se ela já quase sumiu. */
+const PESO_PARA_RECOMECAR = 0.1;
 
 /** O que a mistura precisa saber de cada ação do arquivo. */
 export interface DefinicaoDaAcao {
@@ -46,6 +48,11 @@ export class MisturaDeAcoes {
   private tamanho = 0;
   private readonly base: number;
   private tempoBase = 0;
+  /**
+   * O quanto o relógio da base corre em relação ao normal (1 = normal). Quem desenha o muda de leve ao longo do tempo (por ruído
+   * semeado) para a parada nunca repetir igual.
+   */
+  ritmoDaBase = 1;
 
   constructor(
     private readonly definicoes: readonly DefinicaoDaAcao[],
@@ -94,7 +101,9 @@ export class MisturaDeAcoes {
     }
     if (c.ativa) {
       this.tirarDaPilha(i);
-      if (!repetir) c.t = 0;
+      // Ainda visível: segue de onde estava (recomeçar do zero com peso na tela é um estalo). Quase sumida, recomeça.
+      if (c.repetir && !repetir) c.t = this.tempoDaAcao(def, c);
+      if (!repetir && c.peso < PESO_PARA_RECOMECAR) c.t = 0;
     } else {
       c.t = 0;
       c.peso = 0;
@@ -142,7 +151,7 @@ export class MisturaDeAcoes {
   atualizar(dt: number): void {
     const passo = Math.max(dt, 0);
     const duracaoBase = this.definicoes[this.base]!.duracaoS;
-    this.tempoBase = duracaoBase > 0 ? (this.tempoBase + passo) % duracaoBase : 0;
+    this.tempoBase = duracaoBase > 0 ? (this.tempoBase + passo * Math.max(this.ritmoDaBase, 0)) % duracaoBase : 0;
     let n = 0;
     for (let k = 0; k < this.tamanho; k++) {
       const i = this.pilha[k]!;

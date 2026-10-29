@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG_WEB } from '../config';
-import { ehSoftware, haloDoTacoNoNivel, ladosDosPersonagens, nivelAbaixo, nivelInicial, pedeRecarregar, razaoDePixels, segmentosDoTaco, detalheDasMaos } from './perfis';
+import { DETALHE_COMPLETO } from '../cena/detalhe-do-taco';
+import { detalheDoTacoNoNivel, ehSoftware, haloDoTacoNoNivel, ladosDosPersonagens, nivelAbaixo, nivelInicial, pedeRecarregar, razaoDePixels, segmentosDoTaco, detalheDasMaos } from './perfis';
 
 const { perfis } = CONFIG_WEB.qualidade;
 
@@ -138,6 +139,14 @@ describe('haloDoTacoNoNivel', () => {
     expect(haloDoTacoNoNivel(perfis.alta)).toBe(true);
     expect(haloDoTacoNoNivel(perfis.media)).toBe(true);
     expect(haloDoTacoNoNivel(perfis.baixa)).toBe(false);
+  });
+});
+
+describe('detalheDoTacoNoNivel', () => {
+  it('a alta desenha tudo; a média, a trama cheia e a luz que corre, sem a película irisada; a baixa, trama simples, sem película nem animação e só a cor das imagens', () => {
+    expect(detalheDoTacoNoNivel(perfis.alta)).toEqual(DETALHE_COMPLETO);
+    expect(detalheDoTacoNoNivel(perfis.media)).toEqual({ trama: 'cheia', iridescencia: false, animacao: true, imagens: 'completas' });
+    expect(detalheDoTacoNoNivel(perfis.baixa)).toEqual({ trama: 'simples', iridescencia: false, animacao: false, imagens: 'cor' });
   });
 });
 

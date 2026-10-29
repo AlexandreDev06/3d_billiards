@@ -86,7 +86,7 @@ describe('caminho do bolão', () => {
     const xT = 0.5 + (1 / 60) * 0.5;
     const tT = xT / 1;
     const x = (q: number): number => (q / F < tT ? q / F : xT - 0.8 * (q / F - tT));
-    const evento: EventoTacada = { tipo: 'bola-tabela', t: tT, bola: ID_BOLAO, tabela: 1, velocidade: 1 };
+    const evento: EventoTacada = { tipo: 'bola-tabela', t: tT, bola: ID_BOLAO, tabela: 1, parte: 'nariz', velocidade: 1 };
     const g = gravacao({ quadros: 70, posicao: (q) => [x(q), 0], eventos: [taco, evento] });
     const p = pontos(extrairPrevisao(g, CFG));
     const canto = p.find(([px]) => Math.abs(px - xT) < 1e-5);
@@ -99,7 +99,7 @@ describe('caminho do bolão', () => {
 
   it('batida logo no primeiro quadro (sem quadro anterior): cai no quadro 0, sem inventar velocidade', () => {
     const xT = 0.004;
-    const evento: EventoTacada = { tipo: 'bola-tabela', t: 0.004, bola: ID_BOLAO, tabela: 0, velocidade: 1 };
+    const evento: EventoTacada = { tipo: 'bola-tabela', t: 0.004, bola: ID_BOLAO, tabela: 0, parte: 'nariz', velocidade: 1 };
     const g = gravacao({ quadros: 30, posicao: (q) => [q === 0 ? 0 : Math.max(xT - 0.5 * (q / F - 0.004), -2), 0], eventos: [taco, evento] });
     const c = extrairPrevisao(g, CFG);
     expect(c.quantidade).toBeGreaterThan(1);
@@ -111,7 +111,7 @@ describe('caminho do bolão', () => {
       ids: [0, 4],
       quadros: 40,
       posicao: (q, id) => (id === 0 ? [Math.min(q, 30) / F, 0] : [1, 0.2]),
-      eventos: [taco, { tipo: 'bola-tabela', t: 0.2083, bola: 4, tabela: 2, velocidade: 1 }],
+      eventos: [taco, { tipo: 'bola-tabela', t: 0.2083, bola: 4, tabela: 2, parte: 'nariz', velocidade: 1 }],
     });
     const c = extrairPrevisao(g, CFG);
     expect(pontos(c).every(([, pz]) => pz === 0)).toBe(true);
@@ -176,8 +176,8 @@ describe('caminho do bolão', () => {
     };
     const eventos: EventoTacada[] = [
       taco,
-      { tipo: 'bola-tabela', t: t1, bola: ID_BOLAO, tabela: 0, velocidade: v },
-      { tipo: 'bola-tabela', t: t2, bola: ID_BOLAO, tabela: 1, velocidade: v },
+      { tipo: 'bola-tabela', t: t1, bola: ID_BOLAO, tabela: 0, parte: 'nariz', velocidade: v },
+      { tipo: 'bola-tabela', t: t2, bola: ID_BOLAO, tabela: 1, parte: 'nariz', velocidade: v },
     ];
     const p = pontos(extrairPrevisao(gravacao({ quadros: 50, posicao, eventos }), { ...CFG, passoMinimo: 0.001 }));
     const i1 = p.findIndex(([px, pz]) => Math.hypot(px - x1, pz) < 1e-4);
@@ -314,7 +314,7 @@ describe('caminho do bolão', () => {
     const xT = 0.6 + 1 / 120;
     const tT = xT;
     const x = (q: number): number => (q / F < tT ? q / F : xT - (q / F - tT));
-    const evento: EventoTacada = { tipo: 'bola-tabela', t: tT, bola: ID_BOLAO, tabela: 1, velocidade: 1 };
+    const evento: EventoTacada = { tipo: 'bola-tabela', t: tT, bola: ID_BOLAO, tabela: 1, parte: 'nariz', velocidade: 1 };
     const g = gravacao({ quadros: 200, posicao: (q) => [x(q), 0], eventos: [taco, evento] });
     const c = extrairPrevisao(g, { ...CFG, comprimentoMaximo: 1 });
     expect(c.fim).toBe('limite');

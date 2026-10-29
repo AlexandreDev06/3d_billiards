@@ -306,7 +306,7 @@ describe('integração — mata-mata com 3 clientes reais e a física real', () 
     const esperado = [0, 0, 0];
     for (const equipe of vencedores) esperado[equipe]!++;
     expect(final.atual!.lados.map((l) => l.vitorias)).toEqual(esperado);
-    expect(PROTOCOLO_VERSAO).toBe(7);
+    expect(PROTOCOLO_VERSAO).toBe(10);
   }, 120_000);
 });
 

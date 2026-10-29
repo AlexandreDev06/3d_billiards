@@ -24,6 +24,11 @@ export class SeguidorDoOlhar {
   z = 0;
   /** O índice da bola que o balão segue agora. */
   bolaSeguida: number;
+  /** Onde a bola seguida está (sem suavização: o olho do personagem persegue sozinho, com sacadas de correção). */
+  bolaX = 0;
+  bolaZ = 0;
+  /** Alguma bola anda (também a branca, logo depois da tacada). */
+  andando = false;
   private anteriorX = new Float64Array(0);
   private anteriorZ = new Float64Array(0);
   private velocidade = new Float64Array(0);
@@ -41,6 +46,7 @@ export class SeguidorDoOlhar {
   reiniciar(): void {
     this.primeiro = true;
     this.bolaSeguida = this.branca;
+    this.andando = false;
     this.velocidade.fill(0);
   }
 
@@ -73,6 +79,9 @@ export class SeguidorDoOlhar {
       if (!segue) this.bolaSeguida = melhor;
     }
     const i = this.bolaSeguida;
+    this.bolaX = xs[i]!;
+    this.bolaZ = zs[i]!;
+    this.andando = melhor >= 0 && this.velocidade[melhor]! >= velocidadeMinima;
     if (this.primeiro) {
       this.x = xs[i]!;
       this.z = zs[i]!;

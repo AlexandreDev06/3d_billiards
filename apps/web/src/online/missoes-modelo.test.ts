@@ -1,6 +1,6 @@
 import { diaDaMissao, fimDoDia, missoesDoDia, type MissoesDoDia } from '@sinuca/protocolo';
 import { describe, expect, it } from 'vitest';
-import { AVISO_SEM_CARTEIRA, TOTAL_DO_DIA, avisosDeMissao, missoesNaTela, tempoParaVirar, textoDaMissaoCumprida, textoDoProgresso } from './missoes-modelo';
+import { AVISO_SEM_CARTEIRA, AVISO_SO_ONLINE, TOTAL_DO_DIA, avisosDeMissao, missoesNaAjuda, missoesNaTela, tempoParaVirar, textoDaMissaoCumprida, textoDoProgresso } from './missoes-modelo';
 
 const AGORA = Date.parse('2026-10-26T15:00:00Z'); // 12:00 em Brasília
 const DIA = diaDaMissao(AGORA);
@@ -110,5 +110,47 @@ describe('avisosDeMissao', () => {
     const ontem = avisosDeMissao(quadro([1, 0, 0], '2026-10-25', FIM - 86_400_000), depois, []);
     expect(ontem).toEqual(semAntes);
     expect(semAntes.map((x) => x.id)).toEqual([FACIL.id]);
+  });
+});
+
+describe('missoesNaAjuda (a seção do H durante a partida)', () => {
+  it('na sala, com carteira: os mesmos cartões do lobby, com o progresso de verdade e sem aviso', () => {
+    const q = quadro([1, MEDIA.meta, 0]);
+    const t = missoesNaAjuda(q, AGORA, 'sala');
+    expect(t).toEqual(missoesNaTela(q, AGORA));
+    expect(t.aviso).toBeNull();
+    expect(t.origem).toBe('carteira');
+    expect(t.cartoes.map((c) => c.textoDoProgresso)).toEqual([`1 de ${FACIL.meta}`, `${MEDIA.meta} de ${MEDIA.meta}`, `0 de ${DIFICIL.meta}`]);
+    expect(t.cartoes.map((c) => c.cumprida)).toEqual([false, true, false]);
+    expect(t.textoDoGanho).toBe('70 de 220 moedas hoje');
+    expect(t.restante).toBe('Faltam 12 h para virar o dia');
+  });
+
+  it('no mesmo PC, com carteira: os cartões com o que a carteira sabe e uma linha dizendo que as missões só contam online', () => {
+    const q = quadro([1, 0, 0]);
+    const t = missoesNaAjuda(q, AGORA, 'local');
+    expect(t.cartoes).toEqual(missoesNaTela(q, AGORA).cartoes);
+    expect(t.origem).toBe('carteira');
+    expect(t.aviso).toBe(AVISO_SO_ONLINE);
+    expect(AVISO_SO_ONLINE).toMatch(/online/);
+  });
+
+  it('sem carteira, na sala ou no mesmo PC: o mesmo aviso do lobby e as missões do dia zeradas', () => {
+    for (const onde of ['sala', 'local'] as const) {
+      const t = missoesNaAjuda(null, AGORA, onde);
+      expect(t).toEqual(missoesNaTela(null, AGORA));
+      expect(t.aviso).toBe(AVISO_SEM_CARTEIRA);
+      expect(t.origem).toBe('catalogo');
+      expect(t.cartoes.map((c) => c.progresso)).toEqual([0, 0, 0]);
+    }
+  });
+
+  it('o dia virou com a partida aberta: as missões do dia novo, zeradas, em qualquer lugar', () => {
+    const depoisDaVirada = FIM + 60_000;
+    for (const onde of ['sala', 'local'] as const) {
+      const t = missoesNaAjuda(quadro([FACIL.meta, MEDIA.meta, DIFICIL.meta]), depoisDaVirada, onde);
+      expect(t.ganhoHoje).toBe(0);
+      expect(t.cartoes.every((c) => c.progresso === 0)).toBe(true);
+    }
   });
 });

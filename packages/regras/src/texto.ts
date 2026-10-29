@@ -179,3 +179,32 @@ export function textoDoMataMata(r: RelatoMataMata): string {
   }
   return partes.join(' ');
 }
+
+/** O que aconteceu na tacada do treino, já decidido; só vira frase aqui. */
+export interface RelatoTreino {
+  readonly antes: EstadoPartida;
+  readonly faltas: readonly NomeFalta[];
+  /** Bolas que quem tacou encaçapou, em ordem de queda. */
+  readonly matou: readonly IdBola[];
+  readonly pularam: readonly IdBola[];
+  /** A branca caiu ou saiu da mesa e voltou à mão. */
+  readonly brancaNaMao: boolean;
+  /** A tacada encaçapou a última bola. */
+  readonly mesaLimpa: boolean;
+}
+
+/** Frase curta para o HUD no treino, em PT-BR: "Cegou! Falta sem pena." / "Ana matou a 5." / "Mesa limpa!" */
+export function textoDoTreino(r: RelatoTreino): string {
+  const { antes } = r;
+  const quem = antes.jogadores[antes.vez]!;
+  const partes: string[] = [];
+  if (r.faltas.length > 0) {
+    const rotulos = r.faltas.map((f) => rotuloDaFalta(f, antes.config));
+    partes.push(`${rotulos.map((f, i) => (i === 0 ? f : minuscula(f))).join(' e ')}! Falta sem pena${r.brancaNaMao ? ': branca na mão' : ''}.`);
+  }
+  if (r.matou.length > 0) partes.push(`${quem.nome} matou ${lista(r.matou)}.`);
+  else if (r.faltas.length === 0) partes.push(`${quem.nome} não matou nenhuma.`);
+  if (r.pularam.length > 0) partes.push(`${maiuscula(lista(r.pularam))} ${r.pularam.length > 1 ? 'pularam' : 'pulou'} da mesa.`);
+  if (r.mesaLimpa) partes.push('Mesa limpa!');
+  return partes.join(' ');
+}

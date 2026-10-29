@@ -4,6 +4,7 @@ import { poseDeRepouso } from './ficha';
 import { quaternioDoEixo } from './quaternios';
 import { fichaDeBrinquedo } from './para-testes';
 import { pontoVazio } from './tipos';
+import { TEMPO_DO_PERFILADOR_MS, provarSemAlocar } from './alocacao-para-testes';
 
 /** A dobra positiva leva a ponta para -z (fecha o dedo de brinquedo): o eixo é -x. */
 const DEDO: Corrente = { nome: 'dedo', ossos: [2, 3, 4], eixoDeDobra: [-1, 0, 0], ponta: [0, 0.03, 0], raioDaPonta: 0.01, partes: [1 / 3, 1 / 3, 1 / 3] };
@@ -54,19 +55,16 @@ describe('Cinematica', () => {
     expect(fechado).toBeLessThan(reto);
   });
 
-  it('não aloca: cem mil contas não deixam lixo', () => {
+  it('não aloca por conta: nenhum objeto novo no código do pacote (perfilador de alocação)', async () => {
     const f = fichaDeBrinquedo();
     const c = new Cinematica(f);
     const saida = pontoVazio();
-    const memoria = (): number => (globalThis as unknown as { process: { memoryUsage(): { heapUsed: number } } }).process.memoryUsage().heapUsed;
     c.calcular(f.poses.get('garra')!);
     c.pontaDaCorrente(DEDO, 0.2, saida);
-    const antes = memoria();
-    for (let i = 0; i < 100_000; i++) {
+    await provarSemAlocar((i) => {
       c.calcular(f.poses.get('garra')!);
       c.pontaDaCorrente(DEDO, (i % 10) * 0.05, saida);
       c.ponto(4, 0, 0.03, 0, saida);
-    }
-    expect(memoria() - antes).toBeLessThan(6_000_000);
-  });
+    });
+  }, TEMPO_DO_PERFILADOR_MS);
 });

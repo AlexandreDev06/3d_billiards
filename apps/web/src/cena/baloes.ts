@@ -1,9 +1,11 @@
 import type { Quadro } from '@sinuca/personagens';
 import type { BaseDoRosto, NivelDeDetalhe } from '@sinuca/personagens/three';
 import { Group, type Material, type Texture } from 'three';
+import type { AparenciaDoBalao } from '@sinuca/protocolo';
 import type { ConfigBaloes } from '../config';
 import { BaloesProcedurais, type BaloesEmCena, type EstadoDoBalao } from './balao';
 import { BaloesDoArtista } from './balao-do-artista';
+import type { CarregadorDeChapeus } from './chapeus';
 
 /**
  * Os balões da cena. Nascem procedurais (`BaloesProcedurais`, na hora, sem esperar arquivo); quando o `.glb` do artista chega
@@ -25,11 +27,14 @@ export class BaloesDaCena implements BaloesEmCena {
     this.grupo.add(this.procedurais.grupo);
   }
 
-  /** O arquivo do artista chegou: daqui em diante os balões são os dele. */
-  usar(base: BaseDoRosto, nivel: NivelDeDetalhe, sorteio: () => number): void {
+  /**
+   * O arquivo do artista chegou: daqui em diante os balões são os dele. `chapeus` é o carregador do arquivo dos chapéus (só baixa se
+   * alguém usa chapéu) e `aoGanharMalha` avisa que um balão ganhou um chapéu (o jogo refaz as variantes de qualidade).
+   */
+  usar(base: BaseDoRosto, nivel: NivelDeDetalhe, sorteio: () => number, chapeus: CarregadorDeChapeus | null = null, aoGanharMalha: () => void = () => undefined): void {
     this.artista?.descartar();
     this.artista?.grupo.removeFromParent();
-    this.artista = new BaloesDoArtista(this.cfg, base, nivel, sorteio, this.procedurais.quantos);
+    this.artista = new BaloesDoArtista(this.cfg, base, nivel, sorteio, this.procedurais.quantos, chapeus, aoGanharMalha);
     this.grupo.add(this.artista.grupo);
     this.procedurais.esconderTodos();
   }
@@ -45,6 +50,11 @@ export class BaloesDaCena implements BaloesEmCena {
 
   get quantos(): number {
     return this.procedurais.quantos;
+  }
+
+  /** O balão `i` veste a aparência pedida (só os balões do artista se vestem; o procedural ignora). */
+  definirAparencia(i: number, aparencia: AparenciaDoBalao): void {
+    this.artista?.definirAparencia(i, aparencia);
   }
 
   /** O nível de detalhe do balão do artista (malha alta ou baixa). */

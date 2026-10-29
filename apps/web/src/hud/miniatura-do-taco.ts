@@ -1,6 +1,9 @@
 import { TACO } from '@sinuca/fisica';
 import type { AparenciaTaco } from '../cena/aparencia-do-taco';
-import { miniaturaDoTaco, misturarCores, type DetalheDaMiniatura, type MiniaturaDoTaco, type PecaDaMiniatura } from './miniatura-do-taco-modelo';
+import { TAMANHO_DAS_IMAGENS, type ParteDeImagem } from '../cena/imagem-da-peca';
+import { PASTA_DAS_SKINS, carregarImagemDoNavegador } from '../cena/imagem-pintada';
+import type { ImagemRGBA } from '../cena/imagens-do-taco';
+import { arquivosPintados, imagensDaMiniatura, miniaturaDoTaco, misturarCores, pintadaNaMalha, vistaLateralDaImagem, type DetalheDaMiniatura, type ImagensDaMiniatura, type MiniaturaDoTaco, type PecaDaMiniatura } from './miniatura-do-taco-modelo';
 
 /** Quanto o desenho engorda o taco (o de verdade tem 1% de espessura e sumiria): é uma ilustração, não uma medida. */
 const ESPESSURA = 0.36;
@@ -8,9 +11,10 @@ const MARGEM = 4;
 
 /**
  * Pinta o taco de lado, da ponta (esquerda) ao cabo (direita), no canvas. Só 2D: a loja não abre um segundo renderer.
- * O tamanho vem do `width`/`height` do canvas, já em pixels do dispositivo.
+ * O tamanho vem do `width`/`height` do canvas, já em pixels do dispositivo. As peças levam as mesmas imagens do taco em cena (a trama
+ * gerada com a semente da aparência); `pintadas` (as artes do Pincel, de `carregarPinturas`) as substituem quando chegam.
  */
-export function desenharMiniatura(canvas: HTMLCanvasElement, aparencia: AparenciaTaco): void {
+export function desenharMiniatura(canvas: HTMLCanvasElement, aparencia: AparenciaTaco, pintadas: ImagensDaMiniatura = {}): void {
   const ctx = canvas.getContext('2d');
   if (!ctx) return;
   const plano = miniaturaDoTaco(aparencia, TACO);
@@ -22,8 +26,9 @@ export function desenharMiniatura(canvas: HTMLCanvasElement, aparencia: Aparenci
   const R = (H / 2 - margem) * Math.min(ESPESSURA * 2.2, 1);
   const meia = (f: number): number => raioEm(plano, f) * R;
 
+  const imagens: ImagensDaMiniatura = { ...imagensDaMiniatura(aparencia, TACO), ...pintadas };
   if (plano.halo) brilhoGeral(ctx, plano, x, centro, meia, W, H);
-  for (const peca of plano.pecas) pintarPeca(ctx, peca, x, centro, R);
+  for (const peca of plano.pecas) pintarPeca(ctx, peca, x, centro, R, imagens[peca.nome as ParteDeImagem]);
   for (const detalhe of plano.detalhes) pintarDetalhe(ctx, detalhe, x, centro, meia, R);
 }
 
@@ -53,7 +58,7 @@ function degrade(ctx: CanvasRenderingContext2D, cor: string, metal: boolean, cy:
   return g;
 }
 
-function pintarPeca(ctx: CanvasRenderingContext2D, p: PecaDaMiniatura, x: (f: number) => number, cy: number, R: number): void {
+function pintarPeca(ctx: CanvasRenderingContext2D, p: PecaDaMiniatura, x: (f: number) => number, cy: number, R: number, imagem?: ImagemRGBA): void {
   ctx.save();
   if (p.brilho !== null) {
     ctx.shadowColor = p.brilho;
@@ -66,7 +71,8 @@ function pintarPeca(ctx: CanvasRenderingContext2D, p: PecaDaMiniatura, x: (f: nu
   contorno(ctx, p, x, cy, R);
   ctx.clip();
   const largura = x(p.ate) - x(p.de);
-  if (p.trama === 'carbono') {
+  if (imagem) pintarImagem(ctx, imagem, x(p.de), largura, cy, R, p.metal);
+  else if (p.trama === 'carbono') {
     ctx.strokeStyle = 'rgba(255,255,255,0.16)';
     ctx.lineWidth = Math.max(R * 0.12, 1);
     for (let i = -R; i < largura + R; i += R * 0.45) {
@@ -86,6 +92,74 @@ function pintarPeca(ctx: CanvasRenderingContext2D, p: PecaDaMiniatura, x: (f: nu
     }
   }
   ctx.restore();
+}
+
+/** A imagem da peça vista de lado, por cima da cor, com o degradê que a faz parecer redonda (claro em cima, escuro embaixo). */
+function pintarImagem(ctx: CanvasRenderingContext2D, imagem: ImagemRGBA, x0: number, largura: number, cy: number, R: number, metal: boolean): void {
+  const w = Math.max(Math.round(largura), 1);
+  const h = Math.max(Math.round(2 * R), 2);
+  const lado = vistaLateralDaImagem(imagem, w, h);
+  const folha = document.createElement('canvas');
+  folha.width = w;
+  folha.height = h;
+  const fctx = folha.getContext('2d');
+  if (!fctx) return;
+  fctx.putImageData(new ImageData(new Uint8ClampedArray(lado.dados), w, h), 0, 0);
+  ctx.drawImage(folha, x0, cy - R, largura, 2 * R);
+  const g = ctx.createLinearGradient(0, cy - R, 0, cy + R);
+  g.addColorStop(0, `rgba(255,255,255,${metal ? 0.5 : 0.3})`);
+  g.addColorStop(0.38, 'rgba(255,255,255,0)');
+  g.addColorStop(1, 'rgba(0,0,0,0.5)');
+  ctx.fillStyle = g;
+  ctx.fillRect(x0, cy - R, largura, 2 * R);
+}
+
+/**
+ * Carrega as artes pintadas da skin (as peças que a aparência pinta, com o padrão raro da semente) e as leva à orientação da malha, no
+ * tamanho que a miniatura usa. Quem desenha chama `desenharMiniatura` de novo com o resultado. Vazio se a skin não pinta ou se a rede falhou.
+ */
+export async function carregarPinturas(aparencia: AparenciaTaco): Promise<ImagensDaMiniatura> {
+  const saida: ImagensDaMiniatura = {};
+  await Promise.all(
+    arquivosPintados(aparencia).map(async ({ parte, arquivo }) => {
+      const textura = await carregarImagemDoNavegador(PASTA_DAS_SKINS + arquivo);
+      const fonte = textura?.image as CanvasImageSource | undefined;
+      if (!fonte) return;
+      const base = TAMANHO_DAS_IMAGENS[parte];
+      const largura = Math.max(Math.round(base.largura / 2 / 16) * 16, 32);
+      const altura = Math.max(Math.round(base.altura / 2 / 16) * 16, 32);
+      const folha = document.createElement('canvas');
+      folha.width = largura;
+      folha.height = altura;
+      const ctx = folha.getContext('2d');
+      if (!ctx) return;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(fonte, 0, 0, largura, altura);
+      const dados = ctx.getImageData(0, 0, largura, altura);
+      saida[parte] = pintadaNaMalha({ largura, altura, dados: dados.data }, aparencia.variacao.rolo);
+    }),
+  );
+  return saida;
+}
+
+/**
+ * Um canvas com o taco da aparência desenhado, `largura` x `altura` em pixels CSS (o canvas leva o `devicePixelRatio`, até 2); se a skin
+ * tem arte pintada, ele se redesenha quando ela chega. Serve à loja e à barra de cima do menu (L40).
+ */
+export function criarCanvasDaMiniatura(aparencia: AparenciaTaco, largura: number, altura: number, classe: string): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.className = classe;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(largura * dpr);
+  canvas.height = Math.round(altura * dpr);
+  canvas.setAttribute('aria-hidden', 'true');
+  desenharMiniatura(canvas, aparencia);
+  if (arquivosPintados(aparencia).length > 0) {
+    void carregarPinturas(aparencia).then((pintadas) => {
+      if (Object.keys(pintadas).length > 0) desenharMiniatura(canvas, aparencia, pintadas);
+    });
+  }
+  return canvas;
 }
 
 function pintarDetalhe(ctx: CanvasRenderingContext2D, d: DetalheDaMiniatura, x: (f: number) => number, cy: number, meia: (f: number) => number, R: number): void {

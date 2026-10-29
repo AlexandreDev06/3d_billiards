@@ -4,11 +4,13 @@
  */
 
 /**
- * `heartbeat`: o servidor derrubou por falta de resposta ao ping; `envio-lento`: o buffer de envio estourou;
- * `tolerancia`: o cliente gastou a tolerância de recusas; `cliente-ou-rede`: ninguém do servidor encerrou
- * (fechou a aba, a rede sumiu, o navegador travou).
+ * `heartbeat`: o servidor derrubou por falta de resposta ao ping (no Worker, por silêncio); `envio-lento`: o buffer de envio
+ * estourou; `tolerancia`: o cliente gastou a tolerância de recusas; `tamanho` (só no Worker, L41b): a mensagem passou de
+ * `bytesPorMensagem` (o `ws` do Node fecha esse com 1009 sozinho); `cota-por-ip` (só no Worker, L41b): o endereço gastou o
+ * balde de mensagens de todas as suas conexões; `cliente-ou-rede`: ninguém do servidor encerrou (fechou a aba, a rede sumiu, o
+ * navegador travou).
  */
-export type OrigemDaQueda = 'cliente-ou-rede' | 'heartbeat' | 'envio-lento' | 'tolerancia';
+export type OrigemDaQueda = 'cliente-ou-rede' | 'heartbeat' | 'envio-lento' | 'tolerancia' | 'tamanho' | 'cota-por-ip';
 
 export interface DetalheDeSaida {
   /** Código de fechamento do WebSocket (1006 = a conexão sumiu sem fechar direito). */
@@ -39,13 +41,23 @@ export class RastroDaConexao {
   private origem: OrigemDaQueda = 'cliente-ou-rede';
   private presos = 0;
 
-  constructor(private readonly relogio: () => number) {
-    this.nasceuEm = this.ultimoSinal = relogio();
+  /** `ultimoSinal`: quando o cliente deu o último sinal, se já se sabe (o Worker o guarda no anexo do soquete e o recupera ao acordar da hibernação). */
+  constructor(
+    private readonly relogio: () => number,
+    ultimoSinal?: number,
+  ) {
+    this.nasceuEm = relogio();
+    this.ultimoSinal = ultimoSinal ?? this.nasceuEm;
   }
 
   /** O cliente deu sinal de vida (mensagem ou pong). */
   sinal(): void {
     this.ultimoSinal = this.relogio();
+  }
+
+  /** Há quanto tempo o cliente não dá sinal (ms); o transporte que não pode pingar (o Worker) derruba o que passa do limite dele. */
+  silencioMs(): number {
+    return this.relogio() - this.ultimoSinal;
   }
 
   amostrar(presosAgora: number): void {
@@ -58,10 +70,10 @@ export class RastroDaConexao {
     this.amostrar(presosAgora);
   }
 
-  saida(codigo: number, motivo: Buffer | string, presosAgora: number): DetalheDeSaida {
+  saida(codigo: number, motivo: Uint8Array | string, presosAgora: number): DetalheDeSaida {
     this.amostrar(presosAgora);
     const agora = this.relogio();
-    const texto = semControle(typeof motivo === 'string' ? motivo : motivo.toString('utf8'));
+    const texto = semControle(typeof motivo === 'string' ? motivo : new TextDecoder().decode(motivo));
     return {
       codigo,
       motivo: [...texto].slice(0, MOTIVO_MAXIMO).join(''),

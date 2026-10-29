@@ -40,7 +40,9 @@ export const LIMITES_GRAVACAO = {
 export const PASSO_POSICAO = 1e-4;
 
 const MAGIA = 0x47;
-const VERSAO = 1;
+/** Versão do formato dos bytes. 2 (L34): o `bola-tabela` leva o `parte` (nariz ou boca) depois da tabela. */
+export const VERSAO_DA_GRAVACAO = 2;
+const VERSAO = VERSAO_DA_GRAVACAO;
 const LIMITE_UNIDADES = Math.round(LIMITES_GRAVACAO.coordenada / PASSO_POSICAO);
 
 const BIT_X = 0x01;
@@ -55,6 +57,8 @@ const MAIOR_COMPONENTE = Math.SQRT1_2;
 const NIVEIS = 1023;
 
 const TIPOS = ['taco-bola', 'bola-bola', 'bola-tabela', 'cacapa', 'fora-da-mesa', 'parou'] as const;
+/** `parte` do `bola-tabela` no fio: o índice aqui (0 nariz, 1 boca). */
+const PARTES_DA_TABELA = ['nariz', 'boca'] as const;
 
 function invalido(motivo: string): never {
   throw new LeituraInvalida(motivo);
@@ -183,6 +187,12 @@ function codificarBola(e: Escritor, g: Gravacao, bola: number): void {
   fecharCorrida();
 }
 
+function codigoDaParte(parte: (typeof PARTES_DA_TABELA)[number]): number {
+  const codigo = PARTES_DA_TABELA.indexOf(parte);
+  if (codigo < 0) throw new RangeError('parte da tabela inválida');
+  return codigo;
+}
+
 function codificarEvento(e: Escritor, ev: EventoTacada): void {
   e.u8(TIPOS.indexOf(ev.tipo));
   if (!Number.isFinite(ev.t) || ev.t < 0) throw new RangeError('instante de evento inválido');
@@ -201,6 +211,7 @@ function codificarEvento(e: Escritor, ev: EventoTacada): void {
     case 'bola-tabela':
       e.varint(ev.bola);
       e.varint(ev.tabela);
+      e.u8(codigoDaParte(ev.parte));
       e.f64(ev.velocidade);
       break;
     case 'cacapa': {
@@ -309,8 +320,13 @@ function lerEvento(l: Leitor): EventoTacada {
     }
     case 'bola-bola':
       return { tipo, t, a: id(), b: id(), velocidade: real() };
-    case 'bola-tabela':
-      return { tipo, t, bola: id(), tabela: id(), velocidade: real() };
+    case 'bola-tabela': {
+      const bola = id();
+      const tabela = id();
+      const parte = PARTES_DA_TABELA[l.u8()];
+      if (parte === undefined) invalido('parte da tabela inválida');
+      return { tipo, t, bola, tabela, parte, velocidade: real() };
+    }
     case 'cacapa': {
       const bola = id();
       const tamanho = l.varint();

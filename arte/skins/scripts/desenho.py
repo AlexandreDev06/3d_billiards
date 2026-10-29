@@ -84,6 +84,16 @@ def fita(centro, larguras, fechado=False):
     m = len(centro)
     if not isinstance(larguras, (list, tuple)):
         larguras = [larguras] * m
+    elif len(larguras) != m:
+        # as larguras são "chaves" ao longo da linha-mestra: reamostra por interpolação linear
+        k = len(larguras)
+        nova = []
+        for i in range(m):
+            f = (i / (m - 1)) * (k - 1) if m > 1 else 0.0
+            j = min(int(f), k - 2) if k > 1 else 0
+            tt = f - j
+            nova.append(larguras[j] + (larguras[min(j + 1, k - 1)] - larguras[j]) * tt)
+        larguras = nova
     ns = normais(centro, fechado)
     esq = [(p[0] + n[0] * w / 2, p[1] + n[1] * w / 2) for p, n, w in zip(centro, ns, larguras)]
     dir_ = [(p[0] - n[0] * w / 2, p[1] - n[1] * w / 2) for p, n, w in zip(centro, ns, larguras)]
@@ -136,25 +146,30 @@ class Pose:
     """Leva coordenadas locais (mm) ao canvas: gira, escala, espelha, translada e comprime na horizontal (`fh`).
 
     `fh` é a compensação do cone: no taco, u dá a volta numa circunferência que cresce do bico ao cabo, então o desenho
-    em mm reais pede x·(C_ref / C(q)) no canvas. Em formas pequenas a variação dentro da forma é desprezível.
+    em mm reais pede x·(C_ref / C(q)) no canvas. Pode ser um número (formas pequenas) ou uma função da altura y do canvas
+    (figuras grandes): a figura então acompanha o cone ponto a ponto. A compressão é em volta do centro (`x`) da pose.
     """
 
     def __init__(self, x=0.0, y=0.0, escala=1.0, giro=0.0, espelho=False, fh=1.0):
         self.x, self.y, self.escala, self.giro, self.espelho, self.fh = x, y, escala, giro, espelho, fh
 
-    def __call__(self, pts):
+    def _um(self, px, py):
         c, s = math.cos(self.giro), math.sin(self.giro)
-        saida = []
-        for px, py in pts:
-            px *= -self.escala if self.espelho else self.escala
-            py *= self.escala
-            saida.append((self.x + (px * c - py * s) * self.fh, self.y + px * s + py * c))
+        px *= -self.escala if self.espelho else self.escala
+        py *= self.escala
+        dx, dy = px * c - py * s, px * s + py * c
+        yy = self.y + dy
+        f = self.fh(yy) if callable(self.fh) else self.fh
+        return (self.x + dx * f, yy)
+
+    def __call__(self, pts):
+        saida = [self._um(px, py) for px, py in pts]
         if self.espelho:
             saida.reverse()
         return saida
 
     def ponto(self, p):
-        return self([p])[0]
+        return self._um(p[0], p[1])
 
 
 def sorteio(semente):

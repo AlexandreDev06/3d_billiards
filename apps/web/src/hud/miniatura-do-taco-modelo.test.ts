@@ -1,8 +1,9 @@
 import { TACO } from '@sinuca/fisica';
-import { SKINS_DE_TACO } from '@sinuca/protocolo';
+import { SKINS_DE_TACO, padraoDaSemente, type SkinTaco } from '@sinuca/protocolo';
 import { describe, expect, it } from 'vitest';
-import { APARENCIAS_DO_TACO } from '../cena/aparencia-do-taco';
-import { corCss, miniaturaDoTaco, misturarCores } from './miniatura-do-taco-modelo';
+import { APARENCIAS_DO_TACO, aparenciaDoTaco } from '../cena/aparencia-do-taco';
+import type { ImagemRGBA } from '../cena/imagens-do-taco';
+import { arquivosPintados, corCss, imagensDaMiniatura, miniaturaDoTaco, misturarCores, pintadaNaMalha, vistaLateralDaImagem } from './miniatura-do-taco-modelo';
 
 const plano = (skin: keyof typeof APARENCIAS_DO_TACO) => miniaturaDoTaco(APARENCIAS_DO_TACO[skin], TACO);
 const peca = (skin: keyof typeof APARENCIAS_DO_TACO, nome: string) => plano(skin).pecas.find((p) => p.nome === nome)!;
@@ -122,7 +123,7 @@ describe('miniaturaDoTaco: os detalhes', () => {
 });
 
 describe('miniaturaDoTaco: o catálogo inteiro', () => {
-  it('cada uma das oito skins monta um plano com cores css válidas e frações dentro do taco', () => {
+  it('cada skin do catálogo monta um plano com cores css válidas e frações dentro do taco', () => {
     const css = /^#[0-9a-f]{6}$/;
     for (const { id } of SKINS_DE_TACO) {
       const p = plano(id);
@@ -137,5 +138,119 @@ describe('miniaturaDoTaco: o catálogo inteiro', () => {
         expect(d.ate, id).toBeGreaterThan(d.de);
       }
     }
+  });
+});
+
+const imagem = (largura: number, altura: number, cor: (x: number, y: number) => readonly [number, number, number]): ImagemRGBA => {
+  const dados = new Uint8ClampedArray(largura * altura * 4);
+  for (let y = 0; y < altura; y++) {
+    for (let x = 0; x < largura; x++) {
+      const [r, g, b] = cor(x, y);
+      dados.set([r, g, b, 255], (y * largura + x) * 4);
+    }
+  }
+  return { largura, altura, dados };
+};
+const pixel = (i: ImagemRGBA, x: number, y: number): number[] => [...i.dados.slice((y * i.largura + x) * 4, (y * i.largura + x) * 4 + 3)];
+
+describe('imagensDaMiniatura (L35)', () => {
+  it('traz as imagens que o taco desenharia, em metade do tamanho', () => {
+    const imagens = imagensDaMiniatura(aparenciaDoTaco('tempera', 44), TACO);
+    for (const parte of ['haste', 'antebraco'] as const) {
+      expect(imagens[parte], parte).toBeDefined();
+      expect(imagens[parte]!.dados).toHaveLength(imagens[parte]!.largura * imagens[parte]!.altura * 4);
+    }
+    expect(imagens.haste!.largura).toBe(64);
+    expect(imagens.haste!.altura).toBe(256);
+  });
+
+  it('é determinística: a mesma semente dá os mesmos pixels, e outra semente dá outros', () => {
+    const a = imagensDaMiniatura(aparenciaDoTaco('resina-marmorizada', 10), TACO).haste!;
+    const b = imagensDaMiniatura(aparenciaDoTaco('resina-marmorizada', 10), TACO).haste!;
+    const c = imagensDaMiniatura(aparenciaDoTaco('resina-marmorizada', 11), TACO).haste!;
+    expect(Buffer.from(a.dados).equals(Buffer.from(b.dados))).toBe(true);
+    expect(Buffer.from(a.dados).equals(Buffer.from(c.dados))).toBe(false);
+  });
+
+  it('a Blue Gem da Têmpera é azul: o azul domina o vermelho na haste, e a Têmpera comum não', () => {
+    const media = (i: ImagemRGBA): number[] => {
+      const soma = [0, 0, 0];
+      for (let k = 0; k < i.dados.length; k += 4) for (let c = 0; c < 3; c++) soma[c]! += i.dados[k + c]!;
+      return soma.map((v) => v / (i.dados.length / 4));
+    };
+    const blue = Array.from({ length: 1000 }, (_, i) => i).find((i) => padraoDaSemente('tempera', i)?.selo === 'BLUE GEM')!;
+    const comum = Array.from({ length: 1000 }, (_, i) => i).find((i) => padraoDaSemente('tempera', i) === null || padraoDaSemente('tempera', i)?.rara !== true)!;
+    const [r, g, b] = media(imagensDaMiniatura(aparenciaDoTaco('tempera', blue), TACO).haste!);
+    expect(b!).toBeGreaterThan(r! * 1.8);
+    expect(b!).toBeGreaterThan(g!);
+    const [r2, , b2] = media(imagensDaMiniatura(aparenciaDoTaco('tempera', comum), TACO).haste!);
+    expect(b2!).toBeLessThan(r2! * 1.8);
+  });
+});
+
+describe('arquivosPintados (L35)', () => {
+  it('as skins geradas por código não têm arte pintada', () => {
+    for (const skin of ['classico', 'neon', 'tempera', 'obsidiana']) expect(arquivosPintados(aparenciaDoTaco(skin)), skin).toEqual([]);
+  });
+
+  it('Coral só pinta o antebraço; Dragon Lore, a haste, o antebraço e a base; Howl, a haste, o antebraço e o punho', () => {
+    expect(arquivosPintados(aparenciaDoTaco('coral'))).toEqual([{ parte: 'antebraco', arquivo: 'coral-antebraco.png' }]);
+    expect(arquivosPintados(aparenciaDoTaco('dragao-das-quinze')).map((p) => p.parte)).toEqual(['haste', 'antebraco', 'base']);
+    expect(arquivosPintados(aparenciaDoTaco('corujao')).map((p) => p.parte)).toEqual(['haste', 'antebraco', 'punho']);
+  });
+
+  it('as pinturas pedidas são as novas: `dragon-lore-*` e `howl-*`, nunca as do P2', () => {
+    expect(arquivosPintados(aparenciaDoTaco('dragao-das-quinze')).map((p) => p.arquivo)).toEqual(['dragon-lore-haste.png', 'dragon-lore-antebraco.png', 'dragon-lore-base.png']);
+    expect(arquivosPintados(aparenciaDoTaco('corujao')).map((p) => p.arquivo)).toEqual(['howl-haste.png', 'howl-antebraco.png', 'howl-punho.png']);
+  });
+
+  it('a semente rara do catálogo troca cada arquivo pelo `-raro.png` do Pincel (Lobo da Geada); a comum, não', () => {
+    const rara = (skin: SkinTaco): number => Array.from({ length: 1000 }, (_, i) => i).find((i) => padraoDaSemente(skin, i)?.rara === true)!;
+    const comum = (skin: SkinTaco): number => Array.from({ length: 1000 }, (_, i) => i).find((i) => padraoDaSemente(skin, i)?.rara !== true)!;
+    expect(arquivosPintados(aparenciaDoTaco('corujao', rara('corujao'))).map((p) => p.arquivo)).toEqual(['howl-haste-raro.png', 'howl-antebraco-raro.png', 'howl-punho-raro.png']);
+    expect(arquivosPintados(aparenciaDoTaco('corujao', comum('corujao'))).map((p) => p.arquivo)).toEqual(['howl-haste.png', 'howl-antebraco.png', 'howl-punho.png']);
+    expect(arquivosPintados(aparenciaDoTaco('dragao-das-quinze', rara('dragao-das-quinze'))).map((p) => p.arquivo)).toEqual(['dragon-lore-haste-raro.png', 'dragon-lore-antebraco-raro.png', 'dragon-lore-base-raro.png']);
+  });
+});
+
+describe('pintadaNaMalha (L35)', () => {
+  it('vira a imagem de cabeça para baixo (a linha de baixo do PNG é a ponta, a linha 0 da malha) e espelha em x (repeat.x = −1)', () => {
+    // 4 colunas por 2 linhas; a cor diz a coluna (r) e a linha (g) de origem no PNG.
+    const png = imagem(4, 2, (x, y) => [x * 10, y * 100, 0]);
+    const malha = pintadaNaMalha(png, 0);
+    // Linha 0 da malha = linha de baixo do PNG (y = 1); x espelhado: a coluna 0 da malha vem da última do PNG.
+    expect(pixel(malha, 0, 0)).toEqual([30, 100, 0]);
+    expect(pixel(malha, 3, 0)).toEqual([0, 100, 0]);
+    expect(pixel(malha, 0, 1)).toEqual([30, 0, 0]);
+    expect(malha.dados[3]).toBe(255);
+  });
+
+  it('o rolo gira a arte em volta, sem emenda: rolo 0,25 em 4 colunas anda uma coluna', () => {
+    const png = imagem(4, 1, (x) => [x * 10, 0, 0]);
+    const a = pintadaNaMalha(png, 0);
+    const b = pintadaNaMalha(png, 0.25);
+    for (let x = 0; x < 4; x++) expect(pixel(b, x, 0)[0]).toBe(pixel(a, (x + 3) % 4, 0)[0]);
+    // Uma volta inteira de rolo é a mesma imagem.
+    expect(Buffer.from(pintadaNaMalha(png, 1).dados).equals(Buffer.from(a.dados))).toBe(true);
+  });
+});
+
+describe('vistaLateralDaImagem (L35)', () => {
+  it('a peça vista de lado: a imagem tem o tamanho pedido, opaca, com a ponta (linha 0) à esquerda', () => {
+    const origem = imagem(8, 4, (_x, y) => [y * 60, 0, 0]);
+    const lado = vistaLateralDaImagem(origem, 16, 6);
+    expect(lado.largura).toBe(16);
+    expect(lado.altura).toBe(6);
+    expect(lado.dados[3]).toBe(255);
+    // Ao longo da peça: a esquerda vem da linha 0 (ponta), a direita da última (cabo).
+    expect(pixel(lado, 0, 3)[0]).toBeLessThan(pixel(lado, 15, 3)[0]!);
+  });
+
+  it('o `centro` escolhe o lado da volta que fica virado para quem olha', () => {
+    // Em volta: a coluna diz o ângulo (0 = alto do taco).
+    const origem = imagem(8, 2, (x) => [x * 30, 0, 0]);
+    const emCima = vistaLateralDaImagem(origem, 4, 8, 0.25);
+    const outroLado = vistaLateralDaImagem(origem, 4, 8, 0.75);
+    expect(pixel(emCima, 1, 4)).not.toEqual(pixel(outroLado, 1, 4));
   });
 });

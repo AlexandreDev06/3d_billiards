@@ -1,5 +1,5 @@
 import { teclaEmCampo } from '../controles/campo';
-import { enderecoCurto, type CreditoDeAsset } from './creditos-modelo';
+import { enderecoCurto, separarCreditos, type CreditoDeAsset } from './creditos-modelo';
 
 export interface PainelDeCreditos {
   readonly aberto: boolean;
@@ -21,7 +21,10 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, classe: string, texto
   return e;
 }
 
-/** A tela de créditos dos sons (e do que mais entrar em `docs/creditos.md`), aberta pelo botão da ajuda. */
+/**
+ * A tela de créditos, aberta pelo botão da ajuda: os sons de terceiros (autor, licença e link) e, separada, a arte do
+ * time (sem crédito a terceiros), as duas saídas de `docs/creditos.md`.
+ */
 export function criarPainelDeCreditos(pai: HTMLElement, opcoes: OpcoesDoPainelDeCreditos): PainelDeCreditos {
   const raiz = el('aside', 'creditos-jogo');
   raiz.hidden = true;
@@ -35,8 +38,9 @@ export function criarPainelDeCreditos(pai: HTMLElement, opcoes: OpcoesDoPainelDe
   cabecalho.append(el('strong', 'creditos-titulo', 'Créditos'), fechar);
   raiz.append(cabecalho, el('p', 'creditos-nota', 'Os sons são gravações de terceiros em domínio público (CC0), do Freesound. Obrigado a quem as compartilhou.'));
 
+  const { terceiros, autorais } = separarCreditos(opcoes.creditos);
   const lista = el('ul', 'creditos-lista');
-  for (const c of opcoes.creditos) {
+  for (const c of terceiros) {
     const item = el('li', 'creditos-item');
     const topo = el('div', 'creditos-topo');
     topo.append(el('strong', 'creditos-autor', c.autor), el('span', 'creditos-licenca', c.licenca));
@@ -52,6 +56,18 @@ export function criarPainelDeCreditos(pai: HTMLElement, opcoes: OpcoesDoPainelDe
     lista.append(item);
   }
   raiz.append(lista);
+  if (autorais.length > 0) {
+    raiz.append(el('p', 'creditos-nota creditos-nota-arte', 'A arte do boteco e o letreiro são do próprio time, feitos para o jogo.'));
+    const listaArte = el('ul', 'creditos-lista creditos-lista-arte');
+    for (const c of autorais) {
+      const item = el('li', 'creditos-item');
+      const topo = el('div', 'creditos-topo');
+      topo.append(el('strong', 'creditos-autor', c.autor), el('span', 'creditos-licenca', c.licenca));
+      item.append(topo, el('div', 'creditos-arquivos', c.descricao));
+      listaArte.append(item);
+    }
+    raiz.append(listaArte);
+  }
   pai.append(raiz);
 
   let abertoAgora = false;

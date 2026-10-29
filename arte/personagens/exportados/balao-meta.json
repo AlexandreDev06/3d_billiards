@@ -1,5 +1,7 @@
 {
   "arquivo": "balao.glb",
+  "versao": 3,
+  "revisao": "P8 (2026-10-28): contrato v3 (amplia o v2, nada do v2 muda): âncora do chapéu, 5 bigodes, 4 estilos de olho (as 3 formas `estilo_*` ao fim de `formas.nomes`), 8 cores de olho; o rosto do P7b continua o mesmo, com os mesmos nomes, a mesma ordem e as mesmas ações",
   "unidades": "metros; origem no centro do corpo; o rosto olha para +Z (yaw 0 do jogo); +X é a esquerda do balão (a direita de quem o vê de frente)",
   "tamanho_repouso_cm": {
     "metade_altura": 6.6,
@@ -9,18 +11,38 @@
   },
   "malhas": {
     "balao_alta": {
-      "triangulos": 2870
+      "triangulos": 18850
     },
     "balao_baixa": {
-      "triangulos": 780
+      "triangulos": 3564
     }
   },
   "materiais": {
-    "latex_glb": "branco, o jogo tinge com a cor da equipe (verniz KHR_materials_clearcoat)",
-    "olho_branco": "globo e reflexos",
-    "rosto_preto": "pupila, sobrancelha, boca",
-    "lingua": "língua e bochecha",
-    "cordinha": "cordinha e nó em creme"
+    "latex_glb": "branco com a cor de vértice COLOR_0 (o jogo tinge com a cor da equipe e liga `vertexColors: true`); verniz KHR_materials_clearcoat",
+    "olho": "esclera do `olho_normal` (textura 256, branca limpa com sombra só na borda); a íris é uma segunda pele, o material `iris` (cinza, tingível, ver `estilos_de_olho` e `cores_de_olho`), com a pupila grande e nítida em geometria",
+    "iris": "íris em tons de cinza (textura 256 + a cor do olho em `color` e em `emissive` x 0,30); o arquivo já vem castanho",
+    "olheira": "crescente macio (alfa) sob o olho, só do estilo cansado; escondido sob a pele nos outros (material `olheira`, alphaMode BLEND)",
+    "rosto_preto": "sobrancelha, delineador da pálpebra de cima e a fita do olho fechado (o arco \"^ ^\" com cílio)",
+    "lingua": "língua",
+    "cordinha": "fita da cordinha, em creme",
+    "brilho": "reflexos (presos à espinha_2)",
+    "bochecha": "textura 64 com alfa (alphaMode BLEND), rubor rosa e macio; é emissivo (continua rosa sob qualquer luz e sobre azul, laranja, verde ou violeta); o jogo tinge o corpo, não a bochecha",
+    "dente": "dentes",
+    "boca": "interior da boca"
+  },
+  "latex_proposta": {
+    "aviso": "números para o jogo experimentar no `MeshPhysicalMaterial` do látex (nenhum código do jogo foi mexido); o .glb já leva o que cabe no formato",
+    "roughness": 0.2,
+    "metalness": 0.0,
+    "clearcoat": 1.0,
+    "clearcoatRoughness": 0.05,
+    "sheen": 0.25,
+    "sheenRoughness": 0.45,
+    "sheenColor_dica": "a cor da equipe clareada a 40 por cento (o brilho de veludo que o látex tem na borda)",
+    "specularIntensity": 0.5,
+    "ior": 1.45,
+    "vertexColors": true,
+    "cor_de_vertice": "COLOR_0 em tons de cinza multiplicando a cor da equipe: {\"minimo\": 0.484, \"maximo\": 1.0, \"media\": 0.886}; 1,0 é a cor da equipe pura no ventre esticado (onde o látex fica mais claro) e o valor cai no pescoço e no nó (látex dobrado, mais escuro); sem `vertexColors` o balão fica chapado, mas continua certo"
   },
   "formas": {
     "nomes": [
@@ -29,9 +51,96 @@
       "cara_susto",
       "cara_bravo",
       "cara_triste",
-      "piscar"
+      "piscar",
+      "cara_rindo",
+      "cara_convencido",
+      "cara_concentrado",
+      "cara_desconfiado",
+      "cara_ufa",
+      "cara_tedio",
+      "cara_comemorando",
+      "piscar_esq",
+      "piscar_dir",
+      "palpebra_cima",
+      "palpebra_baixo",
+      "estilo_kawaii",
+      "estilo_bravo",
+      "estilo_cansado"
     ],
-    "uso": "morph targets em `morphTargetDictionary`; peso 0 é o rosto neutro; `cara_neutro` é o rosto-base e só existe pelo nome; `piscar` soma às caras (peso 1 fecha as pálpebras, ao multiplicar a cara por 1 - piscar o resto fica certo); o GLTFLoader cria um filho por material: aplique o peso nos `morphTargetInfluences` de TODOS os filhos de `balao_alta`/`balao_baixa`"
+    "uso": "morph targets em `morphTargetDictionary`; peso 0 é o rosto neutro; `cara_neutro` é o rosto-base e só existe pelo nome; uma cara por vez (peso 1) e `piscar` soma às caras: a cara multiplicada por (1 - piscar) mais `piscar` fecha direito; o GLTFLoader cria um filho por material: aplique o peso nos `morphTargetInfluences` de TODOS os filhos de `balao_alta`/`balao_baixa`"
+  },
+  "olho_fechado": {
+    "caras": [
+      "cara_rindo",
+      "cara_comemorando"
+    ],
+    "como": "nestas caras e em `piscar`, `piscar_esq` e `piscar_dir` o globo, os reflexos e as pálpebras AFUNDAM 1.65 cm na pele (ao longo da normal) e uma fita escura sobe à pele no lugar: o arco \"^ ^\" com um cílio na ponta de fora (com o olho aberto a fita fica 0.50 cm por baixo da pele). O jogo não precisa fazer nada: o osso do olho continua girando em volta do centro de repouso e o globo fica escondido (provado até 34 graus), e as formas se somam sem pálpebra inchada: uma piscadinha de um olho só aguenta a cara inteira (peso 1)"
+  },
+  "caras": [
+    "cara_neutro",
+    "cara_sorriso",
+    "cara_susto",
+    "cara_bravo",
+    "cara_triste",
+    "cara_rindo",
+    "cara_convencido",
+    "cara_concentrado",
+    "cara_desconfiado",
+    "cara_ufa",
+    "cara_tedio",
+    "cara_comemorando"
+  ],
+  "abertura_da_cara": {
+    "cara_neutro": 1.0,
+    "cara_sorriso": 0.856,
+    "cara_susto": 1.0,
+    "cara_bravo": 0.55,
+    "cara_triste": 0.7,
+    "cara_rindo": 0.0,
+    "cara_convencido": 0.45,
+    "cara_concentrado": 0.6,
+    "cara_desconfiado": 0.45,
+    "cara_ufa": 0.6,
+    "cara_tedio": 0.5,
+    "cara_comemorando": 0.0
+  },
+  "piscar": {
+    "formas": {
+      "os_dois": "piscar",
+      "esquerdo": "piscar_esq",
+      "direito": "piscar_dir"
+    },
+    "regra": "piscar dos dois olhos: peso_da_cara = (1 - p) e piscar = p (p vai 0 -> 1 -> 0 em uns 6 quadros; fechar é mais rápido que abrir)",
+    "piscadinha": "um olho só: some `piscar_esq` ou `piscar_dir` (peso 1) por cima da cara. O olho que fecha afunda na pele (`olho_fechado`), então a soma não deixa fresta nem pálpebra inchada e `peso_da_cara_na_piscadinha` é 1 em todas as caras (o campo fica no contrato: se uma cara nova precisar, o valor cai abaixo de 1 e o jogo já o lê)",
+    "peso_da_cara_na_piscadinha": {
+      "cara_neutro": 1.0,
+      "cara_sorriso": 1.0,
+      "cara_susto": 1.0,
+      "cara_bravo": 1.0,
+      "cara_triste": 1.0,
+      "cara_rindo": 1.0,
+      "cara_convencido": 1.0,
+      "cara_concentrado": 1.0,
+      "cara_desconfiado": 1.0,
+      "cara_ufa": 1.0,
+      "cara_tedio": 1.0,
+      "cara_comemorando": 1.0
+    }
+  },
+  "palpebras": {
+    "cima": {
+      "forma": "palpebra_cima",
+      "olhar_graus_para_peso_1": 34.0,
+      "gira_graus_no_peso_1": 12.0,
+      "quando": "o olhar sobe: as pálpebras acompanham o globo para cima"
+    },
+    "baixo": {
+      "forma": "palpebra_baixo",
+      "olhar_graus_para_peso_1": 34.0,
+      "gira_graus_no_peso_1": 12.0,
+      "quando": "o olhar desce: as pálpebras acompanham o globo para baixo"
+    },
+    "regra": "peso_cima = clamp(olhar_vertical_para_cima / olhar_graus_para_peso_1, 0, 1) * abertura_da_cara[cara]; peso_baixo igual para baixo; só um dos dois por vez; com os olhos fechados (`piscar` ou cara de olho fechado) o peso é zero. Sem a regra as pálpebras ficam paradas, o que é só um pouco menos vivo"
   },
   "olhos": {
     "olho_esq": {
@@ -62,17 +171,343 @@
     }
   },
   "olhar": {
-    "limite_graus": 30.0,
-    "como": "no carregamento, eixo_repouso_no_pai = inverse(quaternion_mundial_do_pai) * eixo_do_olhar_no_repouso e quaternion_de_repouso = quaternion do osso do olho; a cada quadro (depois do mixer), q = setFromUnitVectors(eixo_repouso_no_pai, direcao_do_alvo_no_pai), com o ângulo limitado a `limite_graus`, e osso.quaternion = q * quaternion_de_repouso; `olharPara` em arte/visor/balao.js é a conta pronta"
+    "limite_graus": 34.0,
+    "como": "no carregamento, eixo_repouso_no_pai = inverse(quaternion_mundial_do_pai) * eixo_do_olhar_no_repouso e quaternion_de_repouso = quaternion do osso do olho; a cada quadro (depois do mixer), q = setFromUnitVectors(eixo_repouso_no_pai, direcao_do_alvo_no_pai), com o ângulo limitado a `limite_graus`, e osso.quaternion = q * quaternion_de_repouso; `olharPara` em arte/visor/balao.js é a conta pronta; até `limite_graus` a íris continua visível (84 por cento ou mais da área) e as pálpebras (com `palpebras` e `abertura_da_cara`) abraçam o globo sem fresta nem mancha de látex"
+  },
+  "cordinha": {
+    "simulada": true,
+    "ossos": [
+      "cordinha_1",
+      "cordinha_2",
+      "cordinha_3",
+      "cordinha_4"
+    ],
+    "pai_da_primeira": "no",
+    "comprimento_de_cada_junta_m": [
+      0.01842,
+      0.01822,
+      0.01816,
+      0.01842
+    ],
+    "comprimento_total_m": 0.07323,
+    "largura_m": 0.004,
+    "direcao_de_repouso": "para baixo (-Y do glTF), com uma leve onda; cada osso aponta para a cabeça do próximo",
+    "massa_sugerida_g_por_junta": 0.12,
+    "amortecimento_sugerido": 0.9,
+    "como": "as ações NÃO têm chave nos ossos `cordinha_*`: o jogo simula a corrente (pêndulo encadeado preso ao osso `no`, que acompanha a `raiz`) e escreve a rotação de cada junta depois do mixer; as 4 juntas têm o comprimento acima, e o limite de dobra sugerido é 55 graus por junta",
+    "limite_de_dobra_graus": 55
+  },
+  "ancora_chapeu": {
+    "no": "ancora_chapeu",
+    "pai": "espinha_3",
+    "posicao_repouso_m": [
+      0.0,
+      0.066,
+      0.0
+    ],
+    "posicao_no_pai_m": [
+      0.0,
+      0.04,
+      0.0
+    ],
+    "rotacao_no_pai": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "eixo_para_fora": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "o_que_e": "o ponto do alto da cabeça, no topo da curva do balão. A origem de cada chapéu de `chapeus.glb` é o ponto que encosta aqui, com +Y para fora da cabeça.",
+    "acompanha": "o nó é filho do osso `espinha_3` (o topo): sobe, desce e inclina com o pulo, o inclinar, o estufar e o murchar. Se o chapéu for só filho do nó, ele herda também a escala do osso (estica e amassa), que vai a mais de 1,4 no estufar e a 0,7 no murchar: o chapéu amassaria junto. Por isso há uma regra de escala (`escala_do_chapeu`).",
+    "escala_do_chapeu": {
+      "formula": "escala_final = clamp(1 + segue * (escala_do_no - 1), piso, teto); escala_local_do_chapeu = escala_final / escala_do_no (em cada eixo, a escala do nó vista no mundo)",
+      "largura": {
+        "segue": 0.65,
+        "piso": 0.88,
+        "teto": 1.32
+      },
+      "altura": {
+        "segue": 0.3,
+        "piso": 0.88,
+        "teto": 1.14
+      }
+    },
+    "medido_nas_13_acoes": {
+      "escala_no_mundo": {
+        "largura_x": [
+          0.94,
+          1.42
+        ],
+        "largura_z": [
+          0.94,
+          1.42
+        ],
+        "altura_y": [
+          0.69,
+          1.48
+        ]
+      },
+      "inclinacao_maxima_graus": 19.2,
+      "altura_do_topo_m": [
+        0.0011,
+        0.1475
+      ]
+    }
+  },
+  "bigodes": {
+    "ids": [
+      "bigode_fino",
+      "bigodao",
+      "bigode_guidao",
+      "bigode_dali",
+      "bigode_chevron"
+    ],
+    "itens": {
+      "bigode_fino": {
+        "no_alta": "bigode_fino_alta",
+        "no_baixa": "bigode_fino_baixa",
+        "pai": "espinha_2",
+        "triangulos": {
+          "alta": 188,
+          "baixa": 52
+        },
+        "cor": "preto",
+        "cor_hex": "#3C383D",
+        "material": "bigode_preto"
+      },
+      "bigodao": {
+        "no_alta": "bigodao_alta",
+        "no_baixa": "bigodao_baixa",
+        "pai": "espinha_2",
+        "triangulos": {
+          "alta": 456,
+          "baixa": 184
+        },
+        "cor": "castanho",
+        "cor_hex": "#815F42",
+        "material": "bigode_castanho"
+      },
+      "bigode_guidao": {
+        "no_alta": "bigode_guidao_alta",
+        "no_baixa": "bigode_guidao_baixa",
+        "pai": "espinha_2",
+        "triangulos": {
+          "alta": 562,
+          "baixa": 150
+        },
+        "cor": "grisalho",
+        "cor_hex": "#AAAAAD",
+        "material": "bigode_grisalho"
+      },
+      "bigode_dali": {
+        "no_alta": "bigode_dali_alta",
+        "no_baixa": "bigode_dali_baixa",
+        "pai": "espinha_2",
+        "triangulos": {
+          "alta": 580,
+          "baixa": 236
+        },
+        "cor": "preto",
+        "cor_hex": "#3C383D",
+        "material": "bigode_preto"
+      },
+      "bigode_chevron": {
+        "no_alta": "bigode_chevron_alta",
+        "no_baixa": "bigode_chevron_baixa",
+        "pai": "espinha_2",
+        "triangulos": {
+          "alta": 376,
+          "baixa": 104
+        },
+        "cor": "castanho",
+        "cor_hex": "#815F42",
+        "material": "bigode_castanho"
+      }
+    },
+    "oculto_por_padrao": "cada nó sai com escala 0 e `extras.oculto_por_padrao` (o three 0.186 não lê KHR_node_visibility): para mostrar o bigode equipado, `no.scale.set(1, 1, 1)`; os outros ficam como estão",
+    "como": "os nós são malhas comuns (sem pele) filhas do osso `espinha_2`, o mesmo do rosto inteiro: o bigode anda exatamente como a boca. Têm as mesmas 20 formas do rosto (`formas.nomes`), na mesma ordem: aplique em cada bigode visível os MESMOS pesos que usa em `balao_alta`/`balao_baixa` (o morph só leva a posição; as `estilo_*` e as pálpebras não mexem nele). Fica colado sobre o lábio de cima em todas as caras e nunca desce ao queixo (nada de barba).",
+    "nome_dos_nos": "o id do contrato mais `_alta` ou `_baixa` (por exemplo `bigode_fino_alta`, `bigodao_baixa`): não há prefixo `bigode_` a mais",
+    "cores_do_pelo": {
+      "preto": "#3C383D",
+      "castanho": "#815F42",
+      "grisalho": "#AAAAAD"
+    },
+    "cor": "fixa por item (textura de fios `cabelo_*`, sheen leve); não tinge com a cor da equipe"
+  },
+  "estilos_de_olho": {
+    "ids": [
+      "olho_normal",
+      "olho_kawaii",
+      "olho_bravo",
+      "olho_cansado"
+    ],
+    "itens": {
+      "olho_normal": {
+        "forma": null,
+        "esclera": {
+          "material": "olho",
+          "textura": "esclera_normal.png (256 px, embutida)",
+          "no_corpo": "o `balao_alta`/`balao_baixa` já vêm com o `olho_normal`; os outros estilos têm o material na vitrine `estilos_de_olho`"
+        },
+        "iris": {
+          "material": "iris",
+          "textura": "iris_normal.png (256 px, em tons de cinza, embutida)",
+          "tinge": "material.color = cor do olho; material.emissive = cor do olho x 0,30 (o arquivo já traz o castanho assim)",
+          "no_corpo": "a malha `iris` do corpo"
+        },
+        "iris_escala": 1.0,
+        "pupila_escala": 1.0,
+        "brilhos": 2,
+        "olheira": false,
+        "palpebra_do_estilo": null,
+        "o_que_faz": "o olho de sempre",
+        "como_ligar": "nenhum: é o corpo"
+      },
+      "olho_kawaii": {
+        "forma": "estilo_kawaii",
+        "esclera": {
+          "material": "olho_kawaii",
+          "textura": "esclera_kawaii.png (256 px, embutida)",
+          "no_corpo": "troque o material `olho` dos dois níveis pelo material `olho_kawaii` (achado nos filhos da vitrine `estilos_de_olho`; clone-o)"
+        },
+        "iris": {
+          "material": "iris_kawaii",
+          "textura": "iris_kawaii.png (256 px, em tons de cinza, embutida)",
+          "tinge": "material.color = cor do olho; material.emissive = cor do olho x 0,30 (o arquivo já traz o castanho assim)",
+          "no_corpo": "troque o material `iris` dos dois níveis pelo `iris_kawaii` e tinja-o"
+        },
+        "iris_escala": 1.3,
+        "pupila_escala": 1.22,
+        "brilhos": 4,
+        "olheira": false,
+        "palpebra_do_estilo": null,
+        "o_que_faz": "íris e pupila maiores, quatro reflexos e sobrancelha um pouco mais alta",
+        "como_ligar": "peso 1 em `estilo_kawaii` (e 0 nas outras `estilo_*`), somado a qualquer cara, a `piscar` e às pálpebras do olhar; desligar = peso 0 e o material `olho_normal`"
+      },
+      "olho_bravo": {
+        "forma": "estilo_bravo",
+        "esclera": {
+          "material": "olho_bravo",
+          "textura": "esclera_bravo.png (256 px, embutida)",
+          "no_corpo": "troque o material `olho` dos dois níveis pelo material `olho_bravo` (achado nos filhos da vitrine `estilos_de_olho`; clone-o)"
+        },
+        "iris": {
+          "material": "iris_bravo",
+          "textura": "iris_bravo.png (256 px, em tons de cinza, embutida)",
+          "tinge": "material.color = cor do olho; material.emissive = cor do olho x 0,30 (o arquivo já traz o castanho assim)",
+          "no_corpo": "troque o material `iris` dos dois níveis pelo `iris_bravo` e tinja-o"
+        },
+        "iris_escala": 1.0,
+        "pupila_escala": 0.92,
+        "brilhos": 2,
+        "olheira": false,
+        "palpebra_do_estilo": "est_bravo",
+        "o_que_faz": "pálpebra de cima inclinada para dentro (a parte de dentro desce) e sobrancelha franzida",
+        "como_ligar": "peso 1 em `estilo_bravo` (e 0 nas outras `estilo_*`), somado a qualquer cara, a `piscar` e às pálpebras do olhar; desligar = peso 0 e o material `olho_normal`"
+      },
+      "olho_cansado": {
+        "forma": "estilo_cansado",
+        "esclera": {
+          "material": "olho_cansado",
+          "textura": "esclera_cansado.png (256 px, embutida)",
+          "no_corpo": "troque o material `olho` dos dois níveis pelo material `olho_cansado` (achado nos filhos da vitrine `estilos_de_olho`; clone-o)"
+        },
+        "iris": {
+          "material": "iris_cansado",
+          "textura": "iris_cansado.png (256 px, em tons de cinza, embutida)",
+          "tinge": "material.color = cor do olho; material.emissive = cor do olho x 0,30 (o arquivo já traz o castanho assim)",
+          "no_corpo": "troque o material `iris` dos dois níveis pelo `iris_cansado` e tinja-o"
+        },
+        "iris_escala": 0.94,
+        "pupila_escala": 0.8,
+        "brilhos": 1,
+        "olheira": true,
+        "palpebra_do_estilo": "est_cansado",
+        "o_que_faz": "esclera avermelhada com veinhas, olheira sob o olho e pálpebra caída, sobrancelha baixa",
+        "como_ligar": "peso 1 em `estilo_cansado` (e 0 nas outras `estilo_*`), somado a qualquer cara, a `piscar` e às pálpebras do olhar; desligar = peso 0 e o material `olho_normal`"
+      }
+    },
+    "vitrine": {
+      "no": "estilos_de_olho",
+      "o_que_e": "uma malha de seis triângulos minúsculos dentro do corpo, com escala 0, que só leva os materiais dos estilos que o corpo não usa: `olho_kawaii`, `iris_kawaii`, `olho_bravo`, `iris_bravo`, `olho_cansado`, `iris_cansado`. Não a mostre; leia os `material` dos seus filhos."
+    },
+    "regra_das_formas": "as `estilo_*` somam com as caras sem fresta nem mancha (provado em `provas_olhos.py` para cada estilo contra as 12 caras, o piscar, a piscadinha e o olhar até o limite): a pálpebra do estilo é uma casca à parte, que o giro do olhar move como as outras e que o olho fechado esconde sob a pele",
+    "limites_provados": {
+      "fresta_cm": 0.07,
+      "afundar_cm": -0.08,
+      "cantos_cm": 0.05,
+      "mancha_px": 8,
+      "iris_visivel_ate_o_limite_do_olhar": 0.84
+    }
+  },
+  "cores_de_olho": {
+    "ids": [
+      "castanho",
+      "mel",
+      "verde",
+      "azul",
+      "cinza",
+      "violeta",
+      "vermelho",
+      "dourado"
+    ],
+    "padrao": "castanho",
+    "cores": {
+      "castanho": {
+        "cor": "#B0702F",
+        "centro": "#D69A52",
+        "borda": "#5A3414"
+      },
+      "mel": {
+        "cor": "#F2AE24",
+        "centro": "#FFD067",
+        "borda": "#A8620C"
+      },
+      "verde": {
+        "cor": "#3FC263",
+        "centro": "#8FE39A",
+        "borda": "#17673A"
+      },
+      "azul": {
+        "cor": "#3F9CFF",
+        "centro": "#9BD0FF",
+        "borda": "#1B4FA8"
+      },
+      "cinza": {
+        "cor": "#BAC2CC",
+        "centro": "#E4E9EE",
+        "borda": "#566170"
+      },
+      "violeta": {
+        "cor": "#A060FF",
+        "centro": "#CBA6FF",
+        "borda": "#4F2599"
+      },
+      "vermelho": {
+        "cor": "#FF4141",
+        "centro": "#FF9A8A",
+        "borda": "#8E1426"
+      },
+      "dourado": {
+        "cor": "#FFD43D",
+        "centro": "#FFF09A",
+        "borda": "#B07A0A"
+      }
+    },
+    "como": "`cor` (sRGB) é o tom que tinge a íris cinza: material.color.set(cor) e material.emissive.set(cor).multiplyScalar(0,30). `centro` e `borda` são o par para quem quiser um gradiente (centro mais claro, borda mais escura); a íris cinza já dá esse efeito sozinha. A cor vale para qualquer estilo."
   },
   "ossos": {
     "raiz": "leva tudo (balanço, pulo)",
-    "espinha_1": "gira e escala a partir do pescoço (estufar, murchar, inclinar)",
-    "espinha_2": "meio do corpo e do rosto; pai dos olhos e dos pontos das mãos",
+    "espinha_1": "gira e escala a partir do pescoço (estufar, murchar, inclinar); o achatamento conserva o volume",
+    "espinha_2": "meio do corpo e do rosto; pai dos olhos, dos reflexos e dos pontos das mãos",
     "espinha_3": "topo",
     "no": "nó (filho da raiz; não escala com o corpo)",
-    "cordinha_1..4": "corrente da cordinha, do nó para baixo",
-    "olho_esq/olho_dir": "olhar"
+    "cordinha_1..4": "corrente da cordinha, do nó para baixo; SEM chave nas ações (o jogo simula)",
+    "olho_esq/olho_dir": "olhar; SEM chave nas ações (o jogo mira)"
   },
   "pontos_das_maos": {
     "mao_esq": {
@@ -95,6 +530,52 @@
     }
   },
   "acoes": {
+    "balao_bravo": {
+      "quadros": 60,
+      "fps": 30,
+      "segundos": 2.0,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_bravo",
+      "o_que_e": "enche, treme de raiva e solta o ar de uma vez (bufa)"
+    },
+    "balao_comemorar": {
+      "quadros": 66,
+      "fps": 30,
+      "segundos": 2.2,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_comemorando",
+      "o_que_e": "dois pulos com giro de lado a lado, um aperto no alto e um assentar"
+    },
+    "balao_concentrar": {
+      "quadros": 114,
+      "fps": 30,
+      "segundos": 3.8,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        30
+      ],
+      "ciclo_quadros": [
+        30,
+        114
+      ],
+      "cara_par": "cara_concentrado",
+      "o_que_e": "inclina para o alvo e respira devagar (a parte que repete)"
+    },
+    "balao_desanimar": {
+      "quadros": 84,
+      "fps": 30,
+      "segundos": 2.8,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_triste",
+      "o_que_e": "os ombros caem, o balão se inclina para o lado e baixa"
+    },
     "balao_estufar": {
       "quadros": 75,
       "fps": 30,
@@ -108,12 +589,29 @@
         27,
         75
       ],
-      "cara_par": "cara_sorriso"
+      "cara_par": "cara_sorriso",
+      "o_que_e": "enche o peito (fica 35 por cento maior) e segura respirando"
+    },
+    "balao_impaciente": {
+      "quadros": 78,
+      "fps": 30,
+      "segundos": 2.6,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        18
+      ],
+      "ciclo_quadros": [
+        18,
+        78
+      ],
+      "cara_par": "cara_tedio",
+      "o_que_e": "passa o peso de um lado para o outro e dá pulinhos de espera (a parte que repete)"
     },
     "balao_inclinar": {
-      "quadros": 84,
+      "quadros": 96,
       "fps": 30,
-      "segundos": 2.8,
+      "segundos": 3.2,
       "repete": false,
       "entrada_quadros": [
         0,
@@ -121,14 +619,15 @@
       ],
       "ciclo_quadros": [
         24,
-        84
+        96
       ],
-      "cara_par": "cara_neutro"
+      "cara_par": "cara_neutro",
+      "o_que_e": "o balão se inclina para o lado da jogada (entra em 0,8 s, depois balança de leve preso ao nó)"
     },
     "balao_murchar": {
-      "quadros": 84,
+      "quadros": 96,
       "fps": 30,
-      "segundos": 2.8,
+      "segundos": 3.2,
       "repete": false,
       "entrada_quadros": [
         0,
@@ -136,39 +635,69 @@
       ],
       "ciclo_quadros": [
         48,
-        84
+        96
       ],
-      "cara_par": "cara_triste"
+      "cara_par": "cara_triste",
+      "o_que_e": "afunda devagar, vira de lado e fica murcho"
     },
     "balao_parado": {
-      "quadros": 78,
+      "quadros": 180,
       "fps": 30,
-      "segundos": 2.6,
+      "segundos": 6.0,
       "repete": true,
       "entrada_quadros": null,
       "ciclo_quadros": [
         0,
-        78
+        180
       ],
-      "cara_par": "cara_neutro"
+      "cara_par": "cara_neutro",
+      "o_que_e": "respira e balança devagar, sem repetir o gesto (ciclo longo de 6 s, com várias frequências); a base de tudo"
     },
     "balao_pulinho": {
+      "quadros": 40,
+      "fps": 30,
+      "segundos": 1.333,
+      "repete": false,
+      "entrada_quadros": null,
+      "ciclo_quadros": null,
+      "cara_par": "cara_sorriso",
+      "o_que_e": "agacha, sobe em arco, passa do ponto e assenta (o de alegria pequena)"
+    },
+    "balao_rir": {
+      "quadros": 51,
+      "fps": 30,
+      "segundos": 1.7,
+      "repete": false,
+      "entrada_quadros": [
+        0,
+        15
+      ],
+      "ciclo_quadros": [
+        15,
+        51
+      ],
+      "cara_par": "cara_rindo",
+      "o_que_e": "arqueia para trás e sacode em soluços de riso (a parte que repete)"
+    },
+    "balao_susto": {
       "quadros": 36,
       "fps": 30,
       "segundos": 1.2,
       "repete": false,
       "entrada_quadros": null,
       "ciclo_quadros": null,
-      "cara_par": "cara_sorriso"
+      "cara_par": "cara_susto",
+      "o_que_e": "encolhe de um golpe, treme e relaxa"
     },
-    "balao_susto": {
-      "quadros": 30,
+    "balao_ufa": {
+      "quadros": 66,
       "fps": 30,
-      "segundos": 1.0,
+      "segundos": 2.2,
       "repete": false,
       "entrada_quadros": null,
       "ciclo_quadros": null,
-      "cara_par": "cara_susto"
+      "cara_par": "cara_ufa",
+      "o_que_e": "enche o peito e solta o ar aliviado, afundando um pouco"
     }
   },
   "par_de_cara": {
@@ -177,6 +706,13 @@
     "balao_pulinho": "cara_sorriso",
     "balao_susto": "cara_susto",
     "balao_estufar": "cara_sorriso",
-    "balao_murchar": "cara_triste"
+    "balao_murchar": "cara_triste",
+    "balao_comemorar": "cara_comemorando",
+    "balao_rir": "cara_rindo",
+    "balao_bravo": "cara_bravo",
+    "balao_concentrar": "cara_concentrado",
+    "balao_impaciente": "cara_tedio",
+    "balao_ufa": "cara_ufa",
+    "balao_desanimar": "cara_triste"
   }
 }

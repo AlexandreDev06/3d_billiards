@@ -1,17 +1,24 @@
 import {
+  PROTOCOLO_VERSAO,
   SALDO_INICIAL,
   ehCodigoDeCarteira,
+  ehIdDeItemDoBalao,
   ehSkinDeTaco,
   precoDaSkin,
+  precoDoItemDoBalao,
+  validarAparenciaDoBalao,
   validarCarteiraCriada,
   validarErroDaCarteira,
   validarEstadoDaCarteira,
+  type AparenciaDoBalao,
   type CodigoErroCarteira,
   type EstadoCarteira,
+  type IdItemDoBalao,
   type MissoesDoDia,
   type SkinTaco,
 } from '@sinuca/protocolo';
 import { gravarJson, lerJson, type ArmazenamentoMinimo } from '../armazenamento';
+import { linkDaCarteira } from './levar-carteira';
 import { textoDeMoedas } from './moedas';
 
 /** Onde o navegador guarda o código secreto da carteira (e a versão do formato). */
@@ -20,6 +27,15 @@ const VERSAO_DA_CARTEIRA = 1;
 
 /** O que dizer a quem teve a carteira trocada por uma nova porque o servidor perdeu a dele. */
 export const AVISO_CARTEIRA_NOVA = `Sua carteira não existe mais neste servidor: começou uma nova com ${textoDeMoedas(SALDO_INICIAL)}`;
+
+/** O que dizer quando a sala cobraria mais do que a loja mostrava (a vitrine virou o dia): nada foi cobrado. */
+export const AVISO_PRECO_MUDOU = 'O preço mudou, confira de novo.';
+
+/**
+ * O cabeçalho com que o cliente diz que versão do protocolo fala (L47/L48): todo pedido a `/carteira*` leva `X-Sinuca-Protocolo: 10`. Sem
+ * ele a sala responde como à versão 9 (sem o `balao` no estado), então a loja do balão nunca receberia nada.
+ */
+export const CABECALHO_DO_PROTOCOLO = 'X-Sinuca-Protocolo';
 
 /** Quanto se espera por uma resposta da carteira antes de dar a loja como fora do ar. */
 export const ESPERA_MAXIMA_DA_CARTEIRA_MS = 6000;
@@ -55,19 +71,36 @@ export type ResultadoDaCarteira =
   | { readonly ok: true; readonly estado: EstadoCarteira }
   | { readonly ok: false; readonly erro: FalhaDaCarteira; readonly mensagem: string };
 
-/** A frase em português de cada erro. `faltam`: quantas moedas faltam para a skin, quando o aparelho sabe. */
-export function textoDoErroDaCarteira(erro: FalhaDaCarteira, faltam?: number): string {
+/**
+ * O que a sala disse de um código que NÃO é o deste aparelho (L43, `conferir`): o estado da carteira dele, se é a mesma que o aparelho já
+ * usa e, para quem confirmar, `usar()`, que a adota neste aparelho. O código fica dentro da função, nunca no resultado.
+ */
+export type ConferenciaDaCarteira =
+  | { readonly ok: true; readonly estado: EstadoCarteira; readonly mesma: boolean; readonly usar: () => void }
+  | { readonly ok: false; readonly erro: FalhaDaCarteira; readonly mensagem: string };
+
+/**
+ * A frase em português de cada erro. `faltam`: quantas moedas faltam, quando o aparelho sabe. `de`: o que se comprava (a skin do taco,
+ * o padrão, ou um item do balão).
+ */
+export function textoDoErroDaCarteira(erro: FalhaDaCarteira, faltam?: number, de: 'skin' | 'balao' = 'skin'): string {
   switch (erro) {
     case 'carteira-invalida':
       return 'Sua carteira não foi encontrada neste servidor.';
     case 'saldo-insuficiente':
-      return faltam !== undefined && faltam > 0 ? `Saldo insuficiente: faltam ${textoDeMoedas(faltam)}.` : 'Saldo insuficiente para essa skin.';
+      return faltam !== undefined && faltam > 0 ? `Saldo insuficiente: faltam ${textoDeMoedas(faltam)}.` : `Saldo insuficiente para ${de === 'balao' ? 'esse item' : 'essa skin'}.`;
     case 'skin-invalida':
       return 'Essa skin não existe.';
     case 'ja-tem':
-      return 'Você já tem essa skin.';
+      return de === 'balao' ? 'Você já tem esse item.' : 'Você já tem essa skin.';
     case 'nao-tem':
-      return 'Você ainda não tem essa skin.';
+      return de === 'balao' ? 'Você ainda não tem esse item.' : 'Você ainda não tem essa skin.';
+    case 'preco-mudou':
+      return AVISO_PRECO_MUDOU;
+    case 'item-invalido':
+      return 'Esse item não existe.';
+    case 'aparencia-invalida':
+      return 'Essa combinação de balão não existe.';
     case 'limite':
       return 'Muitos pedidos agora. Tente de novo daqui a pouco.';
     case 'requisicao-invalida':
@@ -77,7 +110,7 @@ export function textoDoErroDaCarteira(erro: FalhaDaCarteira, faltam?: number): s
   }
 }
 
-const falha = (erro: FalhaDaCarteira, faltam?: number): ResultadoDaCarteira => ({ ok: false, erro, mensagem: textoDoErroDaCarteira(erro, faltam) });
+const falha = (erro: FalhaDaCarteira, faltam?: number, de: 'skin' | 'balao' = 'skin'): { readonly ok: false; readonly erro: FalhaDaCarteira; readonly mensagem: string } => ({ ok: false, erro, mensagem: textoDoErroDaCarteira(erro, faltam, de) });
 
 type Resposta = { readonly ok: true; readonly corpo: unknown } | { readonly ok: false; readonly erro: FalhaDaCarteira };
 
@@ -102,6 +135,8 @@ export class CarteiraDoAparelho {
   #estado: EstadoCarteira | null = null;
   #aviso: string | null = null;
   #emVoo: Promise<ResultadoDaCarteira> | null = null;
+  /** Sobe a cada troca de carteira (L43): uma resposta que chega de um pedido feito com o código de antes não vale mais. */
+  #geracao = 0;
   readonly #ouvintes = new Set<(estado: EstadoCarteira | null) => void>();
 
   constructor(private readonly deps: DependenciasDaCarteira) {
@@ -146,7 +181,12 @@ export class CarteiraDoAparelho {
    * o `aviso`). Pedidos simultâneos dividem uma ida só ao servidor.
    */
   garantir(): Promise<ResultadoDaCarteira> {
-    this.#emVoo ??= this.#sincronizar().finally(() => (this.#emVoo = null));
+    if (this.#emVoo === null) {
+      const pedido: Promise<ResultadoDaCarteira> = this.#sincronizar().finally(() => {
+        if (this.#emVoo === pedido) this.#emVoo = null;
+      });
+      this.#emVoo = pedido;
+    }
     return this.#emVoo;
   }
 
@@ -160,15 +200,107 @@ export class CarteiraDoAparelho {
     this.#avisar();
   }
 
-  async comprar(skin: SkinTaco): Promise<ResultadoDaCarteira> {
-    return this.#pedirSkin('/carteira/comprar', skin);
+  /**
+   * Compra a skin. `preco` é o que a tela mostrou: a sala o usa só como teto e, se o preço dela na hora for maior (a vitrine virou o
+   * dia), recusa com `preco-mudou` sem cobrar; aí a carteira é relida (o preço novo já está em `estado()`) e o aviso é o
+   * `AVISO_PRECO_MUDOU`.
+   */
+  async comprar(skin: SkinTaco, preco?: number): Promise<ResultadoDaCarteira> {
+    return this.#pedirSkin('/carteira/comprar', skin, preco);
   }
 
   async usar(skin: SkinTaco): Promise<ResultadoDaCarteira> {
     return this.#pedirSkin('/carteira/usar', skin);
   }
 
+  /**
+   * Compra um item do balão (L48, `POST /carteira/balao/comprar`): `preco` é o que a tela mostrou, só um teto (o preço do balão é fixo).
+   * A sala responde o estado completo, com o `balao`; o saldo curto vem com "faltam N moedas".
+   */
+  async comprarItemDoBalao(item: IdItemDoBalao, preco?: number): Promise<ResultadoDaCarteira> {
+    if (!ehIdDeItemDoBalao(item)) return falha('item-invalido', undefined, 'balao');
+    const pedido = preco !== undefined && Number.isInteger(preco) && preco > 0 ? { item, preco } : { item };
+    const r = await this.#pedirComCarteira('/carteira/balao/comprar', pedido);
+    if (!r.ok) {
+      if (r.erro === 'carteira-invalida') {
+        await this.#recomecar();
+        return falha('carteira-invalida');
+      }
+      const faltam = r.erro === 'saldo-insuficiente' && this.#estado !== null ? precoDoItemDoBalao(item) - this.#estado.saldo : undefined;
+      return falha(r.erro, faltam, 'balao');
+    }
+    return this.#adotar(r.corpo);
+  }
+
+  /**
+   * Equipa a aparência inteira (L48, `POST /carteira/balao/equipar`): a sala só aceita o que a carteira tem (os grátis incluídos) e,
+   * se um campo não vale, não muda nada. Uma aparência que nem tem a forma do protocolo não vai à rede.
+   */
+  async equiparAparencia(aparencia: AparenciaDoBalao): Promise<ResultadoDaCarteira> {
+    const valida = validarAparenciaDoBalao(aparencia);
+    if (!valida.ok) return falha('aparencia-invalida', undefined, 'balao');
+    const r = await this.#pedirComCarteira('/carteira/balao/equipar', { aparencia: valida.valor });
+    if (!r.ok) {
+      if (r.erro === 'carteira-invalida') {
+        await this.#recomecar();
+        return falha('carteira-invalida');
+      }
+      return falha(r.erro, undefined, 'balao');
+    }
+    return this.#adotar(r.corpo);
+  }
+
+  /** Existe um código guardado neste aparelho? (Só a resposta: o código não sai.) */
+  tem(): boolean {
+    this.#lerGuardado();
+    return this.#codigo !== null;
+  }
+
+  /**
+   * O link que leva esta carteira a outro aparelho (L43): `base#carteira=CODIGO`, com o código no fragmento, que nunca vai à rede. É o
+   * único lugar, fora o cabeçalho e o `criar-sala`/`entrar`, por onde o código sai; quem o recebe só o mostra a quem pediu. `null` sem carteira.
+   */
+  linkParaLevar(base: string): string | null {
+    this.#lerGuardado();
+    return this.#codigo === null ? null : linkDaCarteira(base, this.#codigo);
+  }
+
+  /**
+   * Pergunta à sala se este código é de uma carteira (L43, `GET /carteira` com ele), SEM mexer em nada: o código, o estado e os ouvintes
+   * deste aparelho ficam como estavam. Quem confirmar chama `usar()` do resultado, que adota o código e o estado que a sala deu.
+   */
+  async conferir(codigo: string): Promise<ConferenciaDaCarteira> {
+    if (!ehCodigoDeCarteira(codigo)) return falha('carteira-invalida');
+    const geracao = this.#geracao;
+    const r = await this.#pedir('GET', '/carteira', null, codigo);
+    if (!r.ok) return falha(r.erro);
+    const lido = validarEstadoDaCarteira(r.corpo);
+    if (!lido.ok) return falha('fora-do-ar');
+    this.#lerGuardado();
+    const estado = lido.valor;
+    return {
+      ok: true,
+      estado,
+      mesma: codigo === this.#codigo,
+      usar: () => {
+        if (geracao !== this.#geracao) return;
+        this.#trocarPara(codigo, estado);
+      },
+    };
+  }
+
   // ---------------------------------------------------------------- por dentro
+
+  /** Adota `codigo` como a carteira deste aparelho: guarda, esquece o recado da anterior e invalida o que ainda estiver a caminho. */
+  #trocarPara(codigo: string, estado: EstadoCarteira): void {
+    this.#geracao++;
+    this.#emVoo = null;
+    this.#codigo = codigo;
+    this.#guardada = gravarJson(CHAVE_DA_CARTEIRA, { versao: VERSAO_DA_CARTEIRA, codigo }, this.deps.armazenamento);
+    this.#estado = estado;
+    this.#aviso = null;
+    this.#avisar();
+  }
 
   async #sincronizar(): Promise<ResultadoDaCarteira> {
     this.#lerGuardado();
@@ -178,23 +310,39 @@ export class CarteiraDoAparelho {
     return this.#adotar(r.corpo);
   }
 
-  async #pedirSkin(caminho: '/carteira/comprar' | '/carteira/usar', skin: SkinTaco): Promise<ResultadoDaCarteira> {
+  async #pedirSkin(caminho: '/carteira/comprar' | '/carteira/usar', skin: SkinTaco, preco?: number): Promise<ResultadoDaCarteira> {
     if (!ehSkinDeTaco(skin)) return falha('skin-invalida');
     this.#lerGuardado();
     if (this.#codigo === null) {
       const pronta = await this.garantir();
       if (!pronta.ok) return pronta;
     }
-    const r = await this.#pedir('POST', caminho, { skin });
+    const pedido = caminho === '/carteira/comprar' && preco !== undefined && Number.isInteger(preco) && preco > 0 ? { skin, preco } : { skin };
+    const r = await this.#pedir('POST', caminho, pedido);
     if (!r.ok) {
       if (r.erro === 'carteira-invalida') {
         await this.#recomecar();
         return falha('carteira-invalida');
       }
+      if (r.erro === 'preco-mudou') {
+        // Relê o saldo e a vitrine: a tela já mostra o preço novo quando o aviso aparece.
+        await this.garantir();
+        return falha('preco-mudou');
+      }
       const faltam = r.erro === 'saldo-insuficiente' && this.#estado !== null ? precoDaSkin(skin) - this.#estado.saldo : undefined;
       return falha(r.erro, faltam);
     }
     return this.#adotar(r.corpo);
+  }
+
+  /** Um POST autenticado da carteira (cria a carteira antes se o aparelho ainda não tem uma). */
+  async #pedirComCarteira(caminho: string, corpo: object): Promise<Resposta> {
+    this.#lerGuardado();
+    if (this.#codigo === null) {
+      const pronta = await this.garantir();
+      if (!pronta.ok) return { ok: false, erro: pronta.erro };
+    }
+    return this.#pedir('POST', caminho, corpo);
   }
 
   /** O servidor não conhece o código: esquece-o e cria uma carteira nova, com o aviso se deu certo. */
@@ -240,9 +388,11 @@ export class CarteiraDoAparelho {
     this.#guardada = true;
   }
 
-  async #pedir(metodo: 'GET' | 'POST', caminho: string, corpo: object | null): Promise<Resposta> {
-    const headers: Record<string, string> = { Accept: 'application/json' };
-    if (caminho !== '/carteira' || metodo === 'GET') headers.Authorization = `Bearer ${this.#codigo}`;
+  async #pedir(metodo: 'GET' | 'POST', caminho: string, corpo: object | null, codigoDeFora?: string): Promise<Resposta> {
+    // Pedido com o código DESTE aparelho: se a carteira for trocada enquanto ele voa, a resposta é da carteira de antes e não vale.
+    const geracao = this.#geracao;
+    const headers: Record<string, string> = { Accept: 'application/json', [CABECALHO_DO_PROTOCOLO]: String(PROTOCOLO_VERSAO) };
+    if (caminho !== '/carteira' || metodo === 'GET') headers.Authorization = `Bearer ${codigoDeFora ?? this.#codigo}`;
     if (corpo !== null) headers['Content-Type'] = 'application/json';
     const aborto = new AbortController();
     const limite = this.deps.esperaMaximaMs ?? ESPERA_MAXIMA_DA_CARTEIRA_MS;
@@ -267,6 +417,7 @@ export class CarteiraDoAparelho {
       if (resposta === 'prazo') return { ok: false, erro: 'fora-do-ar' };
       const json = await comPrazo(resposta.json());
       if (json === 'prazo') return { ok: false, erro: 'fora-do-ar' };
+      if (codigoDeFora === undefined && geracao !== this.#geracao) return { ok: false, erro: 'fora-do-ar' };
       if (resposta.ok) return { ok: true, corpo: json };
       const erro = validarErroDaCarteira(json);
       return { ok: false, erro: erro.ok ? erro.valor.erro : 'fora-do-ar' };

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG_FISICA_PADRAO, type EventoTacada, type Gravacao } from '@sinuca/fisica';
-import { decodificarGravacao, codificarGravacao, LIMITES_GRAVACAO } from './gravacao-codec';
+import { decodificarGravacao, codificarGravacao, LIMITES_GRAVACAO, VERSAO_DA_GRAVACAO } from './gravacao-codec';
 import { LeituraInvalida } from './bytes';
 import { bytesDeGravacaoBomba, TACADA_SUAVE, maiorErroAngular, maiorErroDePosicao, partidaReal, quebraComBolaCaida, tacadaReal } from './para-testes';
 
@@ -36,6 +36,18 @@ describe('codec da gravação — ida e volta', () => {
     expect([...volta.naMesa]).toEqual([...quebra.naMesa]);
     expect(maiorErroDePosicao(quebra, volta)).toBeLessThan(0.5 * MM);
     expect(maiorErroAngular(quebra, volta)).toBeLessThan(0.5 * GRAU);
+  });
+
+  it('o `parte` (nariz ou boca) do bola-tabela vai e volta: na quebra real e em cada valor', () => {
+    const tabelas = quebra.eventos.filter((e) => e.tipo === 'bola-tabela');
+    expect(tabelas.length).toBeGreaterThan(0);
+    expect(tabelas.every((e) => e.parte === 'nariz' || e.parte === 'boca')).toBe(true);
+    const volta = decodificarGravacao(codificarGravacao(quebra)).eventos.filter((e) => e.tipo === 'bola-tabela');
+    expect(volta.map((e) => e.parte)).toEqual(tabelas.map((e) => e.parte));
+    for (const parte of ['nariz', 'boca'] as const) {
+      const g = sintetica(2, 1, () => ({ p: [0, 0.027, 0], o: [0, 0, 0, 1] }), [{ tipo: 'bola-tabela', t: 0.1, bola: 0, tabela: 2, parte, velocidade: 1.5 }]);
+      expect(decodificarGravacao(codificarGravacao(g)).eventos).toEqual(g.eventos);
+    }
   });
 
   it('a quebra tem bola caindo (naMesa muda de 1 para 0), então a prova de naMesa não é vazia', () => {
@@ -89,7 +101,8 @@ describe('codec da gravação — ida e volta', () => {
     const eventos: EventoTacada[] = [
       { tipo: 'taco-bola', t: 0, bola: 0, velocidade: 3.25, miscue: true },
       { tipo: 'bola-bola', t: 0.123456789012345, a: 0, b: 7, velocidade: 1.5 },
-      { tipo: 'bola-tabela', t: 0.5, bola: 7, tabela: 3, velocidade: 0.7 },
+      { tipo: 'bola-tabela', t: 0.5, bola: 7, tabela: 3, parte: 'nariz', velocidade: 0.7 },
+      { tipo: 'bola-tabela', t: 0.55, bola: 7, tabela: 1, parte: 'boca', velocidade: 0.2 },
       { tipo: 'cacapa', t: 0.9, bola: 7, cacapa: 'canto-x+z+' },
       { tipo: 'fora-da-mesa', t: 0.95, bola: 3 },
       { tipo: 'parou', t: 1 },
@@ -149,6 +162,20 @@ describe('codec da gravação — entrada hostil', () => {
     expect(() => decodificarGravacao(Uint8Array.from([...ok, 0]))).toThrow(LeituraInvalida);
   });
 
+  it('recusa o formato 1 (L34b): um fluxo que só difere do formato 2 no byte de versão é recusado por ele, e outras versões também', () => {
+    // sem `bola-tabela`, o formato 1 e o 2 têm os mesmos bytes: este é um arquivo do formato 1 que não erraria em mais nada
+    const semTabela = codificarGravacao(sintetica(3, 2, (_, i) => ({ p: [i * 0.1, 0.027, 0], o: [0, 0, 0, 1] }), [{ tipo: 'cacapa', t: 0.01, bola: 1, cacapa: 'canto-x-z-' }, { tipo: 'parou', t: 0.03 }]));
+    expect(VERSAO_DA_GRAVACAO).toBe(2);
+    expect(semTabela[1]).toBe(VERSAO_DA_GRAVACAO);
+    expect(() => decodificarGravacao(semTabela)).not.toThrow();
+    for (const versao of [1, 0, 3, 255]) {
+      const antigo = semTabela.slice();
+      antigo[1] = versao;
+      expect(() => decodificarGravacao(antigo), `versão ${versao}`).toThrow(LeituraInvalida);
+      expect(() => decodificarGravacao(antigo), `versão ${versao}`).toThrow('versão de gravação desconhecida');
+    }
+  });
+
   it('recusa qualquer truncamento sem lançar outra coisa', () => {
     for (let corte = 0; corte < ok.length; corte += Math.max(1, Math.floor(ok.length / 200))) {
       expect(() => decodificarGravacao(ok.slice(0, corte)), `corte em ${corte}`).toThrow(LeituraInvalida);
@@ -197,6 +224,19 @@ describe('codec da gravação — entrada hostil', () => {
       const forjado = bytes.slice();
       forjado[i] = ruim;
       expect(() => decodificarGravacao(forjado), `flags ${ruim}`).toThrow(LeituraInvalida);
+    }
+  });
+
+  it('recusa um `parte` que o formato não define', () => {
+    const g = sintetica(2, 1, () => ({ p: [0, 0.027, 0], o: [0, 0, 0, 1] }), [{ tipo: 'bola-tabela', t: 0.1, bola: 0, tabela: 2, parte: 'nariz', velocidade: 1.5 }]);
+    const bytes = codificarGravacao(g);
+    // o `parte` é o byte antes da velocidade (8 bytes), que fecha o último evento
+    const i = bytes.length - 9;
+    expect(bytes[i]).toBe(0);
+    for (const ruim of [2, 255]) {
+      const forjado = bytes.slice();
+      forjado[i] = ruim;
+      expect(() => decodificarGravacao(forjado), `parte ${ruim}`).toThrow(LeituraInvalida);
     }
   });
 

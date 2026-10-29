@@ -1,6 +1,6 @@
 # Roteiro
 
-Fases de §10 do estudo quebradas em lotes. `‖` separa trabalhos paralelos (pastas disjuntas). O Principal marca `[x]` quando o lote passa na revisão e registra o veredito em `sinuca-status`. Lotes das fases 1–3 são detalhados ao fechar a fase anterior.
+Fases de §10 do estudo quebradas em lotes. `‖` separa trabalhos paralelos (pastas disjuntas). O Principal marca `[x]` quando o lote passa na revisão e registra o veredito em `.outros/status.md`. Lotes das fases 1–3 são detalhados ao fechar a fase anterior.
 
 ## Fase 0 — protótipo hot-seat (no monorepo)
 
@@ -13,7 +13,7 @@ Time ativo: Taco, Feltro, Juiz (Giz ficou de fora para poupar limite). O estudo 
 - [x] **L2** (+ L2b de integração) Taco: regras v0 (`novaPartida`, `aplicarTacada` puros) com testes por cenário. ‖ Feltro: laço hot-seat ligando física + regras, HUD de vez/grupo/bolas/falta. (os cenários golden ficaram nos testes dos próprios pacotes; `testes/cenarios/` e `e2e/` do Giz ficam para a Fase 1).
 - [x] **L3** Feltro: áudio sintetizado, painel dev de física (F1) e acabamento do HUD (o painel ficou com o Feltro, que é dono da UI). Giz não foi recrutado na Fase 0, para poupar limite: a cobertura veio dos testes por mutação de cada lote e das partidas pelo gancho no Chrome.
 - [x] **Fechamento técnico**: varredura do Juiz (passou, 0 crítico/alto) → L3b de ajustes (Taco e Feltro).
-- [ ] **Aprovação do usuário**: jogar, ajustar a sensação no painel (F1) e responder `sinuca-perguntas`.
+- [ ] **Aprovação do usuário**: jogar, ajustar a sensação no painel (F1) e responder `.outros/perguntas.md`.
 
 ## Fase 1 — jogo local completo
 
@@ -53,11 +53,32 @@ Throw, squirt, tabela Mathavan e caçapas reais (quinas); todas as opções de "
 - [x] **P1c** Pincel: boca do punho fechada e o balão no Blender (corpo, rosto 3D com 5 caras, piscar, olhar, 6 ações).
 - [x] **L29** Pincel faz as poses e os gestos que faltam (6 pontes, tapinha, quase, palmas, tamborilar) e o Feltro faz a escolha pelo lugar e as reações.
 - [x] **L30** Feltro: o `balao.glb` no jogo (olhos seguindo a bola, caras pela gravação, estufar e murchar no fim).
-- [ ] **L31** (pedido do usuário, 2026-10-26) missões diárias: Sala → catálogo e mensagens no protocolo (versão 7), conferência das missões pela gravação, progresso na carteira e 50 moedas por missão. Juiz revisa (dinheiro e contrato).
-- [ ] **L32** Feltro: painel "Missões do dia" no lobby e aviso de progresso e de missão cumprida na partida.
-- [ ] **L33** (pedido do usuário, 2026-10-26) skins de taco no estilo do CS: Boteco → análise e catálogo em `docs/design/skins-de-taco.md`, com nomes e artes próprios; o usuário aprova e daí saem os lotes do Pincel, do Feltro e da Sala. (Feito; aprovado pelo usuário com semente e contador já no primeiro lote.)
-- [ ] **L34** Sala: catálogo de 21 skins com faixas, vitrine do dia (3 a 20%), itens por carteira com semente sorteada na compra e contador de bolas, migração do `carteiras.json`, versão 8. ‖ **P2** Pincel: pinturas da *Coral*, *Bicho Solto*, *Corujão* e *Dragão das Quinze*.
-- [ ] **L35** Feltro: tramas novas, semente, iridescência e brilho, textura pintada, contador no cabo, loja com faixas e vitrine.
+- [x] **L31** (pedido do usuário, 2026-10-26) missões diárias: Sala → catálogo e mensagens no protocolo (versão 7), conferência das missões pela gravação, progresso na carteira e 50 moedas por missão. Juiz revisa (dinheiro e contrato).
+- [x] **L32** Feltro: painel "Missões do dia" no lobby e aviso de progresso e de missão cumprida na partida.
+- [x] **L33** (pedido do usuário, 2026-10-26) skins de taco no estilo do CS: Boteco → análise e catálogo em `docs/design/skins-de-taco.md`, com nomes e artes próprios; o usuário aprova e daí saem os lotes do Pincel, do Feltro e da Sala. (Feito; aprovado pelo usuário com semente e contador já no primeiro lote.)
+- [x] **L34** Sala: catálogo de 21 skins com faixas, vitrine do dia (3 a 20%), itens por carteira com semente sorteada na compra e contador de bolas, migração do `carteiras.json`, versão 8. ‖ **P2** Pincel: pinturas da *Coral*, *Bicho Solto*, *Corujão* e *Dragão das Quinze*. P2 feito (2026-10-26).
+- [x] **P3** Pincel (pedido do usuário, 2026-10-26: "cara de CS"): Dragon Lore e Howl, com desenhos nossos no estilo deles. Depois do L35: **L34c** Sala (nomes do CS, fases do Doppler e do Gamma Doppler e raras no catálogo, Howl no lugar do Corujão, presente de teste de 10 mil moedas) e **L36** Feltro (acabamentos fiéis e as pinturas do P3).
+- [x] **L34c/L34d** Sala (nomes do CS, padrões por semente, presente de teste) e **L36/L36b** Feltro (acabamentos do CS, Dragon Lore e Howl no jogo, Fade e Sapphire). Sala no ar desde 2026-10-26 com o presente `skins-cs` ligado.
+- [x] **L35** Feltro: tramas novas, semente, iridescência e brilho, textura pintada, contador no cabo, loja com faixas e vitrine.
+- [x] **L37** Feltro: as missões do dia também no H, durante a partida (pedido do usuário, 2026-10-26).
+- [x] **Pacote de 2026-10-26** (pedido do usuário; plano em `docs/decisoes.md`):
+  - [x] L38 Sala: estatísticas por carteira e física pelo anfitrião (versão 9); o Juiz passou e o L38b trata os 3 médios.
+  - [x] L39 Taco: modalidade `treino` (`ConfigRegras.treino`, sobre o mata-mata).
+  - [x] P4 Pincel: o boteco em volta da mesa e o letreiro (`arte/boteco`, `arte/marca`).
+  - [x] L40 Feltro: menu de jogo.
+  - [x] L41 Sala: sala na Cloudflare (adiado em 2026-10-26 e retomado em 2026-10-27). Passou pelo Juiz, e o L41b corrigiu os 4 médios.
+  - [x] L42 Feltro: treino e física pelo anfitrião.
+  - [x] L43 Feltro: perfil e levar a carteira.
+  - [x] L44 Feltro: o boteco em 3D e o menu sobre ele.
+  - [x] P5 Pincel e L45 Feltro (2026-10-27): o boteco caprichado, com luz assada, fotos CC0 e muitos objetos.
+  - [x] P6 Pincel (2026-10-27): os objetos do boteco refinados (mobília, garrafas, cartazes, janela e aparelhos).
+  - [x] P7 Pincel e L46 Feltro (2026-10-28, em paralelo; com o P7b e o L46b): o balão em acabamento de jogo comercial.
+    - P7 (Pincel): olhos, pálpebras, látex, 7 caras e 7 ações novas (contrato v2 do `balao.glb`).
+    - L46 (Feltro): olhar vivo (sacadas, vergência, o corpo segue), cordinha simulada, gelatina, transições com mola e uma tabela de reações no jogo.
+    - Depois: o Juiz no L46, porque o contrato de `packages/personagens` muda; a prova com o v2 no jogo; e a publicação quando a sala esvaziar.
+  - [x] Personalização do balão (2026-10-28; pedido do usuário; tudo na loja): chapéus, bigodes (sem barba), estilos de olho (normal, kawaii, bravo e cansado) e cores de olho. Contrato em `.outros/prompts/contrato-aparencia.md`.
+    - Em paralelo: P8 Pincel (os itens e os ícones, `balao.glb` v3 e `chapeus.glb`) e L47 Sala (catálogo, compra, equipar, migração das carteiras, aparência na sala e cópia de segurança).
+    - Depois: o Juiz no L47 (dinheiro e migração); o L48 Feltro (a loja, o editor com prévia em 3D e o balão vestido no jogo); a cópia das carteiras antes de publicar.
 
 Plano original desta fase:
 

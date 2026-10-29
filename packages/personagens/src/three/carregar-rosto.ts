@@ -1,4 +1,4 @@
-import { SkinnedMesh, type AnimationClip, type Object3D } from 'three';
+import { SkinnedMesh, type AnimationClip, type LoadingManager, type Object3D } from 'three';
 import { GLTFLoader, type GLTF } from 'three/addons/loaders/GLTFLoader.js';
 import { lerMetaDoRosto, type MetaDoRosto } from '../meta-do-rosto';
 import type { NomesDasMalhas } from './ficha-do-gltf';
@@ -16,6 +16,8 @@ export interface OpcoesDeCargaDoRosto {
   readonly nomeDoLatex?: string;
   /** A forma que fecha os olhos (padrão `piscar`). */
   readonly formaDePiscar?: string;
+  /** O `LoadingManager` do GLTFLoader (os testes em Node passam o de `gerenciadorDeTestes`, que dispensa as imagens). */
+  readonly gerenciador?: LoadingManager;
 }
 
 /** O que se carregou do arquivo, pronto para fazer personagens em cena: a malha, os clipes e as notas, sem nenhuma instância ainda. */
@@ -23,7 +25,7 @@ export class BaseDoRosto {
   constructor(
     private readonly gltf: GLTF,
     readonly meta: MetaDoRosto,
-    private readonly opcoes: Required<Omit<OpcoesDeCargaDoRosto, 'meta'>>,
+    private readonly opcoes: Required<Omit<OpcoesDeCargaDoRosto, 'meta' | 'gerenciador'>>,
   ) {}
 
   /** Quantos triângulos tem cada nível de malha. */
@@ -73,7 +75,7 @@ export class BaseDoRosto {
 
 /** Faz a base a partir dos bytes do `.glb` e do conteúdo já lido do arquivo de notas. */
 export async function carregarPersonagemDeRostoDeBytes(glb: ArrayBuffer, opcoes: OpcoesDeCargaDoRosto): Promise<BaseDoRosto> {
-  const gltf = await new GLTFLoader().parseAsync(glb, '');
+  const gltf = await new GLTFLoader(opcoes.gerenciador).parseAsync(glb, '');
   const meta = lerMetaDoRosto(opcoes.meta);
   return new BaseDoRosto(gltf, meta, {
     nomesDasMalhas: opcoes.nomesDasMalhas,

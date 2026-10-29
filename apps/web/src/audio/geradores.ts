@@ -1,5 +1,5 @@
 import type { Gerador, Geradores, SaidaDeSom } from './motor-audio';
-import type { NomeDoSom, PedidoDeSom } from './mapeamento';
+import type { NomeDoSom, PedidoDeSom, SomDoMenu } from './mapeamento';
 
 /** Ataque curtíssimo para não estalar; o resto do envelope cai exponencialmente. */
 const ATAQUE_S = 0.001;
@@ -83,7 +83,7 @@ function tocarCamadas(saida: SaidaDeSom, pedido: PedidoDeSom, quandoS: number, c
   };
 }
 
-function gerador(som: NomeDoSom, duracaoS: number, camadas: Camada): Gerador {
+function gerador(som: NomeDoSom | SomDoMenu, duracaoS: number, camadas: Camada): Gerador {
   const id = `sintetizado:${som}`;
   return { preparar: (pedido) => ({ id, duracaoS, tocar: (saida, quandoS) => tocarCamadas(saida, pedido, quandoS, camadas) }) };
 }
@@ -147,6 +147,24 @@ export const GERADORES_SINTETIZADOS: Geradores = {
       { de: 5520, ate: 5510, ganho: 0.11, duracaoS: 0.08, atrasoS: 0.09 },
       { de: 2960, ate: 2950, ganho: 0.34, duracaoS: 0.36, atrasoS: 0.18 },
       { de: 6950, ate: 6930, ganho: 0.12, duracaoS: 0.2, atrasoS: 0.18 },
+    ],
+  }),
+};
+
+/**
+ * Os sons do menu (L40), só sintetizados: um tique seco e baixo ao passar o mouse (o dedo roçando o giz) e uma batida de ficha na madeira
+ * ao clicar, com um "clac" agudo por cima. Curtos (< 0,15 s) e baixos: o menu soma muitos botões e não pode cansar.
+ */
+export const GERADORES_DO_MENU: Readonly<Record<SomDoMenu, Gerador>> = {
+  'menu-passa': gerador('menu-passa', 0.07, {
+    ruido: { tipo: 'bandpass', freq: 2600, q: 2.5, ganho: 0.12, duracaoS: 0.012 },
+    tons: [{ de: 1180, ate: 1040, ganho: 0.1, duracaoS: 0.04 }],
+  }),
+  'menu-clique': gerador('menu-clique', 0.14, {
+    ruido: { tipo: 'bandpass', freq: 1500, q: 1.1, ganho: 0.4, duracaoS: 0.03 },
+    tons: [
+      { de: 330, ate: 170, ganho: 0.4, duracaoS: 0.09 },
+      { de: 2300, ate: 2050, ganho: 0.14, duracaoS: 0.04 },
     ],
   }),
 };

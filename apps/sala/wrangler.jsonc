@@ -1,0 +1,52 @@
+// A sala na Cloudflare (L41): um Worker que serve o cliente, o WebSocket /sala e o HTTP /carteira*, e um Durable Object (SQLite) que é a
+// sala inteira. Os comandos e o passo a passo estão em apps/sala/CLAUDE.md. Aqui não há segredo: eles vão por `wrangler secret put`.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sinuca-sala",
+  "main": "src/worker/entrada.ts",
+  // A data mais nova que o workerd instalado entende; pode subir com o wrangler (conferir os testes: `pnpm exec vitest run apps/sala`)
+  "compatibility_date": "2026-10-26",
+  // Só o que o núcleo da sala usa de Node: node:crypto (createHash SHA-256 da carteira, randomBytes, randomInt), node:util
+  // (isDeepStrictEqual) e Buffer. Nada de node:fs, node:http nem ws: um teste confere (worker/isolamento.test.ts).
+  "compatibility_flags": ["nodejs_compat"],
+  // Nada de telemetria do Wrangler neste projeto
+  "send_metrics": false,
+
+  "durable_objects": {
+    "bindings": [{ "name": "SALA", "class_name": "SalaDO" }]
+  },
+  // O plano gratuito só aceita Durable Object com SQLite (new_sqlite_classes). Classe nova, renomeada ou apagada = migração nova com
+  // tag nova; nunca editar a v1 depois do primeiro deploy.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["SalaDO"] }],
+
+  "assets": {
+    // Copia do build do apps/web feita por `scripts/preparar-assets-cf.mjs` (com o `_headers`); não é o dist direto
+    "directory": "./dist/cf-assets",
+    "binding": "ASSETS",
+    // Só estas rotas invocam o Worker (cada uma conta como requisição do plano gratuito, 100 000 por dia). Todo o resto (JS, texturas,
+    // .glb do boteco, sons) sai do static assets, que é grátis e sem limite. `/` e `/index.html` passam pelo Worker para a política de
+    // conteúdo do HTML levar o host.
+    "run_worker_first": ["/", "/index.html", "/sala", "/carteira", "/carteira/*", "/saude", "/admin/*"]
+  },
+
+  // Variáveis (texto). As mesmas da sala Node; os valores abaixo são os padrões. Opcionais, para ligar sem mexer no código:
+  //   "ORIGENS": "https://outro-endereco.exemplo",                  // Origin extras além do próprio endereço do Worker
+  //   "PRESENTE_DE_TESTE": "10000", "PRESENTE_DE_TESTE_ROTULO": "skins-cs",  // o presente momentâneo (L34c)
+  //   "MAX_SALAS": "20", "MAX_CONEXOES": "80", "MAX_CARTEIRAS": "10000", "MISSOES_DIARIAS": "1"
+  // Só do Worker (L41b; apps/sala/CLAUDE.md): conexões por IP, a cota de mensagens por IP (rajada e por segundo) e o alarm com sala aberta
+  //   "MAX_CONEXOES_POR_IP": "6", "MENSAGENS_POR_IP": "1500", "MENSAGENS_POR_IP_S": "12", "ALARME_S": "45"
+  // O domínio próprio sinuca.becogames.app (2026-10-29) está ligado pela API da Cloudflare (Workers, Domínios), NÃO por "routes" aqui:
+  // com "routes" o `wrangler dev` troca o host de toda requisição pelo da rota e a política de conteúdo e o Origin dos testes quebram.
+  // O deploy sem "routes" não mexe no domínio. O workers.dev continua no ar para quem tem a carteira guardada nele.
+  "workers_dev": true,
+
+  "vars": {
+    // Dica de região para o Durable Object (só vale quando ele é criado, na primeira requisição): sam = América do Sul. Vazio = sem dica.
+    "LOCAL_DO": "sam"
+  },
+  // O segredo da administração (importar carteiras, ver o uso) é o secret SEGREDO_ADMIN: `npx wrangler secret put SEGREDO_ADMIN`.
+
+  // Os registros do Worker (uma linha JSON por evento, só código da sala, contagens e apelido) ficam no painel por alguns dias. Sem os
+  // registros automáticos de cada requisição: eles levariam cabeçalhos que o jogo não precisa guardar.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } }
+}

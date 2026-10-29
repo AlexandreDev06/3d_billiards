@@ -4,10 +4,12 @@ import { join } from 'node:path';
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import {
   SALDO_INICIAL,
+  ehSemente,
   missoesDoDia,
   validarCarteiraCriada,
   validarErroDaCarteira,
   validarEstadoDaCarteira,
+  vitrineDoDia,
   type CodigoErroCarteira,
   type EstadoCarteira,
 } from '@sinuca/protocolo';
@@ -644,5 +646,190 @@ describe('persistência e log', () => {
     writeFileSync(join(pastaDados, 'carteiras.json'), '{ quebrado');
     const s = await rede.subir({ pastaDados });
     expect((await chamar(s, 'POST', '/carteira')).status).toBe(201);
+  });
+});
+
+describe('L34: itens, semente, vitrine e preço do servidor pelo HTTP', () => {
+  const diaDeVitrine = (dia: string) => vitrineDoDia(dia);
+  const agoraNoDia = (dia: string) => Date.parse(`${dia}T15:00:00Z`);
+
+  it('a carteira nova traz o item do clássico (semente de 0 a 999, contador 0) e a vitrine do dia do servidor', async () => {
+    const dia = '2026-10-26';
+    const s = await subir({}, { relogio: () => agoraNoDia(dia) });
+    const criada = await chamar(s, 'POST', '/carteira');
+    expect(validarCarteiraCriada(criada.corpo).ok, criada.texto).toBe(true);
+    expect(criada.corpo.itens).toEqual([{ skin: 'classico', semente: expect.any(Number), bolas: 0 }]);
+    expect(ehSemente(criada.corpo.itens[0].semente)).toBe(true);
+    expect(criada.corpo.vitrine).toEqual(diaDeVitrine(dia));
+    expect(criada.corpo.vitrine.itens).toHaveLength(3);
+    const lida = await chamar(s, 'GET', '/carteira', { codigo: criada.corpo.codigo });
+    expect(validarEstadoDaCarteira(lida.corpo).ok, lida.texto).toBe(true);
+    expect(lida.corpo.itens).toEqual(criada.corpo.itens);
+    expect(lida.corpo.vitrine).toEqual(criada.corpo.vitrine);
+  });
+
+  it('comprar uma skin da vitrine cobra o preço do dia e devolve o item novo com a semente; o desconto vale para quem pede', async () => {
+    const dia = '2026-10-26';
+    const naVitrine = diaDeVitrine(dia).itens.find((i) => i.skin === 'ouro')!; // 500 → 400
+    expect(naVitrine.preco).toBe(400);
+    const s = await subir({}, { relogio: () => agoraNoDia(dia) });
+    const { codigo } = await criar(s);
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 700 }]); // 800
+    const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro' } });
+    expect(r.status).toBe(200);
+    expect(validarEstadoDaCarteira(r.corpo).ok, r.texto).toBe(true);
+    expect(r.corpo.saldo).toBe(800 - 400);
+    const item = (r.corpo.itens as { skin: string; semente: number; bolas: number }[]).find((i) => i.skin === 'ouro')!;
+    expect(ehSemente(item.semente)).toBe(true);
+    expect(item.bolas).toBe(0);
+    expect(r.corpo.skin).toBe('classico');
+    expect((await chamar(s, 'GET', '/carteira', { codigo })).corpo).toEqual(r.corpo);
+  });
+
+  it('fora da vitrine o preço é o cheio, e a mesma skin custa o cheio em outro dia', async () => {
+    let agora = agoraNoDia('2026-10-26');
+    const s = await subir({}, { relogio: () => agora });
+    expect(diaDeVitrine('2026-10-26').itens.some((i) => i.skin === 'marfim')).toBe(false);
+    const { codigo } = await criar(s);
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 400 }]);
+    expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'marfim' } })).corpo.saldo).toBe(500 - 100);
+    // virou o dia para um em que o ouro não está na vitrine: o mesmo ouro custa 500
+    const dia = ['2026-11-02', '2026-11-03', '2026-11-04'].find((d) => !diaDeVitrine(d).itens.some((i) => i.skin === 'ouro'))!;
+    agora = agoraNoDia(dia);
+    expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro' } })).status).toBe(402); // 400 não basta para o cheio
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 100 }]); // 500
+    expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro' } })).corpo.saldo).toBe(0);
+  });
+
+  it('o cliente nunca manda semente, contador nem itens: essas chaves no corpo são pedido errado e nada é cobrado', async () => {
+    const s = await subir();
+    const { codigo } = await criar(s);
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 400 }]);
+    for (const corpo of ['{"skin":"ouro","semente":999}', '{"skin":"ouro","bolas":9999}', '{"skin":"ouro","itens":[]}', '{"skin":"ouro","saldo":1000}']) {
+      const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo });
+      expect(r.status, corpo).toBe(400);
+      expect(erroDe(r), corpo).toBe('requisicao-invalida');
+    }
+    expect((await chamar(s, 'GET', '/carteira', { codigo })).corpo).toMatchObject({ saldo: 500, skins: ['classico'] });
+  });
+
+  describe('L34b: preco no pedido de compra é só o teto do que a tela mostrou', () => {
+    const DIA_COM_OURO = '2026-10-26'; // ouro na vitrine: 500 → 400
+    /** O primeiro dia depois de DIA_COM_OURO em que o ouro não está na vitrine. */
+    const diaSemOuro = ['2026-11-02', '2026-11-03', '2026-11-04'].find((d) => !diaDeVitrine(d).itens.some((i) => i.skin === 'ouro'))!;
+
+    it('a virada do dia com a skin saindo da vitrine: 409 preco-mudou, saldo e itens intactos; com o preço novo compra', async () => {
+      let agora = agoraNoDia(DIA_COM_OURO);
+      const s = await subir({}, { relogio: () => agora });
+      const { codigo } = await criar(s);
+      s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 700 }]); // 800
+      const tela = (await chamar(s, 'GET', '/carteira', { codigo })).corpo.vitrine.itens.find((i: { skin: string }) => i.skin === 'ouro').preco;
+      expect(tela).toBe(400);
+      agora = agoraNoDia(diaSemOuro);
+
+      const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: tela } });
+      expect(r.status).toBe(409);
+      expect(erroDe(r)).toBe('preco-mudou');
+      expect(r.corpo.mensagem).toBe('O preço dessa skin mudou. Confira o preço novo e tente de novo.');
+      const lida = (await chamar(s, 'GET', '/carteira', { codigo })).corpo;
+      expect(lida).toMatchObject({ saldo: 800, skins: ['classico'] });
+      expect(lida.itens).toHaveLength(1);
+
+      const ok = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 500 } });
+      expect(ok.status).toBe(200);
+      expect(ok.corpo.saldo).toBe(300);
+    });
+
+    it('a skin entrando na vitrine: o cliente viu 500 e a sala cobra os 400 dela, nunca o número do pedido', async () => {
+      const s = await subir({}, { relogio: () => agoraNoDia(DIA_COM_OURO) });
+      const { codigo } = await criar(s);
+      s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 700 }]);
+      const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 500 } });
+      expect(r.status).toBe(200);
+      expect(validarEstadoDaCarteira(r.corpo).ok, r.texto).toBe(true);
+      expect(r.corpo.saldo).toBe(800 - 400);
+    });
+
+    it('preco igual ao da sala compra; um a menos é preco-mudou; sem preco segue como sempre', async () => {
+      const s = await subir({}, { relogio: () => agoraNoDia(DIA_COM_OURO) });
+      const { codigo } = await criar(s);
+      s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 1200 }]); // 1300
+      expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 399 } }))).toBe('preco-mudou');
+      expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 400 } })).corpo.saldo).toBe(900);
+      expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'marfim' } })).corpo.saldo).toBe(800);
+    });
+
+    it('preco-mudou vem antes de saldo-insuficiente, e skin-invalida e ja-tem vêm antes de preco-mudou', async () => {
+      const s = await subir({}, { relogio: () => agoraNoDia(DIA_COM_OURO) });
+      const { codigo } = await criar(s); // 100 moedas
+      expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 1 } }))).toBe('preco-mudou');
+      expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 400 } }))).toBe('saldo-insuficiente');
+      expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'fantasma', preco: 1 } }))).toBe('skin-invalida');
+      expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'classico', preco: 1 } }))).toBe('ja-tem');
+    });
+
+    it('preço negativo, zero, fracionário, absurdo ou de outro tipo é requisicao-invalida (400) e nada é cobrado', async () => {
+      const s = await subir({}, { relogio: () => agoraNoDia(DIA_COM_OURO) });
+      const { codigo } = await criar(s);
+      s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 700 }]);
+      const tortos = ['-1', '-400', '0', '399.5', '0.1', '1000001', '1e21', '1e400', '"400"', 'null', 'true', '[400]', '{"valor":400}'];
+      for (const preco of tortos) {
+        const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: `{"skin":"ouro","preco":${preco}}` });
+        expect(r.status, preco).toBe(400);
+        expect(erroDe(r), preco).toBe('requisicao-invalida');
+      }
+      expect((await chamar(s, 'GET', '/carteira', { codigo })).corpo).toMatchObject({ saldo: 800, skins: ['classico'] });
+      // as pontas do que o esquema aceita passam pelo esquema e caem na conferência da sala
+      expect((await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ouro', preco: 1_000_000 } })).corpo.saldo).toBe(400);
+    });
+
+    it('trocar de skin não leva preço: preco em /usar é requisicao-invalida', async () => {
+      const s = await subir();
+      const { codigo } = await criar(s);
+      const r = await chamar(s, 'POST', '/carteira/usar', { codigo, corpo: { skin: 'classico', preco: 0 } });
+      expect(r.status).toBe(400);
+      expect(erroDe(r)).toBe('requisicao-invalida');
+      expect((await chamar(s, 'POST', '/carteira/usar', { codigo, corpo: { skin: 'classico', preco: 400 } })).status).toBe(400);
+      expect((await chamar(s, 'POST', '/carteira/usar', { codigo, corpo: { skin: 'classico' } })).status).toBe(200);
+    });
+  });
+
+  it('a semente fica com o taco: comprar de novo é ja-tem e não a sorteia outra vez; trocar e voltar de skin não a muda', async () => {
+    const s = await subir();
+    const { codigo } = await criar(s);
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 900 }]);
+    const comprou = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'neon' } });
+    const semente = (comprou.corpo.itens as { skin: string; semente: number }[]).find((i) => i.skin === 'neon')!.semente;
+    expect(erroDe(await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'neon' } }))).toBe('ja-tem');
+    await chamar(s, 'POST', '/carteira/usar', { codigo, corpo: { skin: 'neon' } });
+    await chamar(s, 'POST', '/carteira/usar', { codigo, corpo: { skin: 'classico' } });
+    const depois = (await chamar(s, 'GET', '/carteira', { codigo })).corpo;
+    expect((depois.itens as { skin: string; semente: number }[]).find((i) => i.skin === 'neon')!.semente).toBe(semente);
+  });
+
+  it('o log da compra traz skin, preço, semente e se é rara; nunca o código', async () => {
+    const logs: string[] = [];
+    const s = await subir({}, { log: (evento, campos = {}) => logs.push(`${evento} ${JSON.stringify(campos)}`) });
+    const { codigo } = await criar(s);
+    s.carteiras.aplicar([{ id: s.carteiras.resolver(codigo)!, delta: 400 }]);
+    const r = await chamar(s, 'POST', '/carteira/comprar', { codigo, corpo: { skin: 'ebano' } });
+    const linha = logs.find((l) => l.startsWith('compra '))!;
+    const campos = JSON.parse(linha.slice('compra '.length));
+    expect(campos).toMatchObject({ skin: 'ebano', preco: 50, vitrine: false, rara: expect.any(Boolean) });
+    expect(campos.semente).toBe((r.corpo.itens as { skin: string; semente: number }[]).find((i) => i.skin === 'ebano')!.semente);
+    expect(linha).not.toContain(codigo);
+  });
+
+  it('o contador e a semente sobrevivem ao reinício do servidor', async () => {
+    const pastaDados = pastaDeDados();
+    const s1 = await rede.subir({ pastaDados });
+    const { codigo } = await criar(s1);
+    const id = s1.carteiras.resolver(codigo)!;
+    s1.carteiras.registrarMissoes(id, {}, undefined, 7);
+    const antes = (await chamar(s1, 'GET', '/carteira', { codigo })).corpo.itens;
+    expect(antes).toEqual([{ skin: 'classico', semente: expect.any(Number), bolas: 7 }]);
+    await s1.fechar();
+    const s2 = await rede.subir({ pastaDados });
+    expect((await chamar(s2, 'GET', '/carteira', { codigo })).corpo.itens).toEqual(antes);
   });
 });

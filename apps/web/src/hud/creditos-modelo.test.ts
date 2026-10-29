@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import creditosMd from '../../../../docs/creditos.md?raw';
-import { enderecoCurto, lerCreditos } from './creditos-modelo';
+import { enderecoCurto, lerCreditos, separarCreditos } from './creditos-modelo';
 
 const TABELA = `# Créditos
 
@@ -9,14 +9,29 @@ const TABELA = `# Créditos
 | \`a-1.ogg\` / \`a-1.mp3\` | Ana | https://exemplo.org/a/1 | CC0 1.0 | usado aqui |
 | \`a-2.ogg\` / \`a-2.mp3\` | Ana | https://exemplo.org/a/1 | CC0 1.0 | usado ali |
 | \`b-1.ogg\` | Beto | https://exemplo.org/b/7 | CC-BY 4.0 | outro |
+| Texturas do bar: \`piso\`, \`reboco\` | Cida (Artista do time) | Feitas por script | Autoral, sem crédito a terceiros | o bar |
 `;
 
 describe('lerCreditos', () => {
   it('lê a tabela, ignora cabeçalho e separador, e junta as linhas do mesmo autor e fonte', () => {
     expect(lerCreditos(TABELA)).toEqual([
-      { autor: 'Ana', fonte: 'https://exemplo.org/a/1', licenca: 'CC0 1.0', arquivos: ['a-1', 'a-2'] },
-      { autor: 'Beto', fonte: 'https://exemplo.org/b/7', licenca: 'CC-BY 4.0', arquivos: ['b-1'] },
+      { autor: 'Ana', fonte: 'https://exemplo.org/a/1', licenca: 'CC0 1.0', arquivos: ['a-1', 'a-2'], descricao: 'a-1.ogg / a-1.mp3', autoral: false },
+      { autor: 'Beto', fonte: 'https://exemplo.org/b/7', licenca: 'CC-BY 4.0', arquivos: ['b-1'], descricao: 'b-1.ogg', autoral: false },
+      {
+        autor: 'Cida (Artista do time)',
+        fonte: null,
+        licenca: 'Autoral, sem crédito a terceiros',
+        arquivos: ['piso', 'reboco'],
+        descricao: 'Texturas do bar: piso, reboco',
+        autoral: true,
+      },
     ]);
+  });
+
+  it('separa os sons de terceiros da arte autoral do time', () => {
+    const { terceiros, autorais } = separarCreditos(lerCreditos(TABELA));
+    expect(terceiros.map((c) => c.autor)).toEqual(['Ana', 'Beto']);
+    expect(autorais.map((c) => c.autor)).toEqual(['Cida (Artista do time)']);
   });
 
   it('o mesmo autor em fontes diferentes são créditos diferentes', () => {
@@ -49,24 +64,36 @@ describe('lerCreditos', () => {
 });
 
 describe('docs/creditos.md de verdade', () => {
-  const creditos = lerCreditos(creditosMd);
+  const { terceiros, autorais } = separarCreditos(lerCreditos(creditosMd));
+  const sons = new Set(
+    Object.keys(import.meta.glob('../../public/sons/*.{ogg,mp3}')).map((c) => c.split('/').pop()!.replace(/\.(ogg|mp3)$/, '')),
+  );
 
-  it('tem os 13 arquivos de som, todos CC0, com autor e link', () => {
-    const arquivos = creditos.flatMap((c) => c.arquivos);
-    expect(arquivos).toHaveLength(13);
-    expect(new Set(arquivos).size).toBe(13);
-    for (const c of creditos) {
+  it('todo som do jogo tem crédito de terceiro, e cada crédito de terceiro é livre, com autor e link', () => {
+    const creditados = new Set(terceiros.flatMap((c) => c.arquivos));
+    for (const som of sons) expect(creditados.has(som), `sem crédito: ${som}`).toBe(true);
+    expect(terceiros.length).toBeGreaterThan(0);
+    for (const c of terceiros) {
       expect(c.autor).not.toBe('');
       expect(c.fonte, c.autor).not.toBeNull();
-      expect(c.licenca).toMatch(/CC0/);
+      expect(c.licenca, c.autor).toMatch(/CC0|CC-BY/);
     }
   });
 
   it('cita cada autor uma vez por gravação (JNi2 e craigsmith reaproveitam a mesma)', () => {
-    const jni2 = creditos.find((c) => c.autor === 'JNi2')!;
+    const jni2 = terceiros.find((c) => c.autor === 'JNi2')!;
     expect(jni2.arquivos).toEqual(['bola-bola-1', 'bola-bola-3']);
-    const craig = creditos.find((c) => c.autor === 'craigsmith')!;
+    const craig = terceiros.find((c) => c.autor === 'craigsmith')!;
     expect(craig.arquivos).toEqual(['taco-bola-2', 'bola-tabela-1', 'bola-tabela-2']);
+  });
+
+  it('a arte do time vem separada, sem link e sem crédito a terceiros', () => {
+    for (const c of autorais) {
+      expect(c.licenca).toMatch(/^Autoral/);
+      expect(c.fonte).toBeNull();
+      expect(c.descricao).not.toContain('`');
+    }
+    expect(terceiros.some((c) => c.autoral)).toBe(false);
   });
 });
 

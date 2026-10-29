@@ -7,6 +7,7 @@ import type { ConfigDaTransicao } from './jogo/transicao-modelo';
 import type { TempoDaTacadaS } from './relogio/modelo';
 import type { NomeDaPonte } from './maos/pontes';
 import type { AcaoDoBalao } from './baloes/acao-do-balao';
+import type { ConfigDaAtencaoDoBalao } from './baloes/atencao-do-balao';
 
 const grausParaRad = Math.PI / 180;
 /** A inclinação de repouso do taco, só visual (a física segue com elevação 0). */
@@ -235,6 +236,12 @@ export interface ConfigHud {
   readonly relogioAlertaS: number;
   /** As missões do dia (L32): quanto cada aviso fica na tela (s), quantos cabem de uma vez e o intervalo mínimo entre duas leituras da carteira que o lobby pede (s). */
   readonly missoes: { readonly progressoSegundos: number; readonly cumpridaSegundos: number; readonly maximo: number; readonly leituraMinimaS: number };
+  /** Quanto tempo o aviso discreto do treino ("aí não cabe", "nada para refazer") fica na tela (s). */
+  readonly treinoAvisoSegundos: number;
+  /** Quanto tempo o aviso "O anfitrião mudou a física" fica na tela (s). */
+  readonly fisicaAlteradaSegundos: number;
+  /** Depois de pedir física à sala, uma recusa (`fase-errada`) que chega nesta janela (s) é a resposta a esse pedido e vai para o painel F1. */
+  readonly respostaDaFisicaS: number;
 }
 
 export interface ConfigAudio {
@@ -550,6 +557,29 @@ export interface ConfigBaloes {
     readonly velocidadeMinimaDoSusto: number;
     /** Dois sustos mais perto que isto no tempo contam como um só. */
     readonly juntarSustosS: number;
+    /** Quanto dura a comemoração de duas ou mais bolas numa tacada (s). */
+    readonly comemorandoS: number;
+    /** Quanto dura o alívio quando a bola de quem joga contra o dono raspa e não cai (s). */
+    readonly ufaS: number;
+    /** Quanto dura o desânimo (a ação `desanimar` com a cara triste) depois do susto em que a bola do dono não caiu (s). */
+    readonly desanimadoS: number;
+    /** O suspense (`desconfiado`): a bola de quem joga contra o dono corre para uma caçapa se anda a pelo menos esta velocidade (m/s)... */
+    readonly desconfiadoVelocidadeMinima: number;
+    /** ...a menos desta distância do centro da caçapa (m)... */
+    readonly desconfiadoAlcanceM: number;
+    /** ...e com o rumo dentro disto (cosseno do ângulo entre a velocidade e a direção da caçapa; 0,96 = 16 graus). */
+    readonly desconfiadoCosMinimo: number;
+    /** O suspense acaba quando a bola anda a menos disto (m/s): ela parou. */
+    readonly desconfiadoParouAbaixoDe: number;
+    /** A provocação: quanto o balão ri (a gargalhada) e depois quanto fica convencido (s). */
+    readonly rindoS: number;
+    readonly convencidoS: number;
+    /** A vez passou para o balão depois de um erro de quem joga contra ele: a provocação espera até isto (s) para ele estar à vista... */
+    readonly provocacaoValeS: number;
+    /** ...e dispara quando a presença do balão passa disto (0 a 1). */
+    readonly provocacaoEscala: number;
+    /** A provocação: quem joga contra o balão faltou e o balão ri sempre; no erro simples (a bola não caiu), no máximo uma vez a cada tanto (s) de partida. */
+    readonly provocacaoNoErroEntreS: number;
   };
   /** O corpo do balão (m): meia altura do oval, raio no meio, raio do nó e comprimento da cordinha. */
   readonly corpo: { readonly altura: number; readonly raio: number; readonly no: number; readonly cordinha: number };
@@ -607,6 +637,11 @@ export interface ConfigBaloes {
   readonly arquivo: {
     readonly glb: string;
     readonly meta: string;
+    /**
+     * Os chapéus (L48, `chapeus.glb` e `chapeus-meta.json`): um arquivo à parte (~0,7 MB) que só se baixa quando alguém na sala, ou o
+     * editor "Meu balão", precisa de um chapéu. Se falhar, os balões seguem sem chapéu e o jogo tenta de novo depois de `tentarDeNovoAposMs`.
+     */
+    readonly chapeus: { readonly glb: string; readonly meta: string; readonly tentarDeNovoAposMs: number };
     readonly acoes: Readonly<Record<AcaoDoBalao, { readonly entradaS: number; readonly saidaS: number }>>;
     readonly olhar: {
       /** Abaixo disto (m/s) nenhuma bola conta como andando; a branca é a olhada. */
@@ -615,10 +650,50 @@ export interface ConfigBaloes {
       readonly histerese: number;
       /** Quão depressa o ponto olhado alcança a bola (1/s). */
       readonly taxa: number;
-      /** Quão depressa o olho alcança o ponto (1/s). */
-      readonly taxaDoOlho: number;
+      /** O quanto cada coisa vale para o olhar (L46): a branca, a bola que anda, a caçapa, o ponto da mira e a câmera. */
+      readonly atencao: ConfigDaAtencaoDoBalao;
+      /** A vez do outro passa disto mirando (s) e o balão fica impaciente. */
+      readonly impacienciaAposS: number;
     };
   };
+}
+
+/**
+ * O boteco em volta da mesa (L44, refeito no P5 e no L45): os `.glb` do Pincel (`arte/boteco/exportados/`, copiados para `public/boteco/`
+ * pelo `dev` e pelo `build`), um por nível de qualidade. O casco e os objetos (piso, forro, paredes, assado, decoração) vêm com a luz e
+ * a sombra da mesa assadas em atlas e sem luz (`KHR_materials_unlit`, `MeshBasicMaterial`): o jogo os desenha como vieram, só com o
+ * tonemapping dele. As luzes de ponto dos marcadores `luz-*` iluminam só o que é PBR (garrafas, vidros, metais, luminária, néon), a
+ * câmera do jogo fica dentro da zona livre da sala e o menu passeia pelas câmeras `camera-menu-*`.
+ */
+export interface ConfigBoteco {
+  /** Onde ficam os `.glb` a partir da raiz do site, com a barra no fim. */
+  readonly pasta: string;
+  /** Quantas candelas vale a intensidade relativa 1 de um marcador de ponto (o visor do artista usa 8). */
+  readonly fatorDaLuzDePonto: number;
+  /**
+   * Os marcadores de ponto que viram `PointLight` em cada nível (nenhuma faz sombra); só as que algum nível acende são criadas. A
+   * `luz-luminaria` não entra: a luminária do `ambiente.ts` é a luz principal (retangular + foco com sombra) e o nó `luminaria` do
+   * `.glb` fica escondido. A `luz-salao` (enchimento das paredes) não entra em nível nenhum: as paredes já têm a luz assada e ela
+   * só clareava a mesa e as bolas (medido no L45: mudou 0,002 nas garrafas e nos metais do balcão e 0,008 na mesa, no Δ médio de brilho por pixel).
+   */
+  readonly luzes: Readonly<Record<NivelDeQualidade, readonly string[]>>;
+  /**
+   * Quanto cada luz de ponto vale da intensidade que o artista escreveu (1 = a do arquivo, sem a entrada = 1). O PBR do salão (garrafas,
+   * vidro, metal) estourava com as do arquivo, e o que sobra delas também cai na mesa e nas bolas (a luz de ponto não tem como
+   * escolher o que ilumina): no L45, a olho e medido a 1 m do balcão, as três a este fator deixam 0,08% da tela estourada a mais
+   * (todas a 1: 0,76%) e a mesa 1,3% mais clara.
+   */
+  readonly fatorPorLuz: Readonly<Record<string, number>>;
+  /** Onde a câmera do jogo (tacada, órbita, fim) pode estar: dentro da zona livre do artista, abaixo das vigas (m). */
+  readonly sala: { readonly xMax: number; readonly zMax: number; readonly yMax: number };
+  /** Com a câmera acima disto o forro e as vigas somem (a vista de cima, Tab): as vigas, a 2,4 m, vêm primeiro. */
+  readonly tetoSomeAcimaDe: number;
+  /** Brilho do néon, da lâmpada e da luminária do arquivo (o visor do artista os desenha sem tonemapping). */
+  readonly brilhoDoNeon: number;
+  /** Voltas por segundo do ventilador de teto (só nos níveis alto e médio, que o têm no arquivo). */
+  readonly ventiladorVoltasPorSegundo: number;
+  /** O menu: quanto a câmera leva de uma posição `camera-menu-N` à seguinte (s). */
+  readonly menu: { readonly trechoS: number };
 }
 
 export interface ConfigWeb {
@@ -634,6 +709,7 @@ export interface ConfigWeb {
   readonly baloes: ConfigBaloes;
   readonly mesa: ConfigMesa;
   readonly luz: ConfigLuz;
+  readonly boteco: ConfigBoteco;
   readonly hud: ConfigHud;
   readonly destaque: ConfigDestaque;
   readonly transicao: ConfigTransicao;
@@ -749,7 +825,7 @@ export const CONFIG_WEB: ConfigWeb = {
     },
   },
   baloes: {
-    rosto: { sorrisoS: 1.4, sustoS: 1.0, bravoS: 2.2, margemDoSusto: 0.03, folgaDaQuina: 0.008, velocidadeMinimaDoSusto: 1.2, juntarSustosS: 0.8 },
+    rosto: { sorrisoS: 1.4, sustoS: 1.0, bravoS: 2.2, margemDoSusto: 0.03, folgaDaQuina: 0.008, velocidadeMinimaDoSusto: 1.2, juntarSustosS: 0.8, comemorandoS: 2.2, ufaS: 1.4, desanimadoS: 1.4, desconfiadoVelocidadeMinima: 0.35, desconfiadoAlcanceM: 0.7, desconfiadoCosMinimo: 0.96, desconfiadoParouAbaixoDe: 0.05, rindoS: 1.5, convencidoS: 2.6, provocacaoValeS: 8, provocacaoEscala: 0.6, provocacaoNoErroEntreS: 60 },
     // 60% do que era (ajuste da revisão do L23: o balão de 200 × 300 px cobria a caçapa); `fim.tamanho` cresceu junto para os balões do fim seguirem iguais.
     corpo: { altura: 0.066, raio: 0.045, no: 0.0066, cordinha: 0.072 },
     posicao: { lado: 0.2, ladoMaximo: 0.7, passoDoLado: 0.1, altura: 0.1, alturaMaxima: 0.5, passoDaAltura: 0.1, passoAdiante: 0.1, adianteMaximo: 1, folgaDoPano: 0.01, distanciaMinimaDaCamera: 0.55, margemDaTela: 0.88, taxa: 6 },
@@ -769,6 +845,7 @@ export const CONFIG_WEB: ConfigWeb = {
     arquivo: {
       glb: '/personagens/balao.glb',
       meta: '/personagens/balao-meta.json',
+      chapeus: { glb: '/personagens/chapeus.glb', meta: '/personagens/chapeus-meta.json', tentarDeNovoAposMs: 15_000 },
       acoes: {
         parado: { entradaS: 0.3, saidaS: 0.3 },
         inclinar: { entradaS: 0.35, saidaS: 0.35 },
@@ -776,8 +853,21 @@ export const CONFIG_WEB: ConfigWeb = {
         susto: { entradaS: 0.05, saidaS: 0.25 },
         estufar: { entradaS: 0.15, saidaS: 0.4 },
         murchar: { entradaS: 0.15, saidaS: 0.4 },
+        comemorar: { entradaS: 0.1, saidaS: 0.3 },
+        rir: { entradaS: 0.15, saidaS: 0.35 },
+        bravo: { entradaS: 0.08, saidaS: 0.3 },
+        concentrar: { entradaS: 0.35, saidaS: 0.35 },
+        impaciente: { entradaS: 0.4, saidaS: 0.35 },
+        ufa: { entradaS: 0.12, saidaS: 0.3 },
+        desanimar: { entradaS: 0.15, saidaS: 0.4 },
       },
-      olhar: { velocidadeMinima: 0.15, histerese: 0.6, taxa: 12, taxaDoOlho: 18 },
+      olhar: {
+        velocidadeMinima: 0.15,
+        histerese: 0.6,
+        taxa: 12,
+        atencao: { branca: 3.2, brancaComBolaAndando: 1.2, mira: 2.6, bolaQueAnda: 4.5, cacapa: 5.6, camera: 0.7, cameraNoFim: 3, previsaoDaCacapaS: 0.9, seguraACacapaS: 0.4 },
+        impacienciaAposS: 14,
+      },
     },
   },
   mesa: {
@@ -812,6 +902,21 @@ export const CONFIG_WEB: ConfigWeb = {
     luminaria: { altura: 0.9, largura: 1.5, profundidade: 0.32, temperaturaK: 3000, intensidade: 2.4 },
     foco: { intensidade: 6.5, penumbra: 0.7, vies: -0.0004, viesNormal: 0.004 },
   },
+  boteco: {
+    pasta: 'boteco/',
+    fatorDaLuzDePonto: 8,
+    luzes: {
+      alta: ['luz-neon', 'luz-balcao', 'luz-janela'],
+      media: ['luz-neon', 'luz-balcao'],
+      baixa: [],
+    },
+    fatorPorLuz: { 'luz-neon': 0.5, 'luz-balcao': 0.65, 'luz-janela': 0.8 },
+    sala: { xMax: 2.7, zMax: 2.25, yMax: 2.3 },
+    tetoSomeAcimaDe: 2.34,
+    brilhoDoNeon: 1.4,
+    ventiladorVoltasPorSegundo: 0.45,
+    menu: { trechoS: 18 },
+  },
   transicao: {
     anelS: 1.5,
     vooS: 0.9,
@@ -833,6 +938,9 @@ export const CONFIG_WEB: ConfigWeb = {
     relogioPadraoS: 30,
     relogioAlertaS: 10,
     missoes: { progressoSegundos: 3, cumpridaSegundos: 5, maximo: 3, leituraMinimaS: 10 },
+    treinoAvisoSegundos: 2.6,
+    fisicaAlteradaSegundos: 4.5,
+    respostaDaFisicaS: 3,
   },
   audio: {
     volumeGeral: 0.7,

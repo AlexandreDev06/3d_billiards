@@ -8,8 +8,10 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { EstadoMesa } from '@sinuca/fisica';
 import {
+  APARENCIA_PADRAO,
   APOSTA_PADRAO,
   EMOJIS_DA_SALA,
+  FISICA_DA_SALA_PADRAO,
   FORCA_DA_SALA_PADRAO,
   GIZ_DA_SALA_PADRAO,
   LIMITES_PROTOCOLO,
@@ -19,13 +21,17 @@ import {
   SKIN_PADRAO,
   premioDaMissao,
   coerenciaDaGravacao,
+  completarFisicaDaSala,
   equipeDoLugar,
+  fisicaDiferenteDoPadrao,
   placarNoFio,
   registrarPartida,
+  resumoPublico,
   type ApostaSala,
   type CodigoErro,
   type EmojiSala,
   type FaseSala,
+  type FisicaSala,
   type ForcaSala,
   type GizSala,
   type JogadorDoPlacar,
@@ -40,6 +46,7 @@ import {
   type MsgDiagnostico,
   type MsgEstadoSala,
   type MsgExpulsar,
+  type MsgFisicaAlterada,
   type MsgMissoes,
   type MsgRetrato,
   type MsgTacada,
@@ -52,9 +59,10 @@ import { jogadoresDaProxima, type ConfigRegras, type Consequencias, type EstadoP
 import type { Rng } from '@sinuca/fisica';
 import { completarAposta, completarGiz, completarLinha, completarRelogio, escolherModo, type LinhaCompleta } from './ajustes';
 import { calcularAposta, valeMoeda, type ParticipanteDoRol } from './aposta';
-import type { ArmazemDeCarteiras } from './carteiras';
-import type { ConfigSala } from './config';
+import type { CarteirasBase } from './carteiras-base';
+import type { ConfigDoNucleo } from './config-nucleo';
 import { PESO_DA_RECUSA, TEXTO_DO_ERRO } from './erros';
+import { contarMissoesCumpridas, contarTacada, estatisticasDaPartida, parcialVazio, type ParcialDaPartida } from './estatisticas';
 import { conferirFimDaPartida, conferirTacada, type ValoresDasMissoes } from './missoes';
 import { BaldeDeTokens } from './limite-taxa';
 import type { Logger } from './log';
@@ -67,6 +75,11 @@ export interface Conexao {
   readonly id: string;
   /** Endereço de quem está do outro lado, só para limites (nunca registrar em log). */
   readonly ip: string;
+  /**
+   * A versão do protocolo que o cliente declarou em `criar-sala`/`entrar` (L47: a sala atende a janela de `PROTOCOLO_VERSAO_MINIMA`
+   * a `PROTOCOLO_VERSAO`). O `Registro` a grava ao aceitar a entrada; a ligação a usa para falar com cada um como ele entende.
+   */
+  versao?: number;
   enviar(mensagem: MensagemDaSala): void;
   fechar(codigo: number, motivo: string): void;
   /** Conta uma infração de `peso` fichas da tolerância da conexão; esgotada, ela é derrubada. */
@@ -104,7 +117,7 @@ export interface DadosDaSala {
 }
 
 export interface DependenciasSala {
-  readonly config: ConfigSala;
+  readonly config: ConfigDoNucleo;
   readonly relogio: () => number;
   readonly gerarToken: () => string;
   /** Inteiro em [0, max). */
@@ -113,7 +126,7 @@ export interface DependenciasSala {
   readonly passarVez: (partida: EstadoPartida) => EstadoPartida;
   readonly log: Logger;
   /** As carteiras (L22): a sala só lê saldo e skin, e paga a aposta; o código secreto nunca chega aqui, só o `id` resolvido. */
-  readonly carteiras: ArmazemDeCarteiras;
+  readonly carteiras: CarteirasBase;
 }
 
 interface Participante {
@@ -142,7 +155,14 @@ interface ApostaEmCurso {
   readonly faltas: Map<number, number>;
   /** Bolas que cada lugar vem matando em tacadas seguidas (o Embalado); zera quando a vez dele passa ou ele erra. */
   readonly seguidas: Map<number, number>;
+  /** O que cada lugar fez na partida (L38): só vira estatística da carteira se ela acabar de verdade, com aposta valendo e a física padrão. */
+  readonly parciais: Map<number, ParcialDaPartida>;
 }
+
+/** Por que a física não muda agora (`fase-errada` com o motivo no texto: o código é o mesmo da fase, o texto diz qual). */
+const TEXTO_FISICA_TRAVADA = 'A física fica travada enquanto há aposta valendo na partida.';
+const TEXTO_FISICA_TRAVADA_NO_FIM = 'Com aposta valendo a física só muda na espera: volte ao lobby para mexer nela.';
+const TEXTO_FISICA_EM_VOO = 'Espere a tacada terminar para mexer na física.';
 
 /** Uma missão que andou: a mensagem vai só a quem está sentado no `lugar`. */
 interface AvisoDeMissao {
@@ -185,6 +205,12 @@ export class Sala {
   private gizDaSala: GizSala;
   private forcaDaSala: ForcaSala;
   private apostaDaSala: ApostaSala;
+  /** A física da sala (L38), os 8 valores do painel: o padrão até o anfitrião mexer. Vale para toda partida da sala, até ele restaurar. */
+  private fisicaDaSala: FisicaSala = FISICA_DA_SALA_PADRAO;
+  /** Alguma tacada desta partida foi aceita com a física mexida: a partida inteira fica fora das missões de partida e das estatísticas. */
+  private fisicaMexidaNaPartida = false;
+  /** Até quando a última tacada aceita ainda está animando (relógio da sala): a física não muda antes disso. */
+  private voandoAte = 0;
   /** A aposta e o rol da partida em curso, fixados quando ela começa; some quando é paga ou a sala volta ao lobby. */
   private apostaEmCurso: ApostaEmCurso | null = null;
   /** A ordem de quem joga na próxima partida (`jogadoresDaProxima`), guardada ao voltar ao lobby; o `iniciar` a consome. */
@@ -483,6 +509,8 @@ export class Sala {
     this.seq = 0;
     this.ultima = null;
     this.apostaEmCurso = null;
+    this.fisicaMexidaNaPartida = false;
+    this.voandoAte = 0;
     this.prazo.parar();
     this.deps.log('lobby', { sala: this.codigo, liberados });
     this.transmitirEstado();
@@ -498,13 +526,14 @@ export class Sala {
    */
   private configurar(p: Participante, m: MsgConfigurarSala): void {
     if (!p.anfitriao) return this.recusar(p, 'nao-anfitriao');
-    if (this.fase !== 'espera') return this.recusar(p, 'fase-errada');
+    if (this.fase !== 'espera') return this.configurarFisicaNaPartida(p, m);
     const relogio = completarRelogio(m.relogio, this.relogioDaSala);
     if (typeof relogio === 'string') return this.recusar(p, 'regras-invalidas', false, relogio);
     const giz = completarGiz(m.giz, this.gizDaSala);
     if (typeof giz === 'string') return this.recusar(p, 'regras-invalidas', false, giz);
     const aposta = completarAposta(m.aposta, this.apostaDaSala);
     if (typeof aposta === 'string') return this.recusar(p, 'regras-invalidas', false, aposta);
+    const fisica = completarFisicaDaSala(m.fisica, this.fisicaDaSala);
     const modalidade = m.modalidade ?? this.modalidadeDaSala;
     const escolhido = escolherModo(modalidade, m.modo, this.modoDaSala);
     if ('recusa' in escolhido) return this.recusar(p, 'regras-invalidas', false, escolhido.recusa);
@@ -526,6 +555,7 @@ export class Sala {
     this.gizDaSala = giz;
     this.forcaDaSala = m.forca ?? this.forcaDaSala;
     this.apostaDaSala = aposta;
+    this.fisicaDaSala = fisica;
     this.deps.log('configurou', {
       sala: this.codigo,
       modalidade,
@@ -536,7 +566,34 @@ export class Sala {
       forca: this.forcaDaSala,
       aposta,
       giz: `${giz.desgasteMin}-${giz.desgasteMax}/${giz.passada}/${giz.passadaS}`,
+      fisica: fisicaDiferenteDoPadrao(fisica) ? 'mexida' : 'padrao',
     });
+    this.transmitirEstado();
+  }
+
+  /**
+   * `configurar-sala` fora da espera (L38): só a `fisica` do anfitrião passa; qualquer outro campo, ou a falta dela, é `fase-errada`
+   * como sempre foi. A sala ainda recusa, sem mudar nada, quando há aposta valendo (`fisicaTravada`: a aposta trava a física na
+   * partida em andamento e também na tela de fim, onde um `nova-partida` abriria uma aposta nova com os mesmos lugares: L38b, com
+   * aposta a física só muda na espera, que todos veem) e, com a partida em andamento, enquanto a última tacada aceita ainda anima.
+   * Partida terminada sem aposta valendo (à espera do `voltar-ao-lobby`) não tem mais tacada, então muda como na espera. Mudou:
+   * todos recebem `fisica-alterada` e o `estado-sala` novo; pedir o que a sala já tem só confirma com o `estado-sala`. A física
+   * nova vale da próxima tacada aceita em diante: a que já está em voo foi aceita com a antiga.
+   */
+  private configurarFisicaNaPartida(p: Participante, m: MsgConfigurarSala): void {
+    const soFisica = m.fisica !== undefined && Object.entries(m).every(([chave, valor]) => chave === 'tipo' || chave === 'fisica' || valor === undefined);
+    if (!soFisica) return this.recusar(p, 'fase-errada');
+    const emAndamento = this.partida !== null && !this.terminou(this.partida);
+    if (this.fisicaTravada) return this.recusar(p, 'fase-errada', false, emAndamento ? TEXTO_FISICA_TRAVADA : TEXTO_FISICA_TRAVADA_NO_FIM);
+    if (emAndamento && this.deps.relogio() < this.voandoAte) return this.recusar(p, 'fase-errada', false, TEXTO_FISICA_EM_VOO);
+    const nova = completarFisicaDaSala(m.fisica, this.fisicaDaSala);
+    if (isDeepStrictEqual(nova, this.fisicaDaSala)) return this.transmitirEstado();
+    const mudaram = Object.keys(nova).filter((chave) => nova[chave as keyof FisicaSala] !== this.fisicaDaSala[chave as keyof FisicaSala]);
+    this.fisicaDaSala = nova;
+    const mexida = fisicaDiferenteDoPadrao(nova);
+    this.deps.log('fisica', { sala: this.codigo, por: p.nome, mexida, mudou: mudaram.join(',') });
+    const aviso: MsgFisicaAlterada = { tipo: 'fisica-alterada', por: p.nome, fisica: nova, mexida };
+    this.transmitir(aviso);
     this.transmitirEstado();
   }
 
@@ -585,7 +642,9 @@ export class Sala {
     const { partida, arrumacao } = this.deps.regras.novaPartida(this.casa.regras, jogadores, rng);
     this.partida = partida;
     const rol = this.rolDaPartida(partida);
-    this.apostaEmCurso = { valor: this.apostaDaSala, rol, faltas: new Map(), seguidas: new Map() };
+    this.apostaEmCurso = { valor: this.apostaDaSala, rol, faltas: new Map(), seguidas: new Map(), parciais: new Map() };
+    this.fisicaMexidaNaPartida = false;
+    this.voandoAte = 0;
     this.deps.carteiras.registrarPartida(rol.flatMap((q) => (q.carteira === null ? [] : [q.carteira])));
     this.arrumacao = arrumacao;
     this.semente = this.deps.sortear(2 ** 32);
@@ -620,8 +679,12 @@ export class Sala {
     this.partida = resultado.partida;
     this.mesa = m.mesa;
     this.seq++;
+    // a física da sala na hora em que a tacada é aceita é a dela (a gravação é a verdade, mas a sala não sabe com que valores o cliente simulou)
+    const fisicaMexida = fisicaDiferenteDoPadrao(this.fisicaDaSala);
+    if (fisicaMexida) this.fisicaMexidaNaPartida = true;
+    this.voandoAte = this.fimDaAnimacao(m.gravacao.duracao);
     this.contarPartida(resultado.partida);
-    const avisos = this.contarMissoes(partida, resultado.partida, m, resultado.consequencias, lugar);
+    const avisos = this.contarMissoes(partida, resultado.partida, m, resultado.consequencias, lugar, fisicaMexida);
     const aposta = this.pagarAposta(resultado.partida);
     this.vezDesde = this.deps.relogio();
     this.reiniciarPrazoDepoisDa(m.gravacao.duracao, resultado.partida);
@@ -642,35 +705,54 @@ export class Sala {
   }
 
   /**
-   * As missões do dia (L31) que esta tacada fez andar. Só conta numa partida em que a aposta vale (o critério do pote: carteiras
-   * em duas equipes ou mais, nenhuma repetida) e só para quem tem carteira no rol. Soma o progresso no armazém, que paga o
-   * prêmio do nível de cada missão que chegar à meta, uma vez por dia por carteira; no fim da partida entram as três de
-   * partida inteira, para todo o rol. Devolve as mensagens `missoes` (uma por dono que andou), sem enviá-las: a ordem do fio é
-   * tacada, aposta, missões, estado. Tem de rodar antes de `pagarAposta`, que apaga o rol.
+   * As missões do dia (L31) que esta tacada fez andar e o contador de bolas do taco (L34). Só conta numa partida em que a aposta
+   * vale (o critério do pote: carteiras em duas equipes ou mais, nenhuma repetida) e só para quem tem carteira no rol. Soma o
+   * progresso no armazém, que paga o prêmio do nível de cada missão que chegar à meta, uma vez por dia por carteira, e soma as
+   * bolas matadas (as mesmas das missões) ao taco que a carteira tem em uso agora, tudo na mesma chamada e na mesma gravação; no
+   * fim da partida entram as três de partida inteira, para todo o rol. Com `MISSOES_DIARIAS=0` só o contador anda. Devolve as
+   * mensagens `missoes` (uma por dono que andou), sem enviá-las: a ordem do fio é tacada, aposta, missões, estado. Tem de rodar
+   * antes de `pagarAposta`, que apaga o rol.
+   *
+   * L38: tacada aceita com a física mexida (`fisicaMexida`) não conta para missão, nem para o contador do taco, nem para as
+   * estatísticas, e zera a sequência de quem tacou; as três missões de partida inteira não pagam se alguma tacada da partida teve a
+   * física mexida. O que conta vai para o parcial do lugar, que só vira estatística da carteira se a partida acabar de verdade.
    */
-  private contarMissoes(antes: EstadoPartida, depois: EstadoPartida, m: MsgTacada, consequencias: Consequencias, lugar: number): AvisoDeMissao[] {
+  private contarMissoes(antes: EstadoPartida, depois: EstadoPartida, m: MsgTacada, consequencias: Consequencias, lugar: number, fisicaMexida: boolean): AvisoDeMissao[] {
     const emCurso = this.apostaEmCurso;
-    if (!this.deps.config.missoesDiarias || !emCurso || !valeMoeda(emCurso.rol)) return [];
-    const { rol, faltas, seguidas } = emCurso;
+    if (!emCurso || !valeMoeda(emCurso.rol)) return [];
+    const missoesLigadas = this.deps.config.missoesDiarias;
+    const { rol, faltas, seguidas, parciais } = emCurso;
     const doRol = rol.find((q) => q.lugar === lugar);
     if (consequencias.faltas.length > 0) faltas.set(lugar, (faltas.get(lugar) ?? 0) + 1);
 
     const valores = new Map<number, ValoresDasMissoes>();
-    if (doRol?.carteira) {
+    const bolas = new Map<number, number>();
+    const parcialDe = (dono: number): ParcialDaPartida => parciais.get(dono) ?? parciais.set(dono, parcialVazio()).get(dono)!;
+    if (doRol?.carteira && fisicaMexida) {
+      this.zerarSeguidas(rol.filter((q) => q.equipe === doRol.equipe).map((q) => q.lugar));
+    } else if (doRol?.carteira) {
       const conferida = conferirTacada({ parametros: m.parametros, gravacao: m.gravacao, consequencias, antes, depois, seguidasAntes: seguidas.get(lugar) ?? 0 });
       if (conferida.encerraAVez) this.zerarSeguidas(rol.filter((q) => q.equipe === doRol.equipe).map((q) => q.lugar));
       else seguidas.set(lugar, conferida.seguidas);
-      valores.set(lugar, conferida.valores);
+      if (missoesLigadas) valores.set(lugar, conferida.valores);
+      if (conferida.mortas.length > 0) bolas.set(lugar, conferida.mortas.length);
+      // a sequência do Embalado dessa tacada, mesmo quando a vez acaba nela (a que fecha a partida, por exemplo)
+      contarTacada(parcialDe(lugar), { mortas: conferida.mortas.length, sequencia: conferida.valores.embalado ?? 0, tabeladas: conferida.valores.tabelada ?? 0 });
     }
-    const fim = conferirFimDaPartida(rol.map((q) => ({ lugar: q.lugar, equipe: q.equipe, faltas: faltas.get(q.lugar) ?? 0 })), depois.vencedor);
-    for (const [dono, doFim] of fim) valores.set(dono, { ...valores.get(dono), ...doFim });
+    if (missoesLigadas && !this.fisicaMexidaNaPartida) {
+      const fim = conferirFimDaPartida(rol.map((q) => ({ lugar: q.lugar, equipe: q.equipe, faltas: faltas.get(q.lugar) ?? 0 })), depois.vencedor);
+      for (const [dono, doFim] of fim) valores.set(dono, { ...valores.get(dono), ...doFim });
+    }
 
     const avisos: AvisoDeMissao[] = [];
-    for (const [dono, v] of valores) {
+    for (const dono of new Set([...valores.keys(), ...bolas.keys()])) {
       const entrada = rol.find((q) => q.lugar === dono);
-      if (!entrada?.carteira || Object.keys(v).length === 0) continue;
-      const andou = this.deps.carteiras.registrarMissoes(entrada.carteira, v, this);
+      const v = valores.get(dono) ?? {};
+      const mortas = bolas.get(dono) ?? 0;
+      if (!entrada?.carteira || (Object.keys(v).length === 0 && mortas === 0)) continue;
+      const andou = this.deps.carteiras.registrarMissoes(entrada.carteira, v, this, mortas);
       if (!andou) continue;
+      contarMissoesCumpridas(parcialDe(dono), andou.cumpridas);
       for (const missao of andou.cumpridas) this.deps.log('missao', { sala: this.codigo, nome: entrada.nome, missao, moedas: premioDaMissao(missao) });
       avisos.push({ lugar: dono, mensagem: { tipo: 'missoes', missoes: andou.missoes, cumpridas: andou.cumpridas } });
     }
@@ -691,14 +773,16 @@ export class Sala {
   /**
    * Quem está em cada lugar da partida que começa, com a carteira de cada um: é este o rol que a aposta vai pagar. Só entra
    * a carteira de quem está conectado agora (quem já saiu nunca é posto no pote por uma partida que não aceitou jogar).
+   * Com `contarDesconectados`, a de quem está sentado conta também: é o rol que a próxima partida teria se todos voltassem (a
+   * trava da física no fim da partida).
    */
-  private rolDaPartida(partida: EstadoPartida): readonly ParticipanteDoRol[] {
+  private rolDaPartida(partida: EstadoPartida, contarDesconectados = false): readonly ParticipanteDoRol[] {
     return partida.jogadores
       .map((j, indice): ParticipanteDoRol => {
         const lugar = lugarDoJogador(partida, indice);
         const dono = this.participantes.find((q) => q.lugar === lugar);
         // carteira que o armazém já não tem (foi reaproveitada no teto enquanto a pessoa esperava) é como não ter carteira
-        const carteira = dono?.conn && dono.carteira !== null && this.deps.carteiras.ler(dono.carteira) ? dono.carteira : null;
+        const carteira = dono && (dono.conn || contarDesconectados) && dono.carteira !== null && this.deps.carteiras.ler(dono.carteira) ? dono.carteira : null;
         return { lugar, equipe: j.equipe, nome: dono?.nome ?? j.nome, carteira };
       })
       .sort((a, b) => a.lugar - b.lugar);
@@ -709,27 +793,56 @@ export class Sala {
    * carteira quando a partida começou, esteja ou não na sala agora; quem não tinha não aposta nem recebe, e a mesma carteira
    * em dois lugares anula tudo. Devolve a mensagem do pagamento, ou `null` se nenhum dinheiro mudou de mãos (sem aposta,
    * sem contraparte, partida sem vencedor).
+   *
+   * L38: a partida que acabou de verdade e conta (a aposta vale, `valeMoeda`, e nenhuma tacada teve a física mexida) soma as
+   * estatísticas de cada carteira do rol, na MESMA chamada do armazém que move o saldo (tudo ou nada). A física mexida não tira a
+   * aposta: todos viram a física na espera ou foram avisados, então o pote muda de mãos como sempre.
    */
   private pagarAposta(partida: EstadoPartida): MsgApostaPaga | null {
     const emCurso = this.apostaEmCurso;
     if (!emCurso || partida.vencedor === null) return null;
     this.apostaEmCurso = null;
     const { valor, rol } = emCurso;
+    const modalidade = partida.config.modalidade;
     const conta = calcularAposta(rol, valor, partida.vencedor);
     if (conta.anulada) {
       this.deps.log('aposta', { sala: this.codigo, valor, anulada: conta.motivo });
+      this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: conta.motivo });
       return { tipo: 'aposta-paga', valor, variacoes: [], anulada: conta.motivo };
     }
-    if (conta.pagamentos.every((pg) => pg.delta === 0)) return null;
-    if (!this.deps.carteiras.aplicar(conta.pagamentos.map((pg) => ({ id: pg.carteira, delta: pg.delta })), this)) {
-      this.deps.log('aposta-falhou', { sala: this.codigo, valor });
+    const motivoDeNaoContar = !valeMoeda(rol) ? 'menos-de-duas-carteiras' : this.fisicaMexidaNaPartida ? 'fisica-mexida' : null;
+    const estatisticas = motivoDeNaoContar === null ? estatisticasDaPartida({ rol, vencedor: partida.vencedor, modalidade, parciais: emCurso.parciais, pagamentos: conta.pagamentos }) : [];
+    const semDinheiro = conta.pagamentos.every((pg) => pg.delta === 0);
+    if (semDinheiro && estatisticas.length === 0) {
+      this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: motivoDeNaoContar ?? 'sem-carteira' });
       return null;
     }
-    const variacoes = conta.pagamentos.map((pg) => ({ lugar: pg.lugar, nome: pg.nome, delta: pg.delta, saldo: this.deps.carteiras.ler(pg.carteira)?.saldo ?? 0 }));
+    const variacoes = semDinheiro ? [] : conta.pagamentos.map((pg) => ({ id: pg.carteira, delta: pg.delta }));
+    if (!this.deps.carteiras.aplicar(variacoes, this, estatisticas)) {
+      // sem dinheiro a mover, o que falhou foi só a estatística: o log não acusa a aposta (tudo ou nada: com dinheiro, é o lote)
+      if (semDinheiro) this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: 'falhou' });
+      else this.deps.log('aposta-falhou', { sala: this.codigo, valor });
+      return null;
+    }
+    this.logarEstatistica(modalidade, motivoDeNaoContar, estatisticas);
+    if (semDinheiro) return null;
+    const pagamentos = conta.pagamentos;
+    const variacoesNoFio = pagamentos.map((pg) => ({ lugar: pg.lugar, nome: pg.nome, delta: pg.delta, saldo: this.deps.carteiras.ler(pg.carteira)?.saldo ?? 0 }));
     const venceu = rol.filter((q) => q.equipe === partida.vencedor).map((q) => q.nome).join(' e ');
-    const deltas = conta.pagamentos.map((pg) => `${pg.nome} ${pg.delta < 0 ? '' : '+'}${pg.delta}`).join(', ');
+    const deltas = pagamentos.map((pg) => `${pg.nome} ${pg.delta < 0 ? '' : '+'}${pg.delta}`).join(', ');
     this.deps.log('aposta', { sala: this.codigo, valor, venceu, deltas });
-    return { tipo: 'aposta-paga', valor, variacoes };
+    return { tipo: 'aposta-paga', valor, variacoes: variacoesNoFio };
+  }
+
+  /** O log curto do fim da partida (L38): contou ou não, e por quê; nunca o código nem o `id` da carteira. */
+  private logarEstatistica(modalidade: Modalidade, motivoDeNaoContar: string | null, estatisticas: readonly { readonly contagem: { readonly bolas: number } }[]): void {
+    if (motivoDeNaoContar !== null) return void this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: motivoDeNaoContar });
+    this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: true, carteiras: estatisticas.length, bolas: estatisticas.reduce((soma, e) => soma + e.contagem.bolas, 0) });
+  }
+
+  /** O apelido de quem está sentado nesta sala com a carteira `id` (o log da compra o usa), ou `null` se ninguém está. */
+  apelidoDaCarteira(id: string): string | null {
+    return this.participantes.find((p) => p.lugar !== null && p.carteira === id)?.nome ?? null;
   }
 
   /**
@@ -847,8 +960,13 @@ export class Sala {
    */
   private reiniciarPrazoDepoisDa(duracaoS: number, partida: EstadoPartida): void {
     if (this.terminou(partida)) return this.prazo.parar();
+    this.iniciarPrazo(this.fimDaAnimacao(duracaoS));
+  }
+
+  /** Quando acaba a animação de uma tacada aceita agora (duração da gravação, com teto, mais a margem): dali em diante o prazo da vez corre e a física pode mudar. */
+  private fimDaAnimacao(duracaoS: number): number {
     const { margemAnimacaoMs, animacaoMaximaMs } = this.deps.config.relogioTacada;
-    this.iniciarPrazo(this.deps.relogio() + Math.min(duracaoS * 1000, animacaoMaximaMs) + margemAnimacaoMs);
+    return this.deps.relogio() + Math.min(duracaoS * 1000, animacaoMaximaMs) + margemAnimacaoMs;
   }
 
   /**
@@ -924,6 +1042,19 @@ export class Sala {
     return { preset: nome, regras };
   }
 
+  /**
+   * A aposta trava a física (L38): há partida em andamento com aposta valendo (`valeMoeda`), ou a partida acabou (à espera do
+   * `voltar-ao-lobby` ou do `nova-partida`) e a próxima, com os mesmos lugares, teria aposta valendo. No fim a conta é do rol que
+   * um `nova-partida` fixaria com todos de volta (a carteira de quem saiu depois do fim conta: ele pode voltar), porque senão o
+   * anfitrião mudaria a física enquanto alguém está fora e a aposta nova valeria com uma física que ninguém viu na espera.
+   * Na espera nada trava; para mexer com aposta valendo é preciso voltar ao lobby.
+   */
+  private get fisicaTravada(): boolean {
+    if (this.fase !== 'jogando' || this.partida === null) return false;
+    if (!this.terminou(this.partida)) return this.apostaEmCurso !== null && valeMoeda(this.apostaEmCurso.rol);
+    return valeMoeda(this.rolDaPartida(this.partida, true));
+  }
+
   private get espectadores(): number {
     return this.participantes.filter((p) => p.lugar === null).length;
   }
@@ -948,6 +1079,7 @@ export class Sala {
     const lugares: LugarSala[] = [0, 1, 2, 3].map((lugar) => {
       const dono = this.participantes.find((p) => p.lugar === lugar);
       const carteira = dono?.carteira ? this.deps.carteiras.ler(dono.carteira) : undefined;
+      const emUso = carteira?.itens?.find((i) => i.skin === carteira.skin);
       return {
         lugar,
         equipe: equipeDoLugar(this.modoDaSala, lugar),
@@ -956,6 +1088,13 @@ export class Sala {
         anfitriao: dono?.anfitriao ?? false,
         saldo: carteira?.saldo ?? null,
         skin: carteira?.skin ?? SKIN_PADRAO,
+        // o taco em uso de quem tem carteira: todo mundo vê a semente e o contador (L34)
+        semente: emUso?.semente ?? null,
+        bolas: emUso?.bolas ?? null,
+        // o resumo público (L38): só números do total, nunca o código nem o id da carteira
+        estatisticas: carteira?.estatisticas ? resumoPublico(carteira.estatisticas) : null,
+        // o balão em uso (L47) vem SEMPRE da carteira de quem está sentado, nunca de uma mensagem do cliente; sentado sem carteira é o padrão
+        aparencia: dono ? (carteira?.balao?.aparencia ?? APARENCIA_PADRAO) : null,
       };
     });
     return {
@@ -974,6 +1113,9 @@ export class Sala {
       giz: this.gizDaSala,
       forca: this.forcaDaSala,
       aposta: this.apostaDaSala,
+      fisica: this.fisicaDaSala,
+      fisicaMexida: fisicaDiferenteDoPadrao(this.fisicaDaSala),
+      fisicaTravada: this.fisicaTravada,
       prazoMs: this.prazo.restanteMs(this.deps.relogio()),
       placar: placarNoFio(this.placar),
     };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MisturaDeAcoes, type DefinicaoDaAcao } from './acoes';
+import { sorteioDeTeste } from './para-testes';
 
 const DEFS: DefinicaoDaAcao[] = [
   { nome: 'parado', duracaoS: 2, cicloS: null },
@@ -138,6 +139,72 @@ describe('MisturaDeAcoes', () => {
     expect(m.pesos[0]).toBe(1);
     expect(m.tempos[0]).toBe(0);
     expect(m.fazer('inclinar', { entradaS: 0, saidaS: 1, repetir: true })).toBe(true);
+  });
+
+  it('o ritmo da base muda a rapidez do relógio dela (a parada que não repete igual)', () => {
+    const m = nova();
+    m.ritmoDaBase = 1.5;
+    m.atualizar(1);
+    expect(m.tempos[0]).toBeCloseTo(1.5, 9);
+    m.ritmoDaBase = 0.5;
+    m.atualizar(1);
+    expect(m.tempos[0]).toBeCloseTo(0, 9);
+    m.ritmoDaBase = -3;
+    m.atualizar(0.1);
+    expect(m.tempos[0]).toBeGreaterThanOrEqual(0);
+  });
+
+  it('pedir de novo uma ação que não repete e ainda está saindo continua de onde ela estava (não volta ao começo)', () => {
+    const m = nova();
+    m.fazer('pulinho', { entradaS: 0.1, saidaS: 0.4 });
+    m.atualizar(0.6);
+    m.fazer('susto', { entradaS: 0.2, saidaS: 0.2 });
+    m.atualizar(0.05);
+    expect(m.pesos[2]).toBeGreaterThan(0.3);
+    const antes = m.tempos[2]!;
+    expect(m.fazer('pulinho', { entradaS: 0.1, saidaS: 0.4 })).toBe(true);
+    m.atualizar(0);
+    expect(m.tempos[2]).toBeCloseTo(antes, 9);
+  });
+
+  it('pedir de novo uma ação quase sumida a recomeça do começo', () => {
+    const m = nova();
+    m.fazer('pulinho', { entradaS: 0.1, saidaS: 0.4 });
+    m.atualizar(0.6);
+    m.fazer('susto', { entradaS: 0.2, saidaS: 0.2 });
+    m.atualizar(0.19);
+    expect(m.pesos[2]).toBeLessThan(0.1);
+    m.fazer('pulinho', { entradaS: 0.1, saidaS: 0.4 });
+    m.atualizar(0);
+    expect(m.tempos[2]).toBe(0);
+  });
+
+  it('nada estala: com pedidos e soltadas a esmo, o relógio de cada ação visível só anda com o tempo', () => {
+    const sorteio = sorteioDeTeste(21);
+    const m = nova();
+    const nomes = ['inclinar', 'pulinho', 'susto'];
+    const dt = 1 / 60;
+    let anteriorPesos = Float64Array.from(m.pesos);
+    let anteriorTempos = Float64Array.from(m.tempos);
+    for (let i = 0; i < 6000; i++) {
+      if (sorteio() < 0.04) {
+        const nome = nomes[Math.floor(sorteio() * 3)]!;
+        if (sorteio() < 0.7) m.fazer(nome, { entradaS: 0.05 + sorteio() * 0.3, saidaS: 0.1 + sorteio() * 0.4, repetir: nome === 'inclinar' && sorteio() < 0.5 });
+        else m.soltar(nome);
+      }
+      m.atualizar(dt);
+      expect(soma(m)).toBeCloseTo(1, 9);
+      for (let k = 1; k < DEFS.length; k++) {
+        const visivel = m.pesos[k]! > 0.02 && anteriorPesos[k]! > 0.02;
+        if (!visivel) continue;
+        const salto = m.tempos[k]! - anteriorTempos[k]!;
+        const volta = DEFS[k]!.cicloS === null ? 0 : DEFS[k]!.cicloS![1] - DEFS[k]!.cicloS![0];
+        // andou o quadro, ou deu a volta do ciclo; nunca um salto para trás no meio do corpo
+        expect(Math.abs(salto - dt) < 1e-6 || (volta > 0 && Math.abs(salto - dt + volta) < 1e-6), `quadro ${i}, ${DEFS[k]!.nome}: salto ${salto}`).toBe(true);
+      }
+      anteriorPesos = Float64Array.from(m.pesos);
+      anteriorTempos = Float64Array.from(m.tempos);
+    }
   });
 
   it('lança com ação que não existe, e com repetir sem ciclo', () => {

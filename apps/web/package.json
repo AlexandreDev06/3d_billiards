@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node scripts/copiar-personagens.mjs && vite",
-    "build": "node scripts/copiar-personagens.mjs && tsc --noEmit -p . && vite build",
+    "dev": "node scripts/copiar-personagens.mjs && node scripts/copiar-boteco.mjs && node scripts/copiar-skins.mjs && vite",
+    "build": "node scripts/copiar-personagens.mjs && node scripts/copiar-boteco.mjs && node scripts/copiar-skins.mjs && tsc --noEmit -p . && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p ."
   },

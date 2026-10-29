@@ -247,3 +247,98 @@ describe('CameraRig — câmera do fim', () => {
     expect(rig.vista).toBe('cima');
   });
 });
+
+describe('CameraRig — câmera do menu (L44)', () => {
+  const POSE = { x: 4.5, y: 1.55, z: 2.6, olharX: 0.4, olharY: 0.8, olharZ: 0 };
+
+  it('vai para a pose do menu e a segue; Tab, órbita e roda não mexem nela', () => {
+    const { camera, rig } = novaCamera();
+    rodar(rig, 5);
+    rig.entrarNoMenu(POSE);
+    rodar(rig, 600);
+    expect(rig.vista).toBe('menu');
+    const alvo = new Vector3(POSE.x, POSE.y, POSE.z);
+    expect(camera.position.distanceTo(alvo)).toBeLessThan(0.001);
+    rig.alternarVista();
+    rig.iniciarOrbita();
+    rig.zoomar(1);
+    rodar(rig, 60);
+    expect(rig.vista).toBe('menu');
+    expect(rig.orbitando).toBe(false);
+    expect(camera.position.distanceTo(alvo)).toBeLessThan(1e-6);
+  });
+
+  it('sairDoMenu volta à vista de antes (a de cima também), e fora do menu não faz nada', () => {
+    const { rig } = novaCamera();
+    rig.sairDoMenu();
+    expect(rig.vista).toBe('tacada');
+    rig.alternarVista();
+    rig.entrarNoMenu(POSE);
+    rig.entrarNoMenu({ ...POSE, x: 4.4 });
+    rig.sairDoMenu();
+    expect(rig.vista).toBe('cima');
+  });
+
+  it('o menu encerra a órbita que estava rolando', () => {
+    const { rig } = novaCamera();
+    rig.iniciarOrbita();
+    expect(rig.orbitando).toBe(true);
+    rig.entrarNoMenu(POSE);
+    expect(rig.orbitando).toBe(false);
+  });
+});
+
+describe('CameraRig — limites da sala (L44)', () => {
+  const SALA = CONFIG_WEB.boteco.sala;
+  const FOLGA = 1e-6;
+  const dentro = (p: Vector3): boolean => Math.abs(p.x) <= SALA.xMax + FOLGA && Math.abs(p.z) <= SALA.zMax + FOLGA && p.y <= SALA.yMax + FOLGA;
+
+  it('sem limites (sem boteco) a órbita afastada vai tão longe quanto sempre', () => {
+    const { camera, rig } = novaCamera();
+    rodar(rig, 5);
+    rig.iniciarOrbita();
+    rig.orbitar(0, 40);
+    for (let i = 0; i < 80; i++) rig.zoomar(1);
+    rodar(rig, 600);
+    expect(camera.position.length()).toBeGreaterThan(Math.hypot(SALA.xMax, SALA.zMax));
+  });
+
+  it('com limites, a órbita afastada ao máximo, em qualquer direção, fica dentro da sala', () => {
+    const { camera, rig } = novaCamera();
+    rig.definirLimites(SALA);
+    rodar(rig, 5);
+    rig.iniciarOrbita();
+    for (let i = 0; i < 80; i++) rig.zoomar(1);
+    for (const [px, py] of [[0, 40], [314, 0], [314, 0], [314, 0], [0, 400], [0, -400], [157, 90]] as const) {
+      rig.orbitar(px, py);
+      rodar(rig, 600);
+      expect(dentro(camera.position)).toBe(true);
+    }
+  });
+
+  it('a câmera de tacada com a âncora no canto da mesa também fica dentro (puxa para a bola, na mesma linha)', () => {
+    const { camera, rig } = novaCamera();
+    rig.definirLimites(SALA);
+    const ancora = new Vector3(-SEMI_X, 0.027, -SEMI_Z);
+    for (const angulo of [0, 1, 2, 3, 4, 5, 6]) {
+      for (let i = 0; i < 600; i++) rig.atualizar(1 / 60, ancora, angulo);
+      expect(dentro(camera.position)).toBe(true);
+    }
+  });
+
+  it('a vista de cima fica sobre a mesa, acima do forro (o forro some por altura), e dentro nas paredes', () => {
+    const { camera, rig } = novaCamera();
+    rig.definirLimites(SALA);
+    rig.alternarVista();
+    rodar(rig, 600);
+    expect(rig.vista).toBe('cima');
+    expect(camera.position.y).toBeGreaterThan(CONFIG_WEB.boteco.tetoSomeAcimaDe);
+    expect(Math.abs(camera.position.x)).toBeLessThanOrEqual(SALA.xMax);
+    expect(Math.abs(camera.position.z)).toBeLessThanOrEqual(SALA.zMax);
+    for (const x of [-1.45, 1.45]) for (const z of [-0.85, 0.85]) {
+      const p = naTela(camera, x, z);
+      expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
+      expect(Math.abs(p.y)).toBeLessThanOrEqual(1);
+    }
+  });
+});

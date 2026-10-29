@@ -29,6 +29,20 @@ import { Registro, type DependenciasRegistro } from './registro';
 import { criarRng as criarRngDaSala } from './rng';
 import type { Conexao } from './sala';
 
+/**
+ * As skins que os testes compram para conferir preço. A vitrine do dia (L34) dá 20% de desconto em 3 skins e troca todo dia;
+ * por isso o servidor de teste sobe com o relógio em `INSTANTE_SEM_VITRINE`, um dia em que nenhuma delas está na vitrine, e
+ * nenhum teste de preço muda de resultado conforme o dia em que roda. Quem testa a vitrine pede o seu relógio.
+ */
+export const SKINS_QUE_OS_TESTES_COMPRAM = ['ebano', 'boteco', 'marfim', 'carbono', 'chamas', 'neon', 'ouro'] as const;
+export const INSTANTE_SEM_VITRINE = Date.parse('2026-11-02T15:00:00Z');
+
+/** Relógio de teste que corre em tempo real, mas começando em `INSTANTE_SEM_VITRINE` (meio-dia no horário da missão). */
+export function relogioSemVitrine(): () => number {
+  const inicio = Date.now();
+  return () => INSTANTE_SEM_VITRINE + (Date.now() - inicio);
+}
+
 /** Semente do sorteio dos testes; `SEMENTE_TESTE_SALA` troca (para varrer outras e ver que nenhum teste depende de sorte). */
 export const SEMENTE_DOS_TESTES = Number(process.env.SEMENTE_TESTE_SALA ?? 20_261_009);
 
@@ -44,6 +58,8 @@ export function sortearDeTeste(semente: number = SEMENTE_DOS_TESTES): (max: numb
 export class ConexaoFalsa implements Conexao {
   readonly recebidas: MensagemDaSala[] = [];
   fechada: { codigo: number; motivo: string } | null = null;
+  /** A versão do protocolo que o cliente declarou em `criar-sala`/`entrar` (a sala guarda, L47). */
+  versao?: number;
   /** Pesos de cada infração que a sala mandou o transporte contar. */
   readonly punicoes: number[] = [];
 

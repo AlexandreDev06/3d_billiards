@@ -231,7 +231,7 @@ describe('baixos — 503 sem caminho absoluto e Content-Security-Policy no HTML'
       expect(politica).toMatch(/script-src 'self'(;|$)/);
       expect(politica).not.toContain('unsafe-eval');
       expect(politica).not.toMatch(/script-src[^;]*unsafe-inline/);
-      expect(politica).toContain("connect-src 'self' ws://mayfly-one-mainly.ngrok-free.app wss://mayfly-one-mainly.ngrok-free.app");
+      expect(politica).toContain("connect-src 'self' blob: ws://mayfly-one-mainly.ngrok-free.app wss://mayfly-one-mainly.ngrok-free.app");
       expect(politica).toContain("object-src 'none'");
       expect(politica).toContain("frame-ancestors 'none'");
       expect(politica).toContain("base-uri 'none'");

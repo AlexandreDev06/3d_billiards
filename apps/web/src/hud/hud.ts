@@ -1,7 +1,7 @@
 import { armazenamentoLocal } from '../armazenamento';
 import { CONFIG_WEB } from '../config';
 import { teclaEmCampo } from '../controles/campo';
-import { criarAjuda, LINHAS_DE_AJUDA, type LinhaDeAjuda } from './ajuda';
+import { criarAjuda, LINHAS_DE_AJUDA, LINHAS_DO_TREINO, type LinhaDeAjuda } from './ajuda';
 import { criarAnuncio, type HudAnuncio } from './anuncio';
 import { criarAvisoDaFalta, type HudAvisoFalta } from './aviso-falta';
 import { criarAvisoDaMira, type AvisoDaMira } from './aviso-mira';
@@ -11,6 +11,7 @@ import { criarContador, type Contador } from './contador';
 import { ICONE_ENGRENAGEM } from './icones';
 import { criarAvisoDiscreto, type AvisoDiscreto } from './aviso-discreto';
 import { ModeloDaAjuda } from './ajuda-modelo';
+import { criarAjudaMissoes, type HudAjudaMissoes, type OpcoesAjudaMissoes } from './ajuda-missoes';
 import { criarHudAudio, type ControleDeAudio } from './audio';
 import { criarAvisosDeMissao, type AvisosDeMissao } from './avisos-de-missao';
 import { criarHudEmojis, type HudEmojis, type OpcoesHudEmojis } from './emojis';
@@ -20,6 +21,7 @@ import { criarMiniBolao, type MiniBolao } from './minibolao';
 import { criarPlacar, type Placar } from './placar';
 import { criarPlacarDaSala, type PlacarDaSalaHud } from './placar-sala';
 import { criarHudSala, type HudSala, type OpcoesHudSala } from './sala';
+import { criarHudTreino, type HudTreino, type OpcoesHudTreino } from './treino';
 import { criarTelas, type Telas } from './telas';
 
 export interface Hud {
@@ -51,6 +53,12 @@ export interface Hud {
   readonly emojis: HudEmojis;
   /** Missão do dia que andou ("Mão quente 3/5") ou fechou ("Missão cumprida! Tabelada +100"), no canto de cima à direita (L32). */
   readonly avisosDeMissao: AvisosDeMissao;
+  /** A seção "Missões do dia" que o H abre junto com a ajuda, na coluna da esquerda (L37). */
+  readonly ajudaMissoes: HudAjudaMissoes;
+  /** O modo treino (L42): o cartão "Treino", as ferramentas, os cenários e a bandeja; escondido fora do treino. */
+  readonly treino: HudTreino;
+  /** Liga o HUD do treino (sem placar de adversário) e as linhas do treino na ajuda; desligado volta ao de sempre. */
+  definirTreino(ativo: boolean): void;
   /** O botão "Menu" (volta à tela inicial) só aparece no hot-seat. */
   mostrarBotaoMenu(visivel: boolean): void;
   /** O que o botão esquerdo faz na ajuda, conforme o controle de força que vale. */
@@ -73,6 +81,10 @@ export interface OpcoesHud {
   readonly ajudaExtra?: readonly LinhaDeAjuda[];
   /** O botão "Créditos dos sons" do cartão da ajuda. */
   readonly aoCreditos?: () => void;
+  /** De onde a seção "Missões do dia" do H tira o que mostra (o `modelo` da ajuda é o HUD que põe). */
+  readonly missoes: Omit<OpcoesAjudaMissoes, 'modelo'>;
+  /** O que o modo treino (L42) faz com cada botão e cenário. */
+  readonly treino: OpcoesHudTreino;
 }
 
 /** Abaixo desta altura (px) o cartão de ajuda aberto cobriria o fundo da mesa. */
@@ -150,7 +162,9 @@ export function criarHud(pai: HTMLElement, opcoes: OpcoesHud): Hud {
   });
   const audio = criarHudAudio(barra, opcoes.audio);
   const ajudaModelo = new ModeloDaAjuda(armazenamentoLocal(), window.innerHeight >= ALTURA_PARA_AJUDA_ABERTA);
-  const ajuda = criarAjuda(barra, topoDireita, ajudaModelo, [...LINHAS_DE_AJUDA, ...(opcoes.ajudaExtra ?? [])], opcoes.aoCreditos);
+  const ajuda = criarAjuda(barra, topoDireita, ajudaModelo, [...LINHAS_DE_AJUDA, ...(opcoes.ajudaExtra ?? [])], opcoes.aoCreditos, LINHAS_DO_TREINO);
+  const ajudaMissoes = criarAjudaMissoes(esquerda, { ...opcoes.missoes, modelo: ajudaModelo });
+  const treino = criarHudTreino(esquerda, raiz, opcoes.treino);
 
   const aoApertar = (e: KeyboardEvent): void => {
     if (e.repeat || e.ctrlKey || e.altKey || e.metaKey || teclaEmCampo(e.target)) return;
@@ -176,6 +190,12 @@ export function criarHud(pai: HTMLElement, opcoes: OpcoesHud): Hud {
     sala,
     emojis,
     avisosDeMissao,
+    ajudaMissoes,
+    treino,
+    definirTreino(ativo) {
+      treino.mostrar(ativo);
+      ajuda.definirTreino(ativo);
+    },
     mostrarBotaoMenu(visivel) {
       botaoMenu.hidden = !visivel;
     },
@@ -190,6 +210,8 @@ export function criarHud(pai: HTMLElement, opcoes: OpcoesHud): Hud {
       emojis.dispose();
       avisosDeMissao.dispose();
       ajuda.dispose();
+      ajudaMissoes.dispose();
+      treino.dispose();
       audio.dispose();
       miniBolao.dispose();
       giz.dispose();

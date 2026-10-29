@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { LINHAS_DE_AJUDA, TEXTO_DA_TACADA } from './ajuda';
+import { acaoDaTecla, TECLAS_DO_TREINO } from '../treino/teclas';
+import { LINHAS_DE_AJUDA, LINHAS_DO_TREINO, TEXTO_DA_TACADA } from './ajuda';
 
 describe('linhas da ajuda', () => {
   it('documenta a tecla B (mostrar de novo as bolas da vez, segurando)', () => {
@@ -32,8 +33,29 @@ describe('linhas da ajuda', () => {
     expect(texto).toContain('✎');
   });
 
+  it('o H diz que abre a ajuda e as missões do dia', () => {
+    const texto = LINHAS_DE_AJUDA.find((l) => l.teclas.includes('H'))?.texto ?? '';
+    expect(texto).toMatch(/ajuda/i);
+    expect(texto).toMatch(/missões do dia/i);
+  });
+
   it('nenhuma tecla aparece duas vezes', () => {
     const teclas = LINHAS_DE_AJUDA.flatMap((l) => l.teclas);
     expect(new Set(teclas).size).toBe(teclas.length);
+  });
+
+  it('as teclas do treino estão na ajuda do treino e não repetem as do jogo', () => {
+    const doJogo = new Set(LINHAS_DE_AJUDA.flatMap((l) => l.teclas));
+    const doTreino = LINHAS_DO_TREINO.flatMap((l) => l.teclas);
+    expect(new Set(doTreino).size).toBe(doTreino.length);
+    for (const tecla of doTreino) expect(doJogo.has(tecla)).toBe(false);
+  });
+
+  it('cada tecla do treino que o jogo escuta aparece na ajuda do treino', () => {
+    const naAjuda = new Set(LINHAS_DO_TREINO.flatMap((l) => l.teclas));
+    for (const code of Object.values(TECLAS_DO_TREINO)) {
+      expect(acaoDaTecla(code, 'arrumar'), code).not.toBeNull();
+      expect(naAjuda.has(code.replace('Key', '')), code).toBe(true);
+    }
   });
 });

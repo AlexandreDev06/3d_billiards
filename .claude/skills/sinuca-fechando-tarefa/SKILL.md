@@ -17,11 +17,11 @@ Pronto = código + prova + doc viva fechando juntos. Doc desatualizada engana a 
 6. **Assets**: CC-BY usado → crédito em `docs/creditos.md`.
 7. **Sem lixo**: script, log e captura temporários só em `.outros/`.
 8. **Sem commit, push ou deploy.**
-9. **Relatório** no formato da skill `sinuca-maestri-time`, em arquivo, via ask-back.
+9. **Relatório** no formato da skill `sinuca-maestri-time`: mensagem final (até 10 linhas), também gravado em `.outros/lote-<n>/relatorio-<papel>.txt`.
 
 ## Não está pronto se
 
 - "Os testes passam" sem a saída mostrada, ou "deve funcionar" sem rodar.
 - "Atualizo a doc no próximo lote."
 - Teste novo que você não viu falhar com o código errado.
-- Ficou alguma chave em `"provisorio"` sem a pergunta correspondente em `sinuca-perguntas`.
+- Ficou alguma chave em `"provisorio"` sem a pergunta correspondente em `.outros/perguntas.md`.

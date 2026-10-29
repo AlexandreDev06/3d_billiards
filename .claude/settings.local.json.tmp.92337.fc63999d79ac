@@ -1,0 +1,39 @@
+{
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
+  "permissions": {
+    "allow": [
+      "Bash(pnpm:*)",
+      "Bash(npx vitest:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npx playwright:*)",
+      "Bash(node:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(grep:*)",
+      "Bash(find:*)",
+      "Bash(sed -n:*)",
+      "Bash(maestri:*)",
+      "Bash(bash .claude/skills/sinuca-maestri-time/time.sh:*)",
+      "WebSearch",
+      "Bash(git add *)",
+      "Bash(git remote *)"
+    ],
+    "deny": [],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(pnpm deploy:*)",
+      "Bash(pnpm run deploy:*)",
+      "Bash(pnpm wrangler deploy:*)",
+      "Bash(npx wrangler deploy:*)",
+      "Bash(wrangler deploy:*)"
+    ]
+  }
+}

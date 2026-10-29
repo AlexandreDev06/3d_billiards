@@ -1,0 +1,422 @@
+{
+  "arquivo": "chapeus.glb",
+  "versao": 1,
+  "unidades": "metros; a origem de cada nó é o alto da cabeça do balão (o ponto que encosta na `ancora_chapeu` de `balao.glb`); +Y sobe e a frente do rosto é +Z",
+  "nos": "um nó raiz por chapéu e por nível, com o id do contrato mais `_alta` ou `_baixa` (por exemplo `cartola_alta`, `chapeu_palha_baixa`): sem prefixo `chapeu_` a mais",
+  "como_usar": "clone o nó do nível em uso (`SkeletonUtils` não é preciso: são malhas comuns), ponha-o como filho do nó `ancora_chapeu` do balão (posição e giro zero) e aplique a regra de escala de `balao-meta.json` > `ancora_chapeu.escala_do_chapeu` (o nó herda a escala do osso `espinha_3`, que estica e amassa)",
+  "orcamento_triangulos": {
+    "alta": 3000,
+    "baixa": 600
+  },
+  "chapeus": {
+    "chapeu_panama": {
+      "alta": {
+        "no": "chapeu_panama_alta",
+        "triangulos": 2872,
+        "vertices": 1761,
+        "materiais": [
+          "palha",
+          "faixa_preta"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.42,
+            4.42
+          ],
+          "y_sobe": [
+            -1.106,
+            1.594
+          ],
+          "z_frente": [
+            -4.42,
+            4.42
+          ]
+        }
+      },
+      "baixa": {
+        "no": "chapeu_panama_baixa",
+        "triangulos": 592,
+        "vertices": 401,
+        "materiais": [
+          "palha",
+          "faixa_preta"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.42,
+            4.42
+          ],
+          "y_sobe": [
+            -1.106,
+            1.594
+          ],
+          "z_frente": [
+            -4.42,
+            4.42
+          ]
+        }
+      }
+    },
+    "bone_aba_reta": {
+      "alta": {
+        "no": "bone_aba_reta_alta",
+        "triangulos": 2120,
+        "vertices": 1245,
+        "materiais": [
+          "tecido_bone",
+          "aba_bone",
+          "emblema_8"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.716,
+            3.716
+          ],
+          "y_sobe": [
+            -1.181,
+            1.449
+          ],
+          "z_frente": [
+            -3.27,
+            5.15
+          ]
+        }
+      },
+      "baixa": {
+        "no": "bone_aba_reta_baixa",
+        "triangulos": 320,
+        "vertices": 217,
+        "materiais": [
+          "tecido_bone",
+          "aba_bone",
+          "emblema_8"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.705,
+            3.705
+          ],
+          "y_sobe": [
+            -1.181,
+            1.159
+          ],
+          "z_frente": [
+            -3.27,
+            5.15
+          ]
+        }
+      }
+    },
+    "cartola": {
+      "alta": {
+        "no": "cartola_alta",
+        "triangulos": 2432,
+        "vertices": 1555,
+        "materiais": [
+          "feltro_preto",
+          "cetim_vermelho",
+          "ouro"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.18,
+            4.18
+          ],
+          "y_sobe": [
+            -1.035,
+            4.105
+          ],
+          "z_frente": [
+            -4.18,
+            4.18
+          ]
+        }
+      },
+      "baixa": {
+        "no": "cartola_baixa",
+        "triangulos": 560,
+        "vertices": 385,
+        "materiais": [
+          "feltro_preto",
+          "cetim_vermelho",
+          "ouro"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.18,
+            4.18
+          ],
+          "y_sobe": [
+            -1.035,
+            4.105
+          ],
+          "z_frente": [
+            -4.18,
+            4.18
+          ]
+        }
+      }
+    },
+    "gorro_pompom": {
+      "alta": {
+        "no": "gorro_pompom_alta",
+        "triangulos": 1788,
+        "vertices": 969,
+        "materiais": [
+          "la_listrada",
+          "la_barra",
+          "la_pompom"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.4,
+            3.4
+          ],
+          "y_sobe": [
+            -1.224,
+            3.205
+          ],
+          "z_frente": [
+            -3.4,
+            3.4
+          ]
+        }
+      },
+      "baixa": {
+        "no": "gorro_pompom_baixa",
+        "triangulos": 320,
+        "vertices": 187,
+        "materiais": [
+          "la_listrada",
+          "la_barra",
+          "la_pompom"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.4,
+            3.4
+          ],
+          "y_sobe": [
+            -1.224,
+            3.176
+          ],
+          "z_frente": [
+            -3.4,
+            3.4
+          ]
+        }
+      }
+    },
+    "chapeu_palha": {
+      "alta": {
+        "no": "chapeu_palha_alta",
+        "triangulos": 2952,
+        "vertices": 1767,
+        "materiais": [
+          "palha",
+          "xadrez",
+          "fita_vermelha"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.48,
+            4.48
+          ],
+          "y_sobe": [
+            -1.437,
+            1.109
+          ],
+          "z_frente": [
+            -4.48,
+            4.48
+          ]
+        }
+      },
+      "baixa": {
+        "no": "chapeu_palha_baixa",
+        "triangulos": 560,
+        "vertices": 369,
+        "materiais": [
+          "palha",
+          "xadrez",
+          "fita_vermelha"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.48,
+            4.48
+          ],
+          "y_sobe": [
+            -1.124,
+            1.109
+          ],
+          "z_frente": [
+            -4.48,
+            4.48
+          ]
+        }
+      }
+    },
+    "boina": {
+      "alta": {
+        "no": "boina_alta",
+        "triangulos": 1420,
+        "vertices": 799,
+        "materiais": [
+          "feltro_vinho",
+          "faixa_boina"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.937,
+            4.162
+          ],
+          "y_sobe": [
+            -1.274,
+            1.445
+          ],
+          "z_frente": [
+            -4.1,
+            4.1
+          ]
+        }
+      },
+      "baixa": {
+        "no": "boina_baixa",
+        "triangulos": 356,
+        "vertices": 215,
+        "materiais": [
+          "feltro_vinho",
+          "faixa_boina"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.957,
+            4.182
+          ],
+          "y_sobe": [
+            -1.274,
+            1.425
+          ],
+          "z_frente": [
+            -4.12,
+            4.12
+          ]
+        }
+      }
+    },
+    "chapeu_festa": {
+      "alta": {
+        "no": "chapeu_festa_alta",
+        "triangulos": 1600,
+        "vertices": 903,
+        "materiais": [
+          "listras_festa",
+          "elastico",
+          "pompom_festa"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.107,
+            4.107
+          ],
+          "y_sobe": [
+            -2.46,
+            6.27
+          ],
+          "z_frente": [
+            -2.68,
+            2.68
+          ]
+        }
+      },
+      "baixa": {
+        "no": "chapeu_festa_baixa",
+        "triangulos": 332,
+        "vertices": 213,
+        "materiais": [
+          "listras_festa",
+          "elastico",
+          "pompom_festa"
+        ],
+        "caixa_cm": {
+          "x": [
+            -4.093,
+            4.093
+          ],
+          "y_sobe": [
+            -2.46,
+            6.27
+          ],
+          "z_frente": [
+            -2.68,
+            2.68
+          ]
+        }
+      }
+    },
+    "coroa": {
+      "alta": {
+        "no": "coroa_alta",
+        "triangulos": 1620,
+        "vertices": 1030,
+        "materiais": [
+          "ouro",
+          "gema_vermelha",
+          "gema_azul",
+          "gema_verde"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.253,
+            3.253
+          ],
+          "y_sobe": [
+            -1.025,
+            2.505
+          ],
+          "z_frente": [
+            -3.39,
+            3.42
+          ]
+        }
+      },
+      "baixa": {
+        "no": "coroa_baixa",
+        "triangulos": 580,
+        "vertices": 400,
+        "materiais": [
+          "ouro",
+          "gema_vermelha",
+          "gema_azul",
+          "gema_verde"
+        ],
+        "caixa_cm": {
+          "x": [
+            -3.234,
+            3.234
+          ],
+          "y_sobe": [
+            -1.025,
+            2.485
+          ],
+          "z_frente": [
+            -3.155,
+            3.42
+          ]
+        }
+      }
+    }
+  },
+  "ids": [
+    "chapeu_panama",
+    "bone_aba_reta",
+    "cartola",
+    "gorro_pompom",
+    "chapeu_palha",
+    "boina",
+    "chapeu_festa",
+    "coroa"
+  ],
+  "assento": "a borda de baixo de cada chapéu está na altura em que o corpo do balão tem o raio interno do chapéu (a curva do topo); nenhum desce abaixo da sobrancelha mais alta (z do corpo 4.95 cm)"
+}

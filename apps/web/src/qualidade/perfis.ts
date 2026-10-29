@@ -1,5 +1,6 @@
 import { CONFIG_WEB, type NivelDeQualidade, type PerfilDeQualidade } from '../config';
 import type { NivelDeDetalhe } from '@sinuca/personagens/three';
+import { DETALHE_COMPLETO, type DetalheDoTaco } from '../cena/detalhe-do-taco';
 
 export type { NivelDeQualidade, PerfilDeQualidade };
 
@@ -39,6 +40,17 @@ export function particulasDoGiz(perfil: PerfilDeQualidade): number {
 /** O brilho do taco neon (uma casca aditiva, que pesa pixel a pixel) só nos níveis alto e médio. */
 export function haloDoTacoNoNivel(perfil: PerfilDeQualidade): boolean {
   return perfil.nivel !== 'baixa';
+}
+
+/**
+ * O que o taco desenha no nível (L35): a alta, tudo (trama cheia, película irisada, luz que corre, imagens pintadas com o brilho); a
+ * média, a trama cheia e a luz que corre, sem a película (que só o material físico tem); a baixa, cor e trama simples (poucas oitavas,
+ * sem relevo), sem iridescência nem animação e só a cor das imagens pintadas.
+ */
+export function detalheDoTacoNoNivel(perfil: PerfilDeQualidade): DetalheDoTaco {
+  if (perfil.nivel === 'alta') return DETALHE_COMPLETO;
+  if (perfil.nivel === 'media') return { trama: 'cheia', iridescencia: false, animacao: true, imagens: 'completas' };
+  return { trama: 'simples', iridescencia: false, animacao: false, imagens: 'cor' };
 }
 
 /** O nível logo abaixo, ou `null` se já é o mais baixo. */

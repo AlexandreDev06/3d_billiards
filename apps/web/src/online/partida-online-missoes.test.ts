@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CONFIG_FISICA_PADRAO, criarRng, simularTacada } from '@sinuca/fisica';
-import type { MensagemDoCliente, MsgApostaPaga, MsgEstadoSala, MsgMissoes } from '@sinuca/protocolo';
+import type { MsgApostaPaga, MsgMissoes } from '@sinuca/protocolo';
 import { REGRAS_DO_PACOTE } from '../jogo/regras';
 import { PartidaOnline } from './partida-online';
 
@@ -22,7 +22,7 @@ const MISSOES: MsgMissoes = {
 function montar() {
   const ordem: string[] = [];
   const partida = new PartidaOnline({
-    conexao: { enviar: (_m: MensagemDoCliente) => true },
+    conexao: { enviar: () => true },
     jogo: { regras: REGRAS_DO_PACOTE, simular: simularTacada },
     fisica: () => CONFIG_FISICA_PADRAO,
     rng: criarRng(1),
@@ -30,7 +30,7 @@ function montar() {
     ouvintes: {
       aoApostaPaga: () => ordem.push('aposta-paga'),
       aoMissoes: (m) => ordem.push(`missoes:${m.cumpridas.join(',')}`),
-      aoEstadoSala: (_e: MsgEstadoSala) => ordem.push('estado-sala'),
+      aoEstadoSala: () => ordem.push('estado-sala'),
     },
   });
   partida.definirConectado(true);

@@ -1,7 +1,7 @@
 import { medidasDaBola } from './config';
 import { cacapas, distanciaContatoTabela, pontasTabela, tabelas, type Ponto2 } from './medidas';
 import type { Golpe } from './taco';
-import type { ConfigFisica, EstadoBola, EstadoMesa, EventoTacada, IdBola, MovimentoBola } from './tipos';
+import type { ConfigFisica, EstadoBola, EstadoMesa, EventoTacada, IdBola, MovimentoBola, ParteDaTabela } from './tipos';
 
 // Tolerâncias numéricas do integrador (não são parâmetros físicos; os físicos estão em ConfigFisica).
 /** Folga (m) que ainda conta como contato: a previsão linear erra ~½·a·passo² ≈ 4 µm. */
@@ -116,6 +116,7 @@ interface Segmento {
   readonly nz: number;
   /** Índice em `tabelas()`, para o evento. */
   readonly tabela: number;
+  readonly parte: ParteDaTabela;
 }
 
 /** A ponta arredondada de uma tabela na boca: a bola encosta a `contatoTabela + raio` do centro. */
@@ -126,10 +127,10 @@ interface Quina {
   readonly tabela: number;
 }
 
-function segmento(inicio: Ponto2, fim: Ponto2, normal: Ponto2, tabela: number): Segmento {
+function segmento(inicio: Ponto2, fim: Ponto2, normal: Ponto2, tabela: number, parte: ParteDaTabela): Segmento {
   const ex = fim.x - inicio.x;
   const ez = fim.z - inicio.z;
-  return { ax: inicio.x, az: inicio.z, ex, ez, comprimento2: ex * ex + ez * ez, nx: normal.x, nz: normal.z, tabela };
+  return { ax: inicio.x, az: inicio.z, ex, ez, comprimento2: ex * ex + ez * ez, nx: normal.x, nz: normal.z, tabela, parte };
 }
 
 interface Boca {
@@ -181,8 +182,8 @@ export class Motor {
     this.bolas = estado.bolas.map((b) => new BolaMotor(b, config));
     // Cada tabela: o nariz reto entre as pontas, e em cada ponta o arredondado e a face que entra na caçapa.
     const pontas = pontasTabela(config.mesa);
-    const narizes = tabelas(config.mesa).map((t, k) => segmento(pontas[2 * k]!.noNariz, pontas[2 * k + 1]!.noNariz, t.normal, k));
-    const faces = pontas.map((p) => segmento(p.naFace, p.fimDaFace, p.normalFace, p.tabela));
+    const narizes = tabelas(config.mesa).map((t, k) => segmento(pontas[2 * k]!.noNariz, pontas[2 * k + 1]!.noNariz, t.normal, k, 'nariz'));
+    const faces = pontas.map((p) => segmento(p.naFace, p.fimDaFace, p.normalFace, p.tabela, 'boca'));
     this.segmentos = [...narizes, ...faces];
     this.quinas = pontas.map((p) => ({ x: p.centro.x, z: p.centro.z, raio: p.raio, tabela: p.tabela }));
     this.bocas = cacapas(config.mesa).map((c) => ({ id: c.id, x: c.queda.centro.x, z: c.queda.centro.z, raio: c.queda.raio }));
@@ -332,7 +333,7 @@ export class Motor {
         return;
       case BOLA_TABELA: {
         const s = this.segmentos[this.evJ]!;
-        this.choqueTabela(a, s.nx, s.nz, s.tabela);
+        this.choqueTabela(a, s.nx, s.nz, s.tabela, s.parte);
         return;
       }
       case BOLA_QUINA: {
@@ -340,7 +341,7 @@ export class Motor {
         const dx = a.px - q.x;
         const dz = a.pz - q.z;
         const d = Math.sqrt(dx * dx + dz * dz);
-        this.choqueTabela(a, dx / d, dz / d, q.tabela);
+        this.choqueTabela(a, dx / d, dz / d, q.tabela, 'boca');
         return;
       }
       case BOLA_CACAPA: {
@@ -550,7 +551,7 @@ export class Motor {
    * tangencial contra o escorregamento no contato, limitado por μ e pela aderência.
    * A parte vertical do impulso vai para o pano.
    */
-  private choqueTabela(b: BolaMotor, nx: number, nz: number, tabela: number): void {
+  private choqueTabela(b: BolaMotor, nx: number, nz: number, tabela: number, parte: ParteDaTabela): void {
     const vNormal = -(b.vx * nx + b.vz * nz);
     if (vNormal <= 0) return;
     const c = this.config;
@@ -586,7 +587,7 @@ export class Motor {
     b.wy += (rz * px - rx * pz) / b.inercia;
     b.wz += (rx * py - ry * px) / b.inercia;
     this.classificar(b, false);
-    if (vNormal >= c.velocidadeMinimaChoque) this.eventos.push({ tipo: 'bola-tabela', t: this.t, bola: b.id, tabela, velocidade: vNormal });
+    if (vNormal >= c.velocidadeMinimaChoque) this.eventos.push({ tipo: 'bola-tabela', t: this.t, bola: b.id, tabela, parte, velocidade: vNormal });
   }
 
   /** Rede de segurança: bola que escapou da mesa sem cair numa caçapa. */

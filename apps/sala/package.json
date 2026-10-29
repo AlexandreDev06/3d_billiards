@@ -5,7 +5,12 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "start": "tsx src/main.ts",
-    "typecheck": "tsc --noEmit -p ."
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.worker.json",
+    "assets:cf": "node scripts/preparar-assets-cf.mjs",
+    "dev:cf": "node scripts/preparar-assets-cf.mjs && WRANGLER_SEND_METRICS=false wrangler dev --local",
+    "deploy:cf": "pnpm --filter @sinuca/web build && node scripts/preparar-assets-cf.mjs && WRANGLER_SEND_METRICS=false wrangler deploy",
+    "types:cf": "WRANGLER_SEND_METRICS=false wrangler types",
+    "importar:cf": "node scripts/importar-carteiras.mjs"
   },
   "dependencies": {
     "@sinuca/protocolo": "workspace:*",
@@ -13,9 +18,11 @@
     "ws": "^8.22.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "5.20261022.1",
     "@sinuca/fisica": "workspace:*",
     "@types/node": "^24.19.1",
     "@types/ws": "^8.18.2",
-    "tsx": "^4.23.15"
+    "tsx": "^4.23.15",
+    "wrangler": "4.151.3"
   }
 }

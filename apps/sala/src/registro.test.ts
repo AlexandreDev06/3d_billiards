@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PROTOCOLO_VERSAO, type MensagemDoCliente } from '@sinuca/protocolo';
+import { PROTOCOLO_VERSAO, PROTOCOLO_VERSAO_MINIMA, type MensagemDoCliente } from '@sinuca/protocolo';
 import { PRESET_BOTECO, PRESET_MATA_MATA } from '@sinuca/regras';
 import { ClienteDeTeste, ConexaoFalsa, criarAmbiente } from './para-testes';
 
@@ -26,9 +26,9 @@ describe('registro — criar e entrar', () => {
     expect(amb.registro.totalSalas).toBe(1);
   });
 
-  it('aba antiga (protocolo 1 a 5) é recusada com o código versao e o pedido de recarregar a página, ao criar e ao entrar', () => {
+  it('aba antiga (protocolo 1 a 8) é recusada com o código versao e o pedido de recarregar a página, ao criar e ao entrar', () => {
     const amb = criarAmbiente();
-    for (const versao of [1, 2, 3, 4, 5]) {
+    for (const versao of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const velha = new ConexaoFalsa(`velha-${versao}`);
       amb.registro.receber(velha, criar('Ana', { versao }));
       expect(velha.recebidas).toHaveLength(1);
@@ -37,7 +37,7 @@ describe('registro — criar e entrar', () => {
     expect(amb.registro.totalSalas).toBe(0);
 
     const ana = new ClienteDeTeste(amb, 'Ana').criar();
-    for (const versao of [1, 2, 3, 4, 5]) {
+    for (const versao of [1, 2, 3, 4, 5, 6, 7, 8]) {
       const outra = new ConexaoFalsa(`outra-${versao}`);
       amb.registro.receber(outra, { tipo: 'entrar', versao, codigo: ana.codigo, nome: 'Beto', token: ana.token });
       expect(outra.ultima('erro')).toMatchObject({ codigo: 'versao', mensagem: expect.stringMatching(/recarregue a página/i) });
@@ -46,14 +46,34 @@ describe('registro — criar e entrar', () => {
     expect(ana.estado.lugares[1]!.nome).toBeNull();
   });
 
-  it('o protocolo atual é o 7 e quem fala 7 cria e entra normalmente', () => {
-    expect(PROTOCOLO_VERSAO).toBe(7);
+  it('o protocolo atual é o 10 e quem fala 10 cria e entra normalmente', () => {
+    expect(PROTOCOLO_VERSAO).toBe(10);
     const amb = criarAmbiente();
     const ana = new ClienteDeTeste(amb, 'Ana').criar();
     const nova = new ConexaoFalsa('nova');
-    amb.registro.receber(nova, { tipo: 'entrar', versao: 7, codigo: ana.codigo, nome: 'Beto' });
-    expect(nova.ultima('boas-vindas')).toMatchObject({ lugar: 1, versao: 7 });
+    amb.registro.receber(nova, { tipo: 'entrar', versao: 10, codigo: ana.codigo, nome: 'Beto' });
+    expect(nova.ultima('boas-vindas')).toMatchObject({ lugar: 1, versao: 10 });
     expect(nova.todas('erro')).toHaveLength(0);
+  });
+
+  it('a 9, que não conhece o balão (L47), ainda é atendida: cria e entra, e a 8 (e a 11) são recusadas', () => {
+    expect(PROTOCOLO_VERSAO_MINIMA).toBe(9);
+    const amb = criarAmbiente();
+    const velha = new ConexaoFalsa('velha');
+    amb.registro.receber(velha, criar('Ana', { versao: 9 }));
+    expect(velha.todas('erro')).toHaveLength(0);
+    expect(velha.ultima('boas-vindas')).toMatchObject({ lugar: 0 });
+    const ana = new ClienteDeTeste(amb, 'Ana2', '198.51.100.7').criar();
+    const nova = new ConexaoFalsa('nova');
+    amb.registro.receber(nova, { tipo: 'entrar', versao: 9, codigo: ana.codigo, nome: 'Beto' });
+    expect(nova.ultima('boas-vindas')).toMatchObject({ lugar: 1 });
+    expect(nova.todas('erro')).toHaveLength(0);
+    for (const versao of [8, 11]) {
+      const c = new ConexaoFalsa(`v${versao}`);
+      amb.registro.receber(c, criar('Cris', { versao }));
+      amb.registro.receber(c, { tipo: 'entrar', versao, codigo: ana.codigo, nome: 'Cris' });
+      expect(c.todas('erro').map((e) => e.codigo)).toEqual(['versao', 'versao']);
+    }
   });
 
   describe('cliente de antes da pena do suicídio (L19): as regras dele não têm `suicidioNoMataMata`', () => {
@@ -72,7 +92,7 @@ describe('registro — criar e entrar', () => {
       const amb = criarAmbiente();
       for (const [nome, regras] of Object.entries(velhas)) {
         const c = new ConexaoFalsa(`velho-${nome}`);
-        amb.registro.receber(c, criar('Ana', { versao: PROTOCOLO_VERSAO - 1, regras, ...(nome === 'mataMata' ? { preset: 'Mata-mata', modalidade: 'mata-mata' } : {}) }));
+        amb.registro.receber(c, criar('Ana', { versao: PROTOCOLO_VERSAO_MINIMA - 1, regras, ...(nome === 'mataMata' ? { preset: 'Mata-mata', modalidade: 'mata-mata' } : {}) }));
         expect(c.recebidas, nome).toHaveLength(1);
         expect(c.ultima('erro'), nome).toMatchObject({ codigo: 'versao', mensagem: expect.stringMatching(/recarregue a página/i) });
         expect(c.ultima('erro')!.mensagem, nome).not.toMatch(/suicidioNoMataMata/);
@@ -103,7 +123,7 @@ describe('registro — criar e entrar', () => {
       expect(mataMata.regras).not.toHaveProperty('cegarNoMataMata');
       const amb = criarAmbiente();
       const c = new ConexaoFalsa('velho-cegar');
-      amb.registro.receber(c, criar('Ana', { versao: PROTOCOLO_VERSAO - 1, ...mataMata }));
+      amb.registro.receber(c, criar('Ana', { versao: PROTOCOLO_VERSAO_MINIMA - 1, ...mataMata }));
       expect(c.recebidas).toHaveLength(1);
       expect(c.ultima('erro')).toMatchObject({ codigo: 'versao', mensagem: expect.stringMatching(/recarregue a página/i) });
       expect(c.ultima('erro')!.mensagem).not.toMatch(/cegarNoMataMata/);

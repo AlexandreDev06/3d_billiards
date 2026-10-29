@@ -1,0 +1,15 @@
+// Portal becogames.app: site estático servido por um Worker só de assets. Sem deploy daqui: quem publica é o Principal (npx wrangler deploy).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "becogames-portal",
+  "compatibility_date": "2026-10-26",
+  "send_metrics": false,
+  // O www vira a raiz por uma Regra de Redirecionamento da zona (feita pela API, 2026-10-29), não aqui
+  "routes": [{ "pattern": "becogames.app", "custom_domain": true }, { "pattern": "www.becogames.app", "custom_domain": true }],
+  "workers_dev": false,
+  "assets": {
+    "directory": "./public",
+    "html_handling": "drop-trailing-slash",
+    "not_found_handling": "404-page"
+  }
+}

@@ -2,7 +2,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Cinematica, lerMeta, multiplicarQuaternios, pelarMalha, quaternioDoEixo, type MetaDoPersonagem, type PoseDaFicha } from '@sinuca/personagens';
-import { carregarPersonagemDeBytes, carregarPersonagemDeRostoDeBytes, type BaseDoPersonagem, type BaseDoRosto } from '@sinuca/personagens/three';
+import { carregarAcessoriosDeBytes, carregarPersonagemDeBytes, carregarPersonagemDeRostoDeBytes, type BaseDeAcessorios, type BaseDoPersonagem, type BaseDoRosto } from '@sinuca/personagens/three';
+import { gerenciadorDeTestes } from '@sinuca/personagens/testes';
 import { MaoCalibrada } from './mao-calibrada';
 import type { PoseDeMao } from './pose-das-maos';
 
@@ -88,6 +89,27 @@ export function pontasNoMundo(mao: MaoCalibrada, dobras: readonly number[], pose
 
 
 let balaoCarregado: Promise<BaseDoRosto> | null = null;
+let balaoComoV1: Promise<BaseDoRosto> | null = null;
+
+const ACOES_DO_V1 = ['balao_parado', 'balao_inclinar', 'balao_pulinho', 'balao_susto', 'balao_estufar', 'balao_murchar'];
+const FORMAS_DO_V1 = ['cara_neutro', 'cara_sorriso', 'cara_susto', 'cara_bravo', 'cara_triste', 'piscar'];
+
+/**
+ * O mesmo `balao.glb`, lido com as notas do v1: só as seis ações, as seis formas e nenhuma chave do v2 (pálpebras, cordinha de meta,
+ * abertura das caras). É o que o jogo vê enquanto o arquivo do artista for o antigo, e prova que o que é do v2 se desliga sozinho.
+ */
+export function balaoDoArtistaComoV1(): Promise<BaseDoRosto> {
+  balaoComoV1 ??= (() => {
+    const glb = readFileSync(resolve(PASTA, 'balao.glb'));
+    const bytes = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
+    const meta = JSON.parse(readFileSync(resolve(PASTA, 'balao-meta.json'), 'utf8')) as Record<string, unknown> & { acoes: Record<string, unknown>; formas: { nomes: string[] } };
+    meta.acoes = Object.fromEntries(Object.entries(meta.acoes).filter(([nome]) => ACOES_DO_V1.includes(nome)));
+    meta.formas = { ...meta.formas, nomes: meta.formas.nomes.filter((n) => FORMAS_DO_V1.includes(n)) };
+    for (const chave of ['versao', 'palpebras', 'cordinha', 'abertura_da_cara', 'piscar', 'caras', 'latex_proposta', 'ancora_chapeu', 'bigodes', 'estilos_de_olho', 'cores_de_olho']) delete meta[chave];
+    return carregarPersonagemDeRostoDeBytes(bytes, { meta, nomesDasMalhas: { alta: 'balao_alta', baixa: 'balao_baixa' }, acaoBase: 'balao_parado', gerenciador: gerenciadorDeTestes() });
+  })();
+  return balaoComoV1;
+}
 
 /** O balão do artista (`arte/personagens/exportados/balao.glb`), carregado uma vez só por arquivo de teste. */
 export function balaoDoArtista(): Promise<BaseDoRosto> {
@@ -95,7 +117,20 @@ export function balaoDoArtista(): Promise<BaseDoRosto> {
     const glb = readFileSync(resolve(PASTA, 'balao.glb'));
     const bytes = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
     const meta = JSON.parse(readFileSync(resolve(PASTA, 'balao-meta.json'), 'utf8')) as unknown;
-    return carregarPersonagemDeRostoDeBytes(bytes, { meta, nomesDasMalhas: { alta: 'balao_alta', baixa: 'balao_baixa' }, acaoBase: 'balao_parado' });
+    return carregarPersonagemDeRostoDeBytes(bytes, { meta, nomesDasMalhas: { alta: 'balao_alta', baixa: 'balao_baixa' }, acaoBase: 'balao_parado', gerenciador: gerenciadorDeTestes() });
   })();
   return balaoCarregado;
+}
+
+let chapeusCarregados: Promise<BaseDeAcessorios> | null = null;
+
+/** Os chapéus do artista (`arte/personagens/exportados/chapeus.glb`), carregados uma vez só por arquivo de teste. */
+export function chapeusDoArtista(): Promise<BaseDeAcessorios> {
+  chapeusCarregados ??= (() => {
+    const glb = readFileSync(resolve(PASTA, 'chapeus.glb'));
+    const bytes = glb.buffer.slice(glb.byteOffset, glb.byteOffset + glb.byteLength) as ArrayBuffer;
+    const meta = JSON.parse(readFileSync(resolve(PASTA, 'chapeus-meta.json'), 'utf8')) as unknown;
+    return carregarAcessoriosDeBytes(bytes, { meta, gerenciador: gerenciadorDeTestes() });
+  })();
+  return chapeusCarregados;
 }

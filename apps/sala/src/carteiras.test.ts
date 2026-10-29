@@ -2,7 +2,7 @@ import { chmodSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SALDO_INICIAL, SKINS_DE_TACO, ehCodigoDeCarteira } from '@sinuca/protocolo';
+import { SALDO_INICIAL, SKINS_DE_TACO, SKIN_PADRAO, diaDaMissao, ehCodigoDeCarteira, ehSemente, missoesDoDia, padraoDaSemente, skinDoCatalogoPorId, vitrineDoDia } from '@sinuca/protocolo';
 import { ArmazemDeCarteiras, type OpcoesDoArmazem } from './carteiras';
 
 /**
@@ -339,7 +339,8 @@ describe('teto de carteiras: reaproveita as que nunca foram usadas (L25)', () =>
     writeFileSync(arquivoDe(pasta), JSON.stringify({ versao: 1, carteiras: { ['a'.repeat(64)]: legado(1), ['b'.repeat(64)]: legado(2), ['c'.repeat(64)]: legado(3) } }));
     const { armazem, logs } = abrir(pasta, { maxCarteiras: 3 });
     expect(armazem.total).toBe(3);
-    expect(logs).toEqual([]); // formato antigo não é "estragado"
+    expect(logs.some((l) => l.startsWith('carteiras-corrompidas'))).toBe(false); // formato antigo não é "estragado": migra (L34)
+    expect(logs).toEqual(['carteiras-migradas {"carteiras":3,"copia":"carteiras.antes-da-migracao-1700000000000.json"}']);
     expect(armazem.criar()).toBeNull();
     expect(armazem.total).toBe(3);
   });
@@ -401,14 +402,16 @@ describe('comprar skins', () => {
     expect(armazem.ler(id)).toMatchObject({ saldo: SALDO_INICIAL, skins: ['classico'], skin: 'classico' });
   });
 
-  it('o preço é o do catálogo para cada skin (50, 80, 100, 150, 200, 300, 500)', () => {
-    for (const { id: skin, preco } of SKINS_DE_TACO.slice(1)) {
+  it('o preço é o do catálogo para cada skin, com 20% de desconto (arredondado) só nas 3 da vitrine do dia', () => {
+    const vitrine = vitrineDoDia(diaDaMissao(1_700_000_000_000));
+    for (const { id: skin, preco } of SKINS_DE_TACO.filter((s) => s.id !== SKIN_PADRAO)) {
       const { armazem } = abrir(null);
       const { id } = novaCarteira(armazem);
-      armazem.aplicar([{ id, delta: 1000 }]);
+      armazem.aplicar([{ id, delta: 5000 }]);
       const antes = armazem.ler(id)!.saldo;
       expect(armazem.comprar(id, skin)).toMatchObject({ ok: true });
-      expect(antes - armazem.ler(id)!.saldo, skin).toBe(preco);
+      const naVitrine = vitrine.itens.find((i) => i.skin === skin);
+      expect(antes - armazem.ler(id)!.saldo, skin).toBe(naVitrine ? preco - Math.round((preco * 20) / 100) : preco);
     }
   });
 
@@ -563,7 +566,10 @@ describe('persistência em disco', () => {
     await armazem.descarregar();
     const texto = readFileSync(arquivoDe(pasta), 'utf8');
     expect(texto).not.toContain(codigo);
-    expect(JSON.parse(texto)).toEqual({ versao: 1, carteiras: { [id]: { saldo: 100, skins: ['classico'], skin: 'classico', criadaEm: 1_700_000_000_000, jogou: false } } });
+    expect(JSON.parse(texto)).toEqual({
+      versao: 2,
+      carteiras: { [id]: { saldo: 100, itens: [{ skin: 'classico', semente: expect.any(Number), bolas: 0 }], skin: 'classico', criadaEm: 1_700_000_000_000, jogou: false } },
+    });
     expect(statSync(arquivoDe(pasta)).mode & 0o077).toBe(0);
   });
 
@@ -795,7 +801,7 @@ describe('arquivo estragado', () => {
   it.each([
     ['texto que não é JSON', '{ isto não é json'],
     ['JSON que não é um objeto', '[1,2,3]'],
-    ['versão desconhecida', JSON.stringify({ versao: 2, carteiras: {} })],
+    ['versão desconhecida', JSON.stringify({ versao: 3, carteiras: {} })],
     ['sem o mapa de carteiras', JSON.stringify({ versao: 1 })],
     ['arquivo vazio', ''],
   ])('%s: guarda a cópia do estragado, loga, começa vazio e segue funcionando', async (_nome, conteudo) => {
@@ -811,7 +817,7 @@ describe('arquivo estragado', () => {
     novaCarteira(armazem);
     await armazem.descarregar();
     expect(readFileSync(join(pasta, copias[0]!), 'utf8')).toBe(conteudo);
-    expect(JSON.parse(readFileSync(arquivoDe(pasta), 'utf8')).versao).toBe(1);
+    expect(JSON.parse(readFileSync(arquivoDe(pasta), 'utf8')).versao).toBe(2);
   });
 
   it('abrir de novo o mesmo estrago não empilha cópias: a primeira abertura já tirou o arquivo ruim do caminho', async () => {
@@ -878,5 +884,514 @@ describe('arquivo estragado', () => {
     expect(() => abrir(pasta)).toThrow(/carteiras/);
     chmodSync(pasta, 0o700);
     expect(readFileSync(arquivoDe(pasta), 'utf8')).toBe('lixo');
+  });
+});
+
+describe('L34: itens, semente e vitrine na compra', () => {
+  const RELOGIO = 1_700_000_000_000;
+  const vitrine = vitrineDoDia(diaDaMissao(RELOGIO));
+  const naVitrine = vitrine.itens[0]!;
+  const foraDaVitrine = SKINS_DE_TACO.find((s) => s.preco > 0 && !vitrine.itens.some((i) => i.skin === s.id))!;
+  const comSaldo = (armazem: ArmazemDeCarteiras, saldo: number) => {
+    const c = novaCarteira(armazem);
+    armazem.aplicar([{ id: c.id, delta: saldo - SALDO_INICIAL }]);
+    return c;
+  };
+
+  it('a carteira nova nasce com o item do clássico, contador 0 e uma semente de 0 a 999', () => {
+    const { armazem } = abrir(null);
+    const c = armazem.ler(novaCarteira(armazem).id)!;
+    expect(c.itens).toEqual([{ skin: 'classico', semente: expect.any(Number), bolas: 0 }]);
+    expect(ehSemente(c.itens![0]!.semente)).toBe(true);
+    expect(c.vitrine).toEqual(vitrine);
+  });
+
+  it('sem vitrine: cobra o preço do catálogo, guarda o item com a semente sorteada e contador 0', () => {
+    const { armazem, logs } = abrir(null, { sortearSemente: () => 417 });
+    const c = comSaldo(armazem, 5000);
+    const r = armazem.comprar(c.id, foraDaVitrine.id);
+    expect(r).toMatchObject({ ok: true, estado: { saldo: 5000 - foraDaVitrine.preco, skin: 'classico' } });
+    expect(armazem.ler(c.id)!.itens).toContainEqual({ skin: foraDaVitrine.id, semente: 417, bolas: 0 });
+    expect(logs.find((l) => l.startsWith('compra '))).toBe(`compra ${JSON.stringify({ apelido: null, skin: foraDaVitrine.id, preco: foraDaVitrine.preco, vitrine: false, semente: 417, rara: false })}`);
+  });
+
+  it('com vitrine: cobra o preço do dia (20% a menos, arredondado) e o log diz que foi da vitrine', () => {
+    const { armazem, logs } = abrir(null, { sortearSemente: () => 5 });
+    const c = comSaldo(armazem, 5000);
+    expect(naVitrine.preco).toBe(naVitrine.precoCheio - Math.round(naVitrine.precoCheio * 0.2));
+    expect(armazem.comprar(c.id, naVitrine.skin)).toMatchObject({ ok: true, estado: { saldo: 5000 - naVitrine.preco } });
+    expect(JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length))).toMatchObject({ skin: naVitrine.skin, preco: naVitrine.preco, vitrine: true, semente: 5 });
+  });
+
+  it('o preço de hoje decide o saldo que basta: o do desconto compra, um a menos não', () => {
+    const { armazem } = abrir(null);
+    const pobre = comSaldo(armazem, naVitrine.preco - 1);
+    const justo = comSaldo(armazem, naVitrine.preco);
+    expect(armazem.comprar(pobre.id, naVitrine.skin)).toEqual({ ok: false, erro: 'saldo-insuficiente' });
+    expect(armazem.ler(pobre.id)).toMatchObject({ saldo: naVitrine.preco - 1, skins: ['classico'] });
+    expect(armazem.comprar(justo.id, naVitrine.skin)).toMatchObject({ ok: true, estado: { saldo: 0 } });
+  });
+
+  it('virou o dia: a vitrine e o preço trocam sem reiniciar (o relógio é o do servidor)', () => {
+    let agora = RELOGIO;
+    const { armazem } = abrir(null, { relogio: () => agora });
+    const c = comSaldo(armazem, 5000);
+    const outroDia = diaDaMissao(RELOGIO + 24 * 3_600_000);
+    const amanha = vitrineDoDia(outroDia);
+    expect(amanha.itens.map((i) => i.skin)).not.toEqual(vitrine.itens.map((i) => i.skin));
+    agora = RELOGIO + 24 * 3_600_000;
+    expect(armazem.ler(c.id)!.vitrine).toEqual(amanha);
+    const hojeCheia = amanha.itens.find((i) => !vitrine.itens.some((v) => v.skin === i.skin))!;
+    expect(armazem.comprar(c.id, hojeCheia.skin)).toMatchObject({ ok: true, estado: { saldo: 5000 - hojeCheia.preco } });
+  });
+
+  describe('L34b: o preço que a tela mostrou vale só como teto', () => {
+    const DIA_MS = 24 * 3_600_000;
+    /** O primeiro dia depois de RELOGIO em que `skin` não está na vitrine. */
+    const diaSemVitrine = (skin: string): number => {
+      for (let n = 1; n <= 30; n++) if (!vitrineDoDia(diaDaMissao(RELOGIO + n * DIA_MS)).itens.some((i) => i.skin === skin)) return RELOGIO + n * DIA_MS;
+      throw new Error(`a ${skin} ficou na vitrine por 30 dias seguidos`);
+    };
+
+    it('a virada do dia com a skin saindo da vitrine: preco-mudou, nenhum centavo cobrado, nenhuma semente sorteada, nenhum aviso', () => {
+      let agora = RELOGIO;
+      let sorteios = 0;
+      const { armazem, logs } = abrir(null, { relogio: () => agora, sortearSemente: () => sorteios++ });
+      const c = comSaldo(armazem, 5000);
+      const mudou = vi.fn();
+      armazem.aoMudar(mudou);
+      const tela = naVitrine.preco; // a aba aberta ontem mostra o preço da vitrine
+      agora = diaSemVitrine(naVitrine.skin); // meia-noite: a skin saiu da vitrine
+      const antes = armazem.ler(c.id)!;
+
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, tela)).toEqual({ ok: false, erro: 'preco-mudou' });
+      expect(armazem.ler(c.id)).toEqual(antes);
+      expect(armazem.ler(c.id)).toMatchObject({ saldo: 5000, skins: ['classico'] });
+      expect(sorteios).toBe(1); // o do clássico, ao criar a carteira
+      expect(logs.some((l) => l.startsWith('compra '))).toBe(false);
+      expect(mudou).not.toHaveBeenCalled();
+
+      // quem relê a tela e confirma o preço novo (o cheio) compra
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.precoCheio)).toMatchObject({ ok: true, estado: { saldo: 5000 - naVitrine.precoCheio } });
+    });
+
+    it('a skin entrando na vitrine: o cliente viu o preço cheio e a sala cobra o menor, o dela', () => {
+      const { armazem, logs } = abrir(null);
+      const c = comSaldo(armazem, 5000);
+      expect(naVitrine.preco).toBeLessThan(naVitrine.precoCheio);
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.precoCheio)).toMatchObject({ ok: true, estado: { saldo: 5000 - naVitrine.preco } });
+      expect(JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length))).toMatchObject({ preco: naVitrine.preco, vitrine: true });
+    });
+
+    it('o teto nunca vira o preço: um preço visto alto demais não faz a sala cobrar mais nem menos que o dela', () => {
+      for (const visto of [naVitrine.preco, naVitrine.preco + 1, 1_000_000, Number.MAX_SAFE_INTEGER, Infinity]) {
+        const { armazem } = abrir(null);
+        const c = comSaldo(armazem, 5000);
+        expect(armazem.comprar(c.id, naVitrine.skin, undefined, visto), String(visto)).toMatchObject({ ok: true, estado: { saldo: 5000 - naVitrine.preco } });
+      }
+    });
+
+    it('um preço visto menor que o do servidor, nem que seja por 1, é preco-mudou e não cobra', () => {
+      const { armazem } = abrir(null);
+      const c = comSaldo(armazem, 5000);
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.preco - 1)).toEqual({ ok: false, erro: 'preco-mudou' });
+      expect(armazem.ler(c.id)).toMatchObject({ saldo: 5000, skins: ['classico'] });
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.preco)).toMatchObject({ ok: true });
+    });
+
+    it('sem preço visto, segue como sempre: cobra o do servidor sem conferir nada', () => {
+      const { armazem } = abrir(null);
+      const c = comSaldo(armazem, 5000);
+      expect(armazem.comprar(c.id, naVitrine.skin)).toMatchObject({ ok: true, estado: { saldo: 5000 - naVitrine.preco } });
+    });
+
+    it('preço visto torto (NaN, negativo, fracionário abaixo do preço) nunca cobra', () => {
+      for (const torto of [Number.NaN, -1, 0, 0.5, naVitrine.preco - 0.5, -Infinity]) {
+        const { armazem } = abrir(null);
+        const c = comSaldo(armazem, 5000);
+        expect(armazem.comprar(c.id, naVitrine.skin, undefined, torto), String(torto)).toEqual({ ok: false, erro: 'preco-mudou' });
+        expect(armazem.ler(c.id)).toMatchObject({ saldo: 5000, skins: ['classico'] });
+      }
+    });
+
+    it('a ordem das recusas: skin-invalida e ja-tem vêm antes; preco-mudou vem antes de saldo-insuficiente', () => {
+      const { armazem } = abrir(null);
+      const c = comSaldo(armazem, naVitrine.preco - 1);
+      expect(armazem.comprar(c.id, 'nao-existe', undefined, 1)).toEqual({ ok: false, erro: 'skin-invalida' });
+      expect(armazem.comprar(c.id, 'classico', undefined, 1)).toEqual({ ok: false, erro: 'ja-tem' });
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.preco - 1)).toEqual({ ok: false, erro: 'preco-mudou' });
+      expect(armazem.comprar(c.id, naVitrine.skin, undefined, naVitrine.preco)).toEqual({ ok: false, erro: 'saldo-insuficiente' });
+    });
+  });
+
+  it('semente: sempre inteira de 0 a 999 com a aleatoriedade de verdade, e variada', () => {
+    const { armazem } = abrir(null, { maxCarteiras: 400 });
+    const sementes = new Set<number>();
+    for (let i = 0; i < 300; i++) {
+      const s = armazem.ler(novaCarteira(armazem).id)!.itens![0]!.semente;
+      expect(ehSemente(s)).toBe(true);
+      sementes.add(s);
+    }
+    expect(sementes.size).toBeGreaterThan(150); // 300 sorteios de 1000: ~260 distintas; abaixo de 150 é sorteio travado
+  });
+
+  it('semente: as pontas 0 e 999 valem; fora do intervalo ou torta é recusada sem cobrar nada', () => {
+    for (const ponta of [0, 999]) {
+      const { armazem } = abrir(null, { sortearSemente: () => ponta });
+      const c = comSaldo(armazem, 5000);
+      expect(armazem.comprar(c.id, foraDaVitrine.id)).toMatchObject({ ok: true });
+      expect(armazem.ler(c.id)!.itens).toContainEqual({ skin: foraDaVitrine.id, semente: ponta, bolas: 0 });
+    }
+    for (const torta of [1000, -1, 1.5, Number.NaN]) {
+      let proxima = 10;
+      const { armazem } = abrir(null, { sortearSemente: () => proxima });
+      const c = comSaldo(armazem, 5000);
+      proxima = torta;
+      expect(() => armazem.comprar(c.id, foraDaVitrine.id), String(torta)).toThrow(RangeError);
+      expect(armazem.ler(c.id)).toMatchObject({ saldo: 5000, skins: ['classico'] });
+    }
+  });
+
+  it('semente rara (RNG injetado): o log diz que é rara e o nome do padrão (L34c: a Blue Gem da Case Hardened); nunca o código', () => {
+    const blueGem = skinDoCatalogoPorId('tempera').padroes!.find((p) => p.nome === 'Blue Gem')!;
+    const semente = blueGem.faixas[0]!.de;
+    const { armazem, logs } = abrir(null, { sortearSemente: () => semente });
+    const c = comSaldo(armazem, 5000);
+    expect(armazem.comprar(c.id, 'tempera')).toMatchObject({ ok: true });
+    const compra = logs.find((l) => l.startsWith('compra '))!;
+    expect(JSON.parse(compra.slice('compra '.length))).toMatchObject({ skin: 'tempera', semente, rara: true, padrao: 'Blue Gem' });
+    expect(compra).not.toContain(c.codigo);
+    expect(logs.join('\n')).not.toContain(c.codigo);
+  });
+
+  it('semente comum (fora das raras): o log diz que não é rara', () => {
+    const skin = skinDoCatalogoPorId('tempera');
+    const comum = Array.from({ length: 1000 }, (_, n) => n).find((n) => padraoDaSemente('tempera', n) === undefined && !skin.raras.some((r) => r.semente === n))!;
+    const { armazem, logs } = abrir(null, { sortearSemente: () => comum });
+    const c = comSaldo(armazem, 5000);
+    armazem.comprar(c.id, 'tempera');
+    const compra = JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length)) as Record<string, unknown>;
+    expect(compra).toMatchObject({ rara: false });
+    expect(compra).not.toHaveProperty('padrao');
+  });
+
+  it('L34c: a fase da Doppler e as raras dela (Ruby, Sapphire, Black Pearl) saem no log; a fase comum não é rara mas diz qual é', () => {
+    const casos: { semente: number; rara: boolean; padrao: string }[] = [
+      { semente: 5, rara: false, padrao: 'Phase 1' },
+      { semente: 600, rara: false, padrao: 'Phase 3' },
+      { semente: 77, rara: true, padrao: 'Ruby' },
+      { semente: 654, rara: true, padrao: 'Sapphire' },
+      { semente: 836, rara: true, padrao: 'Black Pearl' },
+    ];
+    for (const caso of casos) {
+      const { armazem, logs } = abrir(null, { sortearSemente: () => caso.semente });
+      const c = comSaldo(armazem, 5000);
+      expect(armazem.comprar(c.id, 'obsidiana'), caso.padrao).toMatchObject({ ok: true });
+      expect(JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length)), caso.padrao).toMatchObject({ skin: 'obsidiana', semente: caso.semente, rara: caso.rara, padrao: caso.padrao });
+    }
+  });
+
+  it('L34c: uma skin sem padrões novos (a Ébano) segue pelas raras de antes no log', () => {
+    const antiga = skinDoCatalogoPorId('ebano').raras[0]!;
+    const { armazem, logs } = abrir(null, { sortearSemente: () => antiga.semente });
+    const c = comSaldo(armazem, 5000);
+    armazem.comprar(c.id, 'ebano');
+    expect(JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length))).toMatchObject({ skin: 'ebano', rara: true, padrao: antiga.nome });
+  });
+
+  it('o apelido no log vem do Registro (usarApelidos); sem sala é null', () => {
+    const { armazem, logs } = abrir(null);
+    const c = comSaldo(armazem, 5000);
+    armazem.usarApelidos((id) => (id === c.id ? 'Ana' : null));
+    armazem.comprar(c.id, foraDaVitrine.id);
+    expect(JSON.parse(logs.find((l) => l.startsWith('compra '))!.slice('compra '.length))).toMatchObject({ apelido: 'Ana' });
+  });
+
+  it('ja-tem: comprar de novo não cobra, não sorteia outra semente e não mexe no contador', () => {
+    let sorteios = 0;
+    const { armazem, logs } = abrir(null, { sortearSemente: () => 100 + sorteios++ });
+    const c = comSaldo(armazem, 5000);
+    armazem.comprar(c.id, foraDaVitrine.id);
+    const depois = armazem.ler(c.id)!;
+    const gastos = sorteios;
+    expect(armazem.comprar(c.id, foraDaVitrine.id)).toEqual({ ok: false, erro: 'ja-tem' });
+    expect(armazem.comprar(c.id, 'classico')).toEqual({ ok: false, erro: 'ja-tem' });
+    expect(armazem.ler(c.id)).toEqual(depois);
+    expect(sorteios).toBe(gastos);
+    expect(logs.filter((l) => l.startsWith('compra '))).toHaveLength(1);
+  });
+
+  it('o item de quem comprou fica na ordem da loja e `skins` (o formato de antes) acompanha os itens', () => {
+    const { armazem } = abrir(null);
+    const c = comSaldo(armazem, 9000);
+    for (const skin of ['ouro', 'ebano', 'neon']) armazem.comprar(c.id, skin);
+    const e = armazem.ler(c.id)!;
+    expect(e.itens!.map((i) => i.skin)).toEqual(['classico', 'ebano', 'neon', 'ouro']);
+    expect(e.skins).toEqual(e.itens!.map((i) => i.skin));
+  });
+
+  it('ler devolve cópias: mexer no que veio não mexe no armazém', () => {
+    const { armazem } = abrir(null);
+    const c = novaCarteira(armazem);
+    const lido = armazem.ler(c.id)!;
+    (lido.itens as unknown as { bolas: number }[])[0]!.bolas = 99;
+    expect(armazem.ler(c.id)!.itens![0]!.bolas).toBe(0);
+  });
+});
+
+describe('L34: migração do carteiras.json (formato 1 → 2)', () => {
+  const antigo = (extra: object = {}) => ({ saldo: 250, skins: ['classico', 'ebano', 'ouro'], skin: 'ouro', criadaEm: 1, jogou: true, ...extra });
+  const ID_A = 'a'.repeat(64);
+  const ID_B = 'b'.repeat(64);
+
+  it('cada skin já comprada vira um item com semente sorteada e contador 0; o resto da carteira não muda', () => {
+    const pasta = pastaNova();
+    const texto = JSON.stringify({ versao: 1, carteiras: { [ID_A]: antigo(), [ID_B]: antigo({ saldo: 7, skins: ['classico'], skin: 'classico' }) } });
+    writeFileSync(arquivoDe(pasta), texto);
+    let n = 0;
+    const { armazem, logs } = abrir(pasta, { sortearSemente: () => 700 + n++ });
+    const a = armazem.ler(ID_A)!;
+    expect(a).toMatchObject({ saldo: 250, skin: 'ouro', skins: ['classico', 'ebano', 'ouro'] });
+    expect(a.itens).toHaveLength(3);
+    expect(a.itens!.every((i) => i.bolas === 0 && ehSemente(i.semente))).toBe(true);
+    expect(new Set(a.itens!.map((i) => i.semente)).size).toBe(3);
+    expect(armazem.ler(ID_B)!.itens).toHaveLength(1);
+    expect(logs).toEqual(['carteiras-migradas {"carteiras":2,"copia":"carteiras.antes-da-migracao-1700000000000.json"}']);
+  });
+
+  it('guarda o arquivo de antes ao lado, intacto, e já grava o novo (a semente é sorteada uma vez só)', async () => {
+    const pasta = pastaNova();
+    const texto = JSON.stringify({ versao: 1, carteiras: { [ID_A]: antigo() } });
+    writeFileSync(arquivoDe(pasta), texto);
+    const { armazem } = abrir(pasta);
+    await armazem.descarregar();
+    expect(readFileSync(join(pasta, 'carteiras.antes-da-migracao-1700000000000.json'), 'utf8')).toBe(texto);
+    const gravado = JSON.parse(readFileSync(arquivoDe(pasta), 'utf8'));
+    expect(gravado.versao).toBe(2);
+    expect(gravado.carteiras[ID_A].skins).toBeUndefined();
+    expect(gravado.carteiras[ID_A].itens).toHaveLength(3);
+  });
+
+  it('as sementes são estáveis: reabrir o arquivo migrado dá as mesmas, sem migrar de novo nem nova cópia', async () => {
+    const pasta = pastaNova();
+    writeFileSync(arquivoDe(pasta), JSON.stringify({ versao: 1, carteiras: { [ID_A]: antigo() } }));
+    const primeira = abrir(pasta);
+    const itens = primeira.armazem.ler(ID_A)!.itens;
+    await primeira.armazem.fechar();
+    const segunda = abrir(pasta);
+    expect(segunda.armazem.ler(ID_A)!.itens).toEqual(itens);
+    expect(segunda.logs).toEqual([]);
+    expect(vivos(pasta).filter((f) => f.startsWith('carteiras.antes-da-migracao-'))).toHaveLength(1);
+  });
+
+  it('arquivo novo regravado abre: itens, contador, skin em uso e missões voltam como foram', async () => {
+    const pasta = pastaNova();
+    const { armazem } = abrir(pasta, { sortearSemente: () => 321 });
+    const c = novaCarteira(armazem);
+    armazem.aplicar([{ id: c.id, delta: 900 }]);
+    armazem.comprar(c.id, 'ouro');
+    armazem.usar(c.id, 'ouro');
+    armazem.registrarMissoes(c.id, {}, undefined, 4);
+    await armazem.fechar();
+    const { armazem: reaberto, logs } = abrir(pasta);
+    expect(logs).toEqual([]);
+    expect(reaberto.resolver(c.codigo)).toBe(c.id);
+    expect(reaberto.ler(c.id)).toMatchObject({
+      skin: 'ouro',
+      itens: [
+        { skin: 'classico', semente: 321, bolas: 0 },
+        { skin: 'ouro', semente: 321, bolas: 4 },
+      ],
+    });
+  });
+
+  it('formato 1 com uma carteira estragada no meio: migra as boas, guarda o original como corrompido, e não há carteiras-migradas nem cópia antes-da-migracao (L34b)', async () => {
+    const pasta = pastaNova();
+    const ID_RUIM = 'c'.repeat(64);
+    const texto = JSON.stringify({
+      versao: 1,
+      carteiras: { [ID_A]: antigo(), [ID_RUIM]: antigo({ skins: ['classico', 'diamante'] }), [ID_B]: antigo({ saldo: 7, skins: ['classico'], skin: 'classico' }) },
+    });
+    writeFileSync(arquivoDe(pasta), texto);
+    const { armazem, logs } = abrir(pasta, { sortearSemente: () => 4 });
+    expect(armazem.total).toBe(2);
+    expect(armazem.ler(ID_RUIM)).toBeUndefined();
+    expect(armazem.ler(ID_A)).toMatchObject({ saldo: 250, skin: 'ouro', skins: ['classico', 'ebano', 'ouro'] });
+    expect(armazem.ler(ID_A)!.itens).toEqual([
+      { skin: 'classico', semente: 4, bolas: 0 },
+      { skin: 'ebano', semente: 4, bolas: 0 },
+      { skin: 'ouro', semente: 4, bolas: 0 },
+    ]);
+    expect(armazem.ler(ID_B)).toMatchObject({ saldo: 7, itens: [{ skin: 'classico', semente: 4, bolas: 0 }] });
+    // o caminho do estrago (não o da migração): o original vai inteiro para `corrompido-*`, e é ele que guarda o formato 1
+    expect(logs).toEqual(['carteiras-corrompidas {"copia":"carteiras.corrompido-1700000000000.json","mantidas":2,"descartadas":1}']);
+    await armazem.descarregar();
+    expect(vivos(pasta)).toEqual(['carteiras.corrompido-1700000000000.json', 'carteiras.json']);
+    expect(readFileSync(join(pasta, 'carteiras.corrompido-1700000000000.json'), 'utf8')).toBe(texto);
+    const gravado = JSON.parse(readFileSync(arquivoDe(pasta), 'utf8'));
+    expect(gravado.versao).toBe(2);
+    expect(Object.keys(gravado.carteiras).sort()).toEqual([ID_A, ID_B]);
+    expect(gravado.carteiras[ID_A].skins).toBeUndefined();
+    expect(gravado.carteiras[ID_A].itens).toHaveLength(3);
+    await armazem.fechar();
+    // reabrir não sorteia de novo, não estraga de novo e não cria arquivo nenhum
+    const segunda = abrir(pasta, { sortearSemente: () => 900 });
+    expect(segunda.armazem.ler(ID_A)!.itens).toEqual(armazem.ler(ID_A)!.itens);
+    expect(segunda.logs).toEqual([]);
+    expect(vivos(pasta)).toEqual(['carteiras.corrompido-1700000000000.json', 'carteiras.json']);
+  });
+
+  it('o formato é de cada carteira, não do arquivo: `itens` num arquivo de versão 1 e `skins` num de versão 2 abrem, e só a que está em `skins` migra (L34b)', () => {
+    const itens = [{ skin: 'classico', semente: 11, bolas: 5 }];
+    const nova = { saldo: 9, itens, skin: 'classico', criadaEm: 1, jogou: true };
+    const velha = antigo({ saldo: 8, skins: ['classico'], skin: 'classico' });
+
+    const v1 = pastaNova();
+    writeFileSync(arquivoDe(v1), JSON.stringify({ versao: 1, carteiras: { [ID_A]: nova } }));
+    const primeiro = abrir(v1, { sortearSemente: () => 900 });
+    expect(primeiro.armazem.ler(ID_A)!.itens).toEqual(itens); // nada sorteado, o contador fica
+    expect(primeiro.logs).toEqual([]); // nenhuma migrou: sem log, sem cópia
+    expect(vivos(v1)).toEqual(['carteiras.json']);
+
+    const v2 = pastaNova();
+    writeFileSync(arquivoDe(v2), JSON.stringify({ versao: 2, carteiras: { [ID_A]: nova, [ID_B]: velha } }));
+    const segundo = abrir(v2, { sortearSemente: () => 900 });
+    expect(segundo.armazem.ler(ID_A)!.itens).toEqual(itens);
+    expect(segundo.armazem.ler(ID_B)!.itens).toEqual([{ skin: 'classico', semente: 900, bolas: 0 }]);
+    expect(segundo.logs).toEqual(['carteiras-migradas {"carteiras":1,"copia":"carteiras.antes-da-migracao-1700000000000.json"}']);
+  });
+
+  it('item que não presta estraga só aquela carteira: semente fora do intervalo, skin repetida, contador torto, skin em uso sem item, sem o clássico, chave a mais', () => {
+    const pasta = pastaNova();
+    const item = (skin: string, extra: object = {}) => ({ skin, semente: 10, bolas: 0, ...extra });
+    const nova = (itens: unknown[], extra: object = {}) => ({ saldo: 100, itens, skin: 'classico', criadaEm: 1, jogou: false, ...extra });
+    const ruins = [
+      nova([item('classico', { semente: 1000 })]),
+      nova([item('classico', { semente: -1 })]),
+      nova([item('classico', { semente: 1.5 })]),
+      nova([item('classico'), item('classico')]),
+      nova([item('classico', { bolas: -1 })]),
+      nova([item('classico', { bolas: 1.5 })]),
+      nova([item('classico')], { skin: 'ouro' }),
+      nova([item('ouro')], { skin: 'ouro' }),
+      nova([item('diamante'), item('classico')]),
+      nova([item('classico', { extra: 1 })]),
+      nova([{ skin: 'classico', semente: 3 }]),
+      nova([]),
+      { ...nova([item('classico')]), skins: ['classico'] }, // os dois formatos juntos
+    ];
+    const bom = nova([item('classico', { semente: 999, bolas: 12 })]);
+    const carteiras: Record<string, unknown> = { ['f'.repeat(64)]: bom };
+    ruins.forEach((r, i) => (carteiras[String(i).padStart(2, '0').repeat(32)] = r));
+    writeFileSync(arquivoDe(pasta), JSON.stringify({ versao: 2, carteiras }));
+    const { armazem, logs } = abrir(pasta);
+    expect(armazem.total).toBe(1);
+    expect(armazem.ler('f'.repeat(64))!.itens).toEqual([{ skin: 'classico', semente: 999, bolas: 12 }]);
+    expect(logs.find((l) => l.startsWith('carteiras-corrompidas'))).toContain(`"descartadas":${ruins.length}`);
+  });
+});
+
+describe('L34: contador de bolas', () => {
+  const comOuro = (armazem: ArmazemDeCarteiras) => {
+    const c = novaCarteira(armazem);
+    armazem.aplicar([{ id: c.id, delta: 1000 }]);
+    armazem.comprar(c.id, 'ouro');
+    armazem.comprar(c.id, 'neon');
+    return c;
+  };
+  const bolasDe = (armazem: ArmazemDeCarteiras, id: string) => Object.fromEntries(armazem.ler(id)!.itens!.map((i) => [i.skin, i.bolas]));
+
+  it('soma no item em uso e em mais nenhum', () => {
+    const { armazem } = abrir(null);
+    const c = comOuro(armazem);
+    armazem.usar(c.id, 'ouro');
+    armazem.registrarMissoes(c.id, {}, undefined, 2);
+    expect(bolasDe(armazem, c.id)).toEqual({ classico: 0, neon: 0, ouro: 2 });
+    armazem.registrarMissoes(c.id, {}, undefined, 1);
+    expect(bolasDe(armazem, c.id)).toEqual({ classico: 0, neon: 0, ouro: 3 });
+  });
+
+  it('trocar de skin no meio vale para as tacadas seguintes, e o contador de cada taco fica com ele', () => {
+    const { armazem } = abrir(null);
+    const c = comOuro(armazem);
+    armazem.usar(c.id, 'ouro');
+    armazem.registrarMissoes(c.id, {}, undefined, 2);
+    armazem.usar(c.id, 'neon');
+    armazem.registrarMissoes(c.id, {}, undefined, 5);
+    armazem.usar(c.id, 'ouro');
+    armazem.registrarMissoes(c.id, {}, undefined, 1);
+    expect(bolasDe(armazem, c.id)).toEqual({ classico: 0, neon: 5, ouro: 3 });
+  });
+
+  it('zero bolas e nada de missão não é registro: devolve null e não suja a carteira', async () => {
+    const pasta = pastaNova();
+    const { armazem } = abrir(pasta);
+    const c = comOuro(armazem);
+    await armazem.descarregar();
+    const antes = readFileSync(arquivoDe(pasta), 'utf8');
+    expect(armazem.registrarMissoes(c.id, {}, undefined, 0)).toBeNull();
+    await armazem.descarregar();
+    expect(readFileSync(arquivoDe(pasta), 'utf8')).toBe(antes);
+  });
+
+  it('as bolas e as missões entram na mesma gravação e na mesma mudança (um aviso só, uma escrita só)', async () => {
+    const pasta = pastaNova();
+    const { armazem } = abrir(pasta);
+    const c = novaCarteira(armazem);
+    const hoje = missoesDoDia(diaDaMissao(1_700_000_000_000))[0].id;
+    await armazem.descarregar();
+    const avisos = vi.fn();
+    armazem.aoMudar(avisos);
+    const r = armazem.registrarMissoes(c.id, { [hoje]: 1 }, undefined, 3);
+    expect(r).not.toBeNull();
+    expect(avisos).toHaveBeenCalledTimes(1);
+    await armazem.descarregar();
+    const gravado = JSON.parse(readFileSync(arquivoDe(pasta), 'utf8')).carteiras[c.id];
+    expect(gravado.itens[0].bolas).toBe(3);
+    expect(gravado.missoes).toBeDefined();
+  });
+
+  it('só bolas, sem missão que andou, ainda grava e avisa a carteira', async () => {
+    const pasta = pastaNova();
+    const { armazem } = abrir(pasta);
+    const c = novaCarteira(armazem);
+    await armazem.descarregar();
+    const avisos = vi.fn();
+    armazem.aoMudar(avisos);
+    armazem.registrarMissoes(c.id, {}, undefined, 2);
+    expect(avisos).toHaveBeenCalledWith(c.id, undefined);
+    await armazem.descarregar();
+    expect(JSON.parse(readFileSync(arquivoDe(pasta), 'utf8')).carteiras[c.id].itens[0].bolas).toBe(2);
+  });
+
+  it('tudo ou nada: bolas tortas recusam também o progresso das missões; valor de missão torto recusa também as bolas', () => {
+    const { armazem, logs } = abrir(null);
+    const c = novaCarteira(armazem);
+    const hoje = missoesDoDia(diaDaMissao(1_700_000_000_000))[0].id;
+    const antes = armazem.ler(c.id);
+    for (const torta of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(armazem.registrarMissoes(c.id, { [hoje]: 1 }, undefined, torta), String(torta)).toBeNull();
+    }
+    expect(armazem.registrarMissoes(c.id, { [hoje]: -2 }, undefined, 3)).toBeNull();
+    expect(armazem.ler(c.id)).toEqual(antes);
+    expect(logs.filter((l) => l.startsWith('carteiras-missao-recusada')).length).toBe(5);
+  });
+
+  it('no limite de um número exato: recusa e não soma pela metade', () => {
+    const pasta = pastaNova();
+    const id = 'a'.repeat(64);
+    writeFileSync(
+      arquivoDe(pasta),
+      JSON.stringify({ versao: 2, carteiras: { [id]: { saldo: 100, itens: [{ skin: 'classico', semente: 1, bolas: Number.MAX_SAFE_INTEGER }], skin: 'classico', criadaEm: 1, jogou: true } } }),
+    );
+    const { armazem, logs } = abrir(pasta);
+    expect(armazem.registrarMissoes(id, {}, undefined, 1)).toBeNull();
+    expect(armazem.ler(id)!.itens![0]!.bolas).toBe(Number.MAX_SAFE_INTEGER);
+    expect(logs.some((l) => l.startsWith('carteiras-missao-recusada'))).toBe(true);
+  });
+
+  it('carteira que não existe: nada acontece', () => {
+    const { armazem } = abrir(null);
+    expect(armazem.registrarMissoes('0'.repeat(64), {}, undefined, 2)).toBeNull();
   });
 });

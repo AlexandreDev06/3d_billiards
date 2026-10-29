@@ -1,6 +1,6 @@
 import type { EventoTacada, IdBola, Rng } from '@sinuca/fisica';
 import { bolasDaCasa } from './leitura';
-import { PRESET_BOTECO, PRESET_MATA_MATA } from './presets';
+import { PRESET_BOTECO, PRESET_MATA_MATA, PRESET_TREINO } from './presets';
 import type { ConfigRegras, Encacapada, EstadoPartida, FasePartida, Grupo, Jogador } from './tipos';
 
 export const ANA = 0;
@@ -124,7 +124,7 @@ export function eventos(t: Tacada = {}): EventoTacada[] {
   const lista: EventoTacada[] = [{ tipo: 'taco-bola', t: 0, bola: 0, velocidade: 3, miscue: false }];
   const toca = t.toca === undefined ? [] : typeof t.toca === 'number' ? [t.toca] : t.toca;
   for (const b of toca) lista.push({ tipo: 'bola-bola', t: 0.1, a: 0, b, velocidade: 2 });
-  (t.batem ?? []).forEach((bola, k) => lista.push({ tipo: 'bola-tabela', t: 0.15 + k * 0.01, bola, tabela: 0, velocidade: 1 }));
+  (t.batem ?? []).forEach((bola, k) => lista.push({ tipo: 'bola-tabela', t: 0.15 + k * 0.01, bola, tabela: 0, parte: 'nariz', velocidade: 1 }));
   (t.caem ?? []).forEach((bola, k) => lista.push({ tipo: 'cacapa', t: 0.2 + k * 0.01, bola, cacapa: 'canto' }));
   (t.pulam ?? []).forEach((bola, k) => lista.push({ tipo: 'fora-da-mesa', t: 0.3 + k * 0.01, bola }));
   if (t.branca === 'cai') lista.push({ tipo: 'cacapa', t: 0.4, bola: 0, cacapa: 'meio' });
@@ -166,5 +166,37 @@ export function mataMataCom(m: MesaMataMata): EstadoPartida {
     encacapadas: [...(m.encacapadas ?? [])],
     retiradas: [],
     vencedor: null,
+  };
+}
+
+/** Treino: Ana sozinha na mesa (equipe 0). */
+export const SOLO: readonly Jogador[] = [JOGADORES[0]!];
+
+/** A config do treino (preset local), com `mudanca` por cima. */
+export const configTreino = (mudanca: Partial<ConfigRegras> = {}): ConfigRegras => ({ ...PRESET_TREINO.regras, ...mudanca });
+
+export interface MesaTreino {
+  readonly naMesa: readonly IdBola[];
+  /** Tiradas à mão; o que não está em `naMesa` nem aqui conta como encaçapado por Ana. */
+  readonly retiradas?: readonly IdBola[];
+  readonly fase?: FasePartida;
+  readonly regras?: Partial<ConfigRegras>;
+}
+
+/** Partida de treino no meio do jogo: Ana sozinha, as 15 bolas conservadas, `aberta` se não disser outra fase. */
+export function treinoCom(m: MesaTreino): EstadoPartida {
+  const c = configTreino(m.regras);
+  const retiradas = m.retiradas ?? [];
+  const fim = m.fase === 'fim';
+  return {
+    config: c,
+    jogadores: SOLO,
+    vez: ANA,
+    grupos: [null],
+    fase: m.fase ?? 'aberta',
+    naMesa: [...m.naMesa],
+    encacapadas: bolasDaCasa(c).filter((b) => !m.naMesa.includes(b) && !retiradas.includes(b)).map((bola) => ({ bola, jogador: ANA })),
+    retiradas: [...retiradas],
+    vencedor: fim ? 0 : null,
   };
 }

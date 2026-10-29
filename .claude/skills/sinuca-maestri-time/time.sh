@@ -4,10 +4,11 @@
 #   time.sh atualizar ["<Principal>"]   reescreve os roles (reinicia recrutas: use entre lotes)
 #   time.sh recrutar  <papel>...        recruta os papéis e liga as notas
 #   time.sh religar   <papel>...        reinicia o terminal no lugar com o comando padrão (retoma a sessão)
-#   time.sh despachar <papel> <arquivo> [--sem-clear]   espera o terminal ficar livre, manda /clear e o lote
-#                                       (rode em segundo plano e encerre o turno: o ask-back só volta depois)
-#   time.sh esforco   <papel> <low|medium|high|xhigh|max>   reinicia o terminal com outro esforço (lote difícil: xhigh;
-#                                       o padrão de todos é high). Rode com o terminal livre. Nunca use /effort no terminal:
+#   time.sh despachar <papel> <arquivo> [--esforco <nivel>] [--sem-clear]   espera o terminal ficar livre, manda /clear
+#                                       e o lote; --esforco religa antes no nível do lote (tabela "Esforço por tarefa"
+#                                       do SKILL.md). Rode em segundo plano e encerre o turno: o ask-back só volta depois
+#   time.sh esforco   <papel> <low|medium|high|xhigh|max>   reinicia o terminal com outro esforço (o de recrutar está
+#                                       em TIME, abaixo). Rode com o terminal livre. Nunca use /effort no terminal:
 #                                       ele grava o nível como padrão global do usuário em ~/.claude/settings.json
 #   time.sh prompt    <papel> ["<Principal>"]   mostra o prompt do role, sem tocar no Maestri
 # Papéis: brainstormer dev frontend backend qa artista revisor. Sem "<Principal>", usa o terminal atual.
@@ -24,10 +25,10 @@ CLAUDE="claude --dangerously-skip-permissions --settings '{\"enabledPlugins\":{\
 # papel|role|terminal|flags do claude
 TIME=(
   "brainstormer|Sinuca Brainstormer|Boteco|--model sonnet --effort high"
-  "dev|Sinuca Dev|Taco|--model sonnet --effort high"
-  "frontend|Sinuca Frontend|Feltro|--model sonnet --effort high"
-  "backend|Sinuca Backend|Sala|--model sonnet --effort high"
-  "qa|Sinuca QA|Giz|--model sonnet --effort high"
+  "dev|Sinuca Dev|Taco|--model sonnet --effort medium"
+  "frontend|Sinuca Frontend|Feltro|--model sonnet --effort medium"
+  "backend|Sinuca Backend|Sala|--model sonnet --effort medium"
+  "qa|Sinuca QA|Giz|--model sonnet --effort medium"
   "artista|Sinuca Artista|Pincel|--model sonnet --effort xhigh --mcp-config '{\"mcpServers\":{\"blender\":{\"command\":\"uvx\",\"args\":[\"blender-mcp\"],\"env\":{\"DISABLE_TELEMETRY\":\"true\"}}}}'"
   "revisor|Sinuca Revisor|Juiz|--model opus --effort high --disallowedTools Edit Write NotebookEdit"
 )
@@ -169,13 +170,26 @@ cmd_religar() {
 }
 
 cmd_despachar() {
-  local papel="${1:?uso: time.sh despachar <papel> <arquivo> [--sem-clear]}" arq="${2:?uso: time.sh despachar <papel> <arquivo> [--sem-clear]}" l terminal
+  local uso="uso: time.sh despachar <papel> <arquivo> [--esforco <nivel>] [--sem-clear]"
+  local papel="${1:?$uso}" arq="${2:?$uso}" l terminal nivel="" limpar=1
+  shift 2
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --sem-clear) limpar=0; shift ;;
+      --esforco) nivel="${2:?$uso}"; shift 2 ;;
+      *) echo "$uso" >&2; exit 1 ;;
+    esac
+  done
   [[ -f "$arq" ]] || { echo "arquivo não existe: $arq" >&2; exit 1; }
   l="$(linha_do_papel "$papel")"
   IFS='|' read -r _ _ terminal _ <<<"$l"
   ocupado() { "$M" check "$terminal" 2>&1 | tail -3 | grep -q "esc to interrupt"; }
   until ! ocupado; do sleep 5; done
-  if [[ "${3:-}" != "--sem-clear" ]]; then
+  if [[ -n "$nivel" ]]; then
+    cmd_esforco "$papel" "$nivel"
+    sleep 10 # o claude religado sobe antes de receber o /clear
+  fi
+  if (( limpar )); then
     "$M" ask "$terminal" --raw "/clear\n" >/dev/null 2>&1
     sleep 4
     until ! ocupado; do sleep 5; done

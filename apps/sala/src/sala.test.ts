@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { gravacaoDeTeste } from '@sinuca/fisica';
-import { PROTOCOLO_VERSAO, type MsgTacada } from '@sinuca/protocolo';
+import { APARENCIA_PADRAO, PROTOCOLO_VERSAO, type MsgTacada } from '@sinuca/protocolo';
 import { PRESET_BOTECO, aplicarTacada, bolasDaCasa, novaPartida, type EstadoPartida, type ResultadoRegras } from '@sinuca/regras';
 import { ClienteDeTeste, TACADA_FORTE, TACADA_MEDIA, criarAmbiente, lugarDoJogador, mesaDepoisDasConsequencias, salaIniciada } from './para-testes';
 
@@ -17,7 +17,7 @@ describe('sala — entrada e lugares', () => {
     expect(ana.conn.recebidas.map((m) => m.tipo)).toEqual(['boas-vindas', 'estado-sala']);
     expect(ana.estado).toMatchObject({ codigo: bv.codigo, modo: '1x1', preset: 'Boteco', fase: 'espera', seq: 0, vez: null, espectadores: 0 });
     expect(ana.estado.lugares).toHaveLength(4);
-    expect(ana.estado.lugares[0]).toEqual({ lugar: 0, equipe: 0, nome: 'Ana', conectado: true, anfitriao: true, saldo: null, skin: 'classico' });
+    expect(ana.estado.lugares[0]).toEqual({ lugar: 0, equipe: 0, nome: 'Ana', conectado: true, anfitriao: true, saldo: null, skin: 'classico', semente: null, bolas: null, estatisticas: null, aparencia: APARENCIA_PADRAO });
   });
 
   it('o segundo jogador pega o lugar 1 e os dois recebem o estado novo', () => {

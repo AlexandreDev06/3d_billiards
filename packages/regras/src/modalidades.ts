@@ -11,14 +11,21 @@ const FORMACOES: Readonly<Record<Modalidade, readonly Formacao[]>> = {
   'mata-mata': [[1, 1], [1, 1, 1], [1, 1, 1, 1]],
 };
 
+const FORMACOES_DO_TREINO: readonly Formacao[] = [[1]];
+
+/** A config é a do treino (L39): uma pessoa sozinha, sem pena. Só `treino: true` vale. */
+export function ehTreino(config: Pick<ConfigRegras, 'treino'>): boolean {
+  return config.treino === true;
+}
+
 /**
  * Os tamanhos das equipes que a modalidade da `config` aceita, do menor para o maior
  * número de jogadores: no par ou ímpar `[1, 1]`, `[2, 1]`, `[1, 2]` e `[2, 2]`; no
- * mata-mata `[1, 1]`, `[1, 1, 1]` e `[1, 1, 1, 1]`. É por esta lista que a sala e o
+ * mata-mata `[1, 1]`, `[1, 1, 1]` e `[1, 1, 1, 1]`; no treino só `[1]`. É por esta lista que a sala e o
  * lobby montam a escolha de modo, e `novaPartida` recusa o que estiver fora dela.
  */
-export function formacoesAceitas(config: Pick<ConfigRegras, 'modalidade'>): readonly Formacao[] {
-  return FORMACOES[config.modalidade];
+export function formacoesAceitas(config: Pick<ConfigRegras, 'modalidade' | 'treino'>): readonly Formacao[] {
+  return ehTreino(config) ? FORMACOES_DO_TREINO : FORMACOES[config.modalidade];
 }
 
 /** "2×1", "1×1×1": os tamanhos das equipes separados por ×. */

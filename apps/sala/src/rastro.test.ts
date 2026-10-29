@@ -22,6 +22,16 @@ describe('RastroDaConexao — o que a sala registra de uma conexão que caiu', (
     expect(r.saida(1006, '', 0)).toMatchObject({ duracaoMs: 36_000, silencioMs: 26_000 });
   });
 
+  it('com o último sinal de antes (o Worker o guarda no anexo do soquete), o silêncio conta dele e não do nascimento da ligação', () => {
+    let agora = 100_000;
+    const r = new RastroDaConexao(() => agora, 40_000);
+    expect(r.silencioMs()).toBe(60_000);
+    agora += 20_000;
+    expect(r.silencioMs()).toBe(80_000);
+    r.sinal();
+    expect(r.silencioMs()).toBe(0);
+  });
+
   it('a primeira causa anotada vale; as seguintes são consequência dela', () => {
     const { r } = rastro();
     r.encerrando('heartbeat', 0);
@@ -30,7 +40,7 @@ describe('RastroDaConexao — o que a sala registra de uma conexão que caiu', (
   });
 
   it('cada causa do servidor aparece como é', () => {
-    for (const origem of ['heartbeat', 'envio-lento', 'tolerancia'] as const) {
+    for (const origem of ['heartbeat', 'envio-lento', 'tolerancia', 'tamanho', 'cota-por-ip'] as const) {
       const { r } = rastro();
       r.encerrando(origem, 0);
       expect(r.saida(1006, '', 0).origem).toBe(origem);

@@ -63,7 +63,7 @@ export interface MissoesNaTela {
   readonly fimMs: number;
 }
 
-export const AVISO_SEM_CARTEIRA = 'Sem carteira, as missões só aparecem: elas valem online, em partida apostada.';
+export const AVISO_SEM_CARTEIRA = 'Sem carteira: as missões só valem online, em partida apostada.';
 
 function cartao(id: IdMissao, progresso: number): CartaoDeMissao {
   const m = missaoDoCatalogo(id);
@@ -106,6 +106,24 @@ export function missoesNaTela(quadro: MissoesDoDia | null, agoraMs: number): Mis
     cartoes,
     fimMs,
   };
+}
+
+// ---------------------------------------------------------------- a seção do H, durante a partida
+
+/** Onde a partida acontece: numa sala (online) ou no mesmo PC. */
+export type OndeSeJoga = 'sala' | 'local';
+
+/** A linha discreta da seção do H no mesmo PC: o progresso que os cartões mostram é o da carteira, e quem o move são as partidas da sala. */
+export const AVISO_SO_ONLINE = 'As missões só contam nas partidas online.';
+
+/**
+ * A seção "Missões do dia" do H (L37): os mesmos cartões do lobby (`missoesNaTela`). Sem carteira o aviso é o do lobby, onde quer
+ * que se jogue; no mesmo PC, com carteira, uma linha diz que ali nada conta. Na sala o progresso é de verdade e não há aviso.
+ */
+export function missoesNaAjuda(quadro: MissoesDoDia | null, agoraMs: number, onde: OndeSeJoga): MissoesNaTela {
+  const modelo = missoesNaTela(quadro, agoraMs);
+  if (onde === 'local' && modelo.aviso === null) return { ...modelo, aviso: AVISO_SO_ONLINE };
+  return modelo;
 }
 
 // ---------------------------------------------------------------- o que a tacada trouxe

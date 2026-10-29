@@ -1,0 +1,1887 @@
+/*
+ * L40: o menu com cara de jogo. Um boteco à noite: madeira escura, pano verde, néon e giz azul.
+ *
+ * Carrega depois de `estilo.css` e veste as classes do menu (`menu-*`, `regras-sala`, `confronto`) sem mexer na estrutura delas: a
+ * tela inicial, criar sala, entrar com código, o mesmo PC e a sala de espera falam a mesma língua. O que não é visual (tamanhos que
+ * fazem a sala de espera de quatro caber em 720 px) continua em `estilo.css`.
+ *
+ * Custo: nada de `backdrop-filter` em lugar nenhum; só as animações curtas de entrada e o piscar do letreiro (opacidade, no
+ * compositor, só no nível alto). No nível baixo (`body[data-qualidade="baixa"]`, posto pelo main.ts) o letreiro fica parado e a
+ * entrada é só um fade.
+ *
+ * L44: com o boteco em 3D atrás (`body[data-boteco="sim"]`, posto pelo main.ts quando o .glb chega) o fundo do menu deixa o salão
+ * aparecer; sem ele (carregando, ou o .glb faltando) vale o fundo opaco de antes.
+ */
+
+/* Os tokens servem ao menu e às telas que abrem por cima dele na body (o perfil e a pergunta da carteira, L43). */
+.menu,
+.perfil,
+.meu-balao,
+.carteira-pergunta {
+  --m-madeira-clara: #6a4326;
+  --m-madeira: #4a2d18;
+  --m-madeira-escura: #2b190c;
+  --m-madeira-breu: #130a04;
+  --m-pano: #0f6b45;
+  --m-pano-escuro: #063322;
+  --m-neon-azul: #5cc8ff;
+  --m-neon-azul-brilho: rgba(92, 200, 255, 0.55);
+  --m-neon-quente: #ff7a59;
+  --m-neon-quente-brilho: rgba(255, 122, 89, 0.5);
+  --m-giz: #d4ecff;
+  --m-giz-suave: rgba(212, 236, 255, 0.72);
+  --m-texto: #f4eee2;
+  --m-texto-fraco: rgba(244, 238, 226, 0.68);
+  --m-dourado: #f2c14e;
+  /* O veio da madeira: riscas finas e tortas por cima da cor, desenhadas uma vez só (nada anima). */
+  --m-veio: repeating-linear-gradient(97deg, rgba(255, 210, 150, 0.05) 0 2px, transparent 2px 9px, rgba(0, 0, 0, 0.1) 9px 10px, transparent 10px 23px);
+  --m-moldura: var(--m-veio), linear-gradient(135deg, #7a4d2b, #4a2d18 38%, #6a4326 62%, #36200f);
+}
+
+.menu {
+  --escala: 1;
+  color: var(--m-texto);
+  background:
+    radial-gradient(ellipse 85% 70% at 50% 60%, rgba(15, 107, 69, 0.5) 0%, rgba(8, 72, 47, 0.74) 40%, rgba(3, 22, 15, 0.93) 100%),
+    var(--m-veio),
+    #0a0603;
+}
+
+/* O salão aparece por trás: só uma sombra nas bordas e embaixo, para a caixa e a barra de cima se destacarem (a caixa já é opaca). */
+body[data-boteco='sim'] .menu {
+  background: radial-gradient(ellipse 95% 85% at 50% 52%, rgba(4, 2, 1, 0) 0%, rgba(4, 2, 1, 0.16) 55%, rgba(4, 2, 1, 0.55) 100%);
+}
+
+/* ---------------------------------------------------------------- a barra de cima */
+
+.menu-barra {
+  order: -1;
+  flex: none;
+  zoom: var(--escala);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  padding: 3px 16px;
+  background: var(--m-veio), linear-gradient(180deg, #3d2513, #26150a);
+  border-bottom: 3px solid var(--m-madeira-breu);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.22), 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* O fio de néon azul embaixo da barra. */
+.menu-barra::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--m-neon-azul) 30%, var(--m-neon-azul) 70%, transparent);
+  box-shadow: 0 0 10px var(--m-neon-azul-brilho);
+  opacity: 0.75;
+}
+
+.menu-barra-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 3px 13px 3px 10px;
+  border: 1px solid rgba(255, 214, 160, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+.menu-barra-icone {
+  display: inline-flex;
+  color: var(--m-neon-azul);
+}
+
+.menu-barra-icone svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menu-barra-texto {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+.menu-barra-rotulo {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m-texto-fraco);
+}
+
+.menu-barra-valor {
+  overflow: hidden;
+  font-size: 14.5px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-barra-item.apelido {
+  max-width: 240px;
+}
+
+.menu-barra-item.apelido.vazio .menu-barra-valor {
+  font-weight: 500;
+  font-style: italic;
+  color: var(--m-texto-fraco);
+}
+
+.menu-barra-item.saldo .menu-barra-icone {
+  color: var(--m-dourado);
+}
+
+.menu-barra-item.saldo .menu-barra-valor {
+  color: var(--m-dourado);
+  font-variant-numeric: tabular-nums;
+}
+
+.menu-barra-item.saldo.negativo .menu-barra-valor {
+  color: #ff8a80;
+}
+
+.menu-barra-item.saldo.sem-carteira .menu-barra-valor {
+  color: var(--m-texto-fraco);
+}
+
+.menu-barra-item.taco {
+  gap: 10px;
+}
+
+.menu-barra-miniatura-caixa {
+  display: inline-flex;
+  padding-bottom: 2px;
+  border-bottom: 2px solid var(--faixa, #b0c3d9);
+}
+
+.menu-barra-miniatura {
+  display: block;
+  width: 168px;
+  height: 24px;
+}
+
+.menu-engrenagem {
+  margin-left: auto;
+  padding: 5px;
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 12px;
+  background: var(--m-veio), linear-gradient(180deg, #5a3a21, #3a2412);
+  color: var(--m-texto);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.28), inset 0 -3px 0 rgba(0, 0, 0, 0.35), 0 3px 0 var(--m-madeira-breu);
+  transition: filter 0.12s;
+}
+
+.menu-engrenagem svg {
+  width: 20px;
+  height: 20px;
+}
+
+.menu-engrenagem:hover {
+  background: var(--m-veio), linear-gradient(180deg, #6c4727, #47301a);
+  filter: brightness(1.15);
+}
+
+.menu-engrenagem:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 3px;
+  box-shadow: 0 0 0 6px rgba(92, 200, 255, 0.3), 0 0 20px var(--m-neon-azul-brilho);
+}
+
+/* ---------------------------------------------------------------- o palco e a caixa */
+
+.menu-palco {
+  padding: 4px 16px 6px;
+}
+
+/* As telas de formulário e a sala de espera: uma mesa de pano verde com moldura de madeira. */
+.menu-caixa {
+  zoom: var(--escala);
+  gap: 12px;
+  padding: 16px 28px 14px;
+  border: 5px solid transparent;
+  border-radius: 20px;
+  background:
+    radial-gradient(ellipse 100% 55% at 50% 0%, rgba(40, 170, 112, 0.3), transparent 72%) padding-box,
+    linear-gradient(180deg, #0d6040, #08462d 55%, var(--m-pano-escuro)) padding-box,
+    var(--m-moldura) border-box;
+  box-shadow: 0 0 0 2px var(--m-madeira-breu), 0 24px 54px rgba(0, 0, 0, 0.6), inset 0 0 46px rgba(0, 0, 0, 0.42);
+  color: var(--m-texto);
+}
+
+.menu-cabecalho {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.menu-subtitulo {
+  margin-top: 0;
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--m-giz-suave);
+}
+
+.menu-campo-rotulo {
+  font-weight: 700;
+  color: var(--m-giz-suave);
+}
+
+.menu-aviso {
+  border-color: rgba(255, 110, 96, 0.7);
+  background: rgba(150, 24, 16, 0.42);
+  color: #ffe3df;
+}
+
+.menu-aviso.neutro {
+  border-color: rgba(92, 200, 255, 0.6);
+  background: rgba(10, 70, 110, 0.5);
+  color: #e3f5ff;
+}
+
+/* ---------------------------------------------------------------- o letreiro de néon */
+
+/*
+ * O nome do jogo num elemento só (`.menu-letreiro`, criado por `letreiro()` em menu.ts): o letreiro do Pincel (`public/marca/`, L44),
+ * aceso por cima do apagado. A largura (`--w`) manda; a altura vem da proporção do PNG (2048x1034 as duas linhas, 2048x882 só
+ * "SINUCA") e as margens negativas comem a folga transparente de cima e de baixo, que é só brilho. O texto fica escondido (leitor de
+ * tela); se a imagem não carregar, `.sem-imagem` devolve o letreiro de texto de antes.
+ */
+.menu-letreiro {
+  --w: 116px;
+  position: relative;
+  display: block;
+  box-sizing: content-box;
+  width: var(--w);
+  height: calc(var(--w) * 0.4307);
+  margin: calc(var(--w) * -0.07) auto calc(var(--w) * -0.095);
+  padding: 0;
+  text-align: center;
+}
+
+.menu-letreiro.grande {
+  --w: 372px;
+  height: calc(var(--w) * 0.5049);
+  margin: calc(var(--w) * -0.06) auto calc(var(--w) * -0.03);
+}
+
+.menu-letreiro-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* O apagado só existe no nível alto: nos outros o tubo nunca falha, então nem se carrega. */
+.menu-letreiro-apagada {
+  display: none;
+}
+
+body[data-qualidade='alta'] .menu-letreiro-apagada {
+  display: block;
+}
+
+.menu-letreiro:not(.sem-imagem) .menu-letreiro-texto {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.menu-letreiro.sem-imagem .menu-letreiro-img {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  /* O tubo falha de vez em quando: só opacidade (no compositor), só no nível alto, e o apagado embaixo aparece nas falhas. */
+  body[data-qualidade='alta'] .menu-letreiro-acesa {
+    animation: menu-neon-falha 8s steps(1, end) infinite;
+  }
+}
+
+@keyframes menu-neon-falha {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  91% {
+    opacity: 0.35;
+  }
+  92% {
+    opacity: 1;
+  }
+  93.5% {
+    opacity: 0.55;
+  }
+  94.5% {
+    opacity: 1;
+  }
+}
+
+/* Sem a imagem: o letreiro de texto, do tamanho de sempre. */
+.menu-letreiro.sem-imagem {
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.34em;
+  width: auto;
+  height: auto;
+  margin: 0;
+  font: 800 26px/1 'Arial Rounded MT Bold', 'Trebuchet MS', ui-rounded, system-ui, sans-serif;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.menu-letreiro.sem-imagem .menu-letreiro-texto {
+  display: contents;
+}
+
+.menu-letreiro-a,
+.menu-letreiro-b {
+  display: inline-block;
+}
+
+.menu-letreiro-a {
+  color: #effaff;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 8px var(--m-neon-azul),
+    0 0 20px var(--m-neon-azul),
+    0 0 42px var(--m-neon-azul-brilho);
+}
+
+.menu-letreiro-b {
+  color: #fff2ea;
+  text-shadow:
+    0 0 2px #fff,
+    0 0 7px var(--m-neon-quente),
+    0 0 18px var(--m-neon-quente),
+    0 0 38px var(--m-neon-quente-brilho);
+}
+
+.menu-letreiro.sem-imagem.grande {
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 62px;
+}
+
+.menu-letreiro.sem-imagem.grande .menu-letreiro-a {
+  letter-spacing: 0.14em;
+  padding-left: 0.14em;
+}
+
+.menu-letreiro.sem-imagem.grande .menu-letreiro-b {
+  font-size: 0.4em;
+  letter-spacing: 0.5em;
+  padding-left: 0.5em;
+}
+
+/* ---------------------------------------------------------------- a tela inicial */
+
+.menu-caixa.inicio {
+  gap: 12px;
+  width: min(1120px, 100%);
+  padding: 4px 0 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+.menu-caixa.inicio .menu-cabecalho {
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.menu-caixa.inicio .menu-aviso {
+  align-self: center;
+  max-width: 640px;
+  text-align: center;
+}
+
+.menu-privacidade {
+  display: block;
+  width: fit-content;
+  margin: 14px auto 0;
+  padding: 4px 8px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.menu-privacidade:hover,
+.menu-privacidade:focus-visible {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.menu-inicio {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 26px;
+  align-items: start;
+}
+
+.menu-inicio-principal {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.menu-destaques {
+  display: grid;
+  grid-template-columns: 1.15fr 1fr;
+  gap: 16px;
+}
+
+/* As placas: tábuas de madeira com a boca de néon que acende quando o mouse passa ou o foco chega. */
+.menu-placa {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  min-height: 164px;
+  padding: 18px 20px;
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 16px;
+  background: var(--m-veio), linear-gradient(180deg, #5d3b20, #3d2513 55%, #2a170a);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.3), inset 0 -4px 0 rgba(0, 0, 0, 0.36), 0 5px 0 var(--m-madeira-breu), 0 16px 28px rgba(0, 0, 0, 0.5);
+  color: var(--m-texto);
+  text-align: left;
+}
+
+.menu-placa::before {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 2px solid var(--m-neon-azul);
+  border-radius: 18px;
+  box-shadow: 0 0 16px var(--m-neon-azul-brilho), inset 0 0 14px var(--m-neon-azul-brilho);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.14s;
+}
+
+.menu-placa:hover::before,
+.menu-placa:focus-within::before {
+  opacity: 1;
+}
+
+.menu-placa-titulo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
+  color: #fff4e6;
+  text-shadow: 0 0 12px var(--m-neon-quente-brilho);
+}
+
+.menu-placa-titulo .menu-icone svg {
+  width: 26px;
+  height: 26px;
+  color: var(--m-neon-azul);
+  filter: drop-shadow(0 0 5px var(--m-neon-azul-brilho));
+}
+
+.menu-placa-dica {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--m-texto-fraco);
+}
+
+.menu-placa-portas {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.menu-placa-portas .menu-placa-botao {
+  flex: 1 1 0;
+  padding: 13px 10px;
+  font-size: 16px;
+}
+
+/* "Jogar no mesmo PC": a placa inteira é o botão. */
+.menu-botao.menu-placa {
+  align-items: flex-start;
+  justify-content: center;
+  font: inherit;
+  cursor: pointer;
+}
+
+.menu-botao.menu-placa.principal {
+  border-color: var(--m-madeira-breu);
+  background: var(--m-veio), linear-gradient(180deg, #5d3b20, #3d2513 55%, #2a170a);
+  color: var(--m-texto);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.3), inset 0 -4px 0 rgba(0, 0, 0, 0.36), 0 5px 0 var(--m-madeira-breu), 0 16px 28px rgba(0, 0, 0, 0.5);
+}
+
+.menu-botao.menu-placa:hover,
+.menu-botao.menu-placa.principal:hover {
+  filter: none;
+  transform: none;
+  background: var(--m-veio), linear-gradient(180deg, #6a4527, #46291a 55%, #321d0e);
+}
+
+.menu-botao.menu-placa:active {
+  transform: translateY(3px);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.3), inset 0 -2px 0 rgba(0, 0, 0, 0.36), 0 2px 0 var(--m-madeira-breu), 0 8px 16px rgba(0, 0, 0, 0.5);
+}
+
+.menu-botao.menu-placa:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 4px;
+}
+
+/* A fileira de baixo: fichas de largura igual. O treino (L42) e o perfil (L43) entram nos lugares deles e a grade reparte o resto. */
+.menu-atalhos {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+
+.menu-botao.menu-ficha {
+  position: relative;
+  flex-direction: column;
+  gap: 3px;
+  min-height: 98px;
+  padding: 12px 6px 10px;
+  border-radius: 18px;
+  text-align: center;
+}
+
+/* A borda tracejada de dentro: o aro da ficha de cassino. */
+.menu-ficha::before {
+  content: '';
+  position: absolute;
+  inset: 5px;
+  border: 2px dashed rgba(255, 214, 160, 0.3);
+  border-radius: 13px;
+  pointer-events: none;
+}
+
+.menu-ficha .menu-icone svg {
+  width: 27px;
+  height: 27px;
+  color: var(--m-neon-azul);
+  filter: drop-shadow(0 0 4px var(--m-neon-azul-brilho));
+}
+
+.menu-ficha-rotulo {
+  font-size: 14.5px;
+  font-weight: 800;
+}
+
+.menu-ficha-dica {
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--m-texto-fraco);
+}
+
+/* O quadro de giz das missões do dia. */
+.menu-quadro {
+  position: relative;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 12px 14px 14px;
+  border: 8px solid transparent;
+  border-radius: 14px;
+  background:
+    radial-gradient(ellipse 90% 60% at 25% 0%, rgba(255, 255, 255, 0.07), transparent 70%) padding-box,
+    linear-gradient(180deg, #153129, #0c231e) padding-box,
+    var(--m-moldura) border-box;
+  box-shadow: 0 0 0 2px var(--m-madeira-breu), 0 16px 30px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 0, 0, 0.55);
+  color: var(--m-giz);
+}
+
+.menu-quadro .missoes {
+  gap: 7px;
+  padding: 0 28px 0 0;
+  border-top: 0;
+}
+
+.menu-quadro .missoes-titulo {
+  font-size: 16px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--m-giz);
+}
+
+.menu-quadro .missoes-restante {
+  color: var(--m-giz-suave);
+}
+
+.menu-quadro .missao-cartao {
+  padding: 6px 11px 7px 12px;
+  background: rgba(212, 236, 255, 0.06);
+  border: 1px dashed rgba(212, 236, 255, 0.3);
+  border-left: 4px solid var(--cor);
+}
+
+.menu-quadro .missao-descricao,
+.menu-quadro .missao-numero {
+  color: var(--m-giz-suave);
+}
+
+.menu-quadro .missao-barra {
+  background: rgba(212, 236, 255, 0.16);
+}
+
+.menu-quadro.recolhido .missoes > :not(.missoes-topo) {
+  display: none;
+}
+
+.menu-quadro.recolhido .missoes {
+  padding-right: 34px;
+}
+
+.menu-quadro-alternar {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(212, 236, 255, 0.4);
+  border-radius: 50%;
+  background: rgba(212, 236, 255, 0.08);
+  color: var(--m-giz);
+  cursor: pointer;
+}
+
+.menu-quadro-alternar svg {
+  width: 16px;
+  height: 16px;
+  transform: rotate(180deg);
+}
+
+.menu-quadro.recolhido .menu-quadro-alternar svg {
+  transform: none;
+}
+
+.menu-quadro-alternar:hover {
+  background: rgba(212, 236, 255, 0.2);
+}
+
+.menu-quadro-alternar:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 3px;
+}
+
+/* Tela estreita ou baixa: o quadro desce para baixo dos botões e as placas empilham. */
+@media (max-width: 1000px) {
+  .menu-inicio {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 18px;
+  }
+}
+
+@media (max-width: 720px) {
+  .menu-destaques {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .menu-atalhos {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .menu-letreiro.grande {
+    --w: 300px;
+  }
+
+  .menu-letreiro.sem-imagem.grande {
+    font-size: 46px;
+  }
+
+  .menu-barra-miniatura {
+    display: none;
+  }
+}
+
+/* ---------------------------------------------------------------- a sala de espera */
+
+/* Estreita: as duas colunas somem e os blocos entram direto na pilha da caixa, como sempre foi. */
+.menu-espera-colunas,
+.menu-espera-esquerda {
+  display: contents;
+}
+
+/*
+ * Larga (1280x720 é o caso): quem está na mesa, o código e o placar à esquerda, as regras da sala à direita. O que antes empilhava
+ * 727 px com o placar de quatro pessoas agora ocupa a altura da coluna mais alta.
+ */
+@media (min-width: 1000px) {
+  .menu-caixa.espera {
+    width: min(1040px, 100%);
+  }
+
+  .menu-espera-colunas {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.12fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .menu-espera-esquerda {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+  }
+}
+
+/* ---------------------------------------------------------------- botões, campos e fichas das outras telas */
+
+.menu-botao {
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 12px;
+  background: var(--m-veio), linear-gradient(180deg, #5a3a21, #3a2412);
+  color: var(--m-texto);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.28), inset 0 -3px 0 rgba(0, 0, 0, 0.35), 0 3px 0 var(--m-madeira-breu);
+  transition: filter 0.12s, transform 0.08s, box-shadow 0.15s;
+}
+
+.menu-botao:hover {
+  background: var(--m-veio), linear-gradient(180deg, #6c4727, #47301a);
+  filter: brightness(1.12);
+  transform: translateY(-1px);
+}
+
+.menu-botao:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.28), inset 0 -2px 0 rgba(0, 0, 0, 0.35), 0 1px 0 var(--m-madeira-breu);
+}
+
+.menu-botao.principal {
+  border-color: #0a2a4a;
+  background: linear-gradient(180deg, #86deff, #3aa0ff 55%, #1f78d0);
+  color: #04121f;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -3px 0 rgba(0, 40, 90, 0.35), 0 3px 0 #0a2a4a, 0 0 16px var(--m-neon-azul-brilho);
+}
+
+.menu-botao.principal:hover,
+.menu-botao.principal:focus-visible {
+  background: linear-gradient(180deg, #b4ecff, #5cb6ff 55%, #2d88e0);
+}
+
+.menu-botao:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: none;
+  transform: none;
+}
+
+.menu-botao:focus-visible,
+.menu-entrada:focus-visible,
+.menu-tempo:focus-visible,
+.menu-modo:focus-visible,
+.menu-modalidade:focus-visible,
+.menu-passo-botao:focus-visible,
+.menu-caixa-marcar:focus-visible,
+.menu-historico-botao:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 3px;
+}
+
+.menu-botao:focus-visible {
+  box-shadow: 0 0 0 7px rgba(92, 200, 255, 0.28), 0 0 22px var(--m-neon-azul-brilho);
+}
+
+.menu-entrada {
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.42);
+  color: var(--m-texto);
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 214, 160, 0.22);
+}
+
+.menu-entrada::placeholder {
+  color: var(--m-texto-fraco);
+}
+
+.menu-entrada:focus {
+  border-color: var(--m-neon-azul);
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.6), 0 0 14px var(--m-neon-azul-brilho);
+}
+
+/* O código da sala em néon quente, como uma placa de mesa. */
+.menu-codigo-valor {
+  color: #fff2ea;
+  text-shadow: 0 0 2px #fff, 0 0 8px var(--m-neon-quente), 0 0 20px var(--m-neon-quente-brilho);
+}
+
+.menu-codigo-rotulo,
+.menu-situacao {
+  color: var(--m-giz-suave);
+}
+
+/* As fichas das regras da sala (modalidade, formato, tempo, linha, força, aposta): pano escuro, e o escolhido acende em néon azul. */
+.menu-modalidade,
+.menu-modo,
+.menu-tempo,
+.menu-passo {
+  border-color: rgba(212, 236, 255, 0.3);
+  background: rgba(0, 0, 0, 0.26);
+  transition: background 0.12s, border-color 0.12s, box-shadow 0.15s;
+}
+
+.menu-modalidade:hover:not(:disabled),
+.menu-modo:hover:not(:disabled),
+.menu-tempo:hover {
+  border-color: rgba(212, 236, 255, 0.6);
+  background: rgba(212, 236, 255, 0.1);
+}
+
+.menu-modalidade.marcado,
+.menu-modo.marcado,
+.menu-tempo.marcado {
+  border-color: var(--m-neon-azul);
+  background: rgba(92, 200, 255, 0.17);
+  box-shadow: 0 0 12px var(--m-neon-azul-brilho), inset 0 0 10px rgba(92, 200, 255, 0.2);
+}
+
+.menu-modalidade-descricao,
+.menu-modo-detalhe,
+.menu-tempo-unidade,
+.menu-dica,
+.menu-giz-rotulo,
+.menu-giz-ligacao {
+  color: var(--m-giz-suave);
+}
+
+.menu-passo-botao:hover:not(:disabled) {
+  background: rgba(212, 236, 255, 0.16);
+}
+
+.menu-caixa-marcar {
+  accent-color: var(--m-neon-azul);
+}
+
+.menu-regras-resumo-lista li {
+  border-color: rgba(212, 236, 255, 0.3);
+  background: rgba(0, 0, 0, 0.26);
+  color: var(--m-giz);
+}
+
+/* Os lugares da sala de espera: a faixa da cor da equipe na ponta, e o meu com a boca de néon. */
+.menu-lugar {
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.menu-lugar.meu {
+  background: rgba(92, 200, 255, 0.14);
+  box-shadow: 0 0 0 1px rgba(92, 200, 255, 0.55), 0 0 12px var(--m-neon-azul-brilho);
+}
+
+.menu-lugar-selo {
+  color: var(--m-dourado);
+}
+
+.menu-lugar-topo,
+.menu-equipe-titulo,
+.menu-equipe-tamanho {
+  color: var(--m-giz-suave);
+}
+
+.menu-equipe-nome {
+  color: var(--m-texto);
+}
+
+.menu-historico-botao {
+  color: var(--m-giz);
+}
+
+.menu-carregando {
+  border-color: rgba(212, 236, 255, 0.2);
+  border-top-color: var(--m-neon-azul);
+  filter: drop-shadow(0 0 6px var(--m-neon-azul-brilho));
+}
+
+/* ---------------------------------------------------------------- a loja e o painel por cima do menu */
+
+/* A loja abre sobre o menu: sem desfoque (custa quadros) e com a mesma madeira. */
+.loja {
+  backdrop-filter: none;
+  background: rgba(6, 5, 4, 0.86);
+}
+
+.loja-caixa {
+  border: 8px solid transparent;
+  background:
+    linear-gradient(180deg, rgba(14, 38, 30, 0.99), rgba(8, 24, 19, 0.99)) padding-box,
+    var(--m-moldura, linear-gradient(135deg, #7a4d2b, #4a2d18 38%, #6a4326 62%, #36200f)) border-box;
+  box-shadow: 0 0 0 2px #130a04, 0 24px 54px rgba(0, 0, 0, 0.6);
+}
+
+/* ---------------------------------------------------------------- a transição entre telas */
+
+.menu-caixa[data-entrada] {
+  animation: menu-entra 0.22s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.menu-caixa[data-entrada='volta'] {
+  animation-name: menu-volta;
+}
+
+@keyframes menu-entra {
+  from {
+    opacity: 0;
+    transform: translateX(22px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes menu-volta {
+  from {
+    opacity: 0;
+    transform: translateX(-22px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- qualidade e movimento */
+
+/* Nível baixo: nenhuma animação contínua e a entrada é só um fade curto, sem transformar a caixa. */
+body[data-qualidade='baixa'] .menu-caixa[data-entrada] {
+  animation: menu-entra-fade 0.14s linear both;
+}
+
+body[data-qualidade='baixa'] .menu-botao,
+body[data-qualidade='baixa'] .menu-placa::before,
+body[data-qualidade='baixa'] .menu-modalidade,
+body[data-qualidade='baixa'] .menu-modo,
+body[data-qualidade='baixa'] .menu-tempo {
+  transition: none;
+}
+
+body[data-qualidade='baixa'] .menu-carregando {
+  filter: none;
+}
+
+@keyframes menu-entra-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-caixa[data-entrada],
+  body[data-qualidade='baixa'] .menu-caixa[data-entrada] {
+    animation: none;
+  }
+
+  .menu-botao,
+  .menu-botao:hover,
+  .menu-botao:active {
+    transform: none;
+  }
+}
+
+/* A linha da física nas regras da sala de espera (L42): o aviso fica em destaque quando o anfitrião mexeu nela. */
+.menu-fisica {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(212, 236, 255, 0.18);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.menu-fisica-texto {
+  color: var(--m-giz);
+  font-weight: 600;
+}
+
+.menu-fisica-dica {
+  color: var(--m-giz-suave);
+  font-size: 11.5px;
+}
+
+.menu-fisica.mexida {
+  border-color: var(--m-neon-quente);
+  background: rgba(255, 122, 89, 0.14);
+  box-shadow: 0 0 12px var(--m-neon-quente-brilho);
+}
+
+.menu-fisica.mexida .menu-fisica-texto {
+  color: var(--m-neon-quente);
+  font-weight: 800;
+}
+
+/* ---------------------------------------------------------------- L43: a barra, o resumo de cada lugar, o perfil e a pergunta da carteira */
+
+/* O apelido da barra de cima abre o perfil: continua com cara de ficha, ganha mão e o brilho do néon. */
+button.menu-barra-item {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+}
+
+.menu-barra-item.abre-perfil {
+  cursor: pointer;
+  transition: border-color 0.12s, box-shadow 0.12s, background 0.12s;
+}
+
+.menu-barra-item.abre-perfil:hover {
+  border-color: rgba(92, 200, 255, 0.6);
+  background: rgba(92, 200, 255, 0.1);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45), 0 0 10px var(--m-neon-azul-brilho);
+}
+
+.menu-barra-item.abre-perfil:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 2px;
+}
+
+/* A linha curta de baixo do nome na sala de espera: "12 vitórias em 30 · 85 bolas". Sem resumo, o cartão não tem a linha. */
+.menu-lugar-resumo {
+  font-size: 11.5px;
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  color: var(--m-giz-suave);
+}
+
+.menu-caixa.espera .menu-lugar-resumo {
+  order: 3;
+  flex-basis: 100%;
+}
+
+/* O perfil abre sobre qualquer tela, como a loja: a mesma madeira, sem desfoque (custa quadros). */
+.perfil {
+  position: fixed;
+  inset: 0;
+  z-index: 35;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(6, 5, 4, 0.86);
+  font: 14px/1.35 system-ui, sans-serif;
+  color: var(--m-texto);
+}
+
+.perfil[hidden],
+.perfil [hidden],
+.carteira-pergunta[hidden] {
+  display: none;
+}
+
+.perfil-caixa {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 800px;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  padding: 12px 20px 16px;
+  border: 8px solid transparent;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(14, 38, 30, 0.99), rgba(8, 24, 19, 0.99)) padding-box,
+    var(--m-moldura) border-box;
+  box-shadow: 0 0 0 2px #130a04, 0 24px 54px rgba(0, 0, 0, 0.6);
+}
+
+.perfil-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.perfil-titulo {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--m-giz);
+  text-shadow: 0 0 12px var(--m-neon-azul-brilho);
+}
+
+.perfil-fechar {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 10px;
+  background: var(--m-veio), linear-gradient(180deg, #5a3a21, #3a2412);
+  color: var(--m-texto);
+  font: 700 20px/1 system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.28), 0 2px 0 var(--m-madeira-breu);
+}
+
+.perfil-fechar:hover {
+  filter: brightness(1.15);
+}
+
+.perfil-fechar:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 2px;
+}
+
+.perfil-aviso,
+.perfil-fora {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 13px;
+}
+
+.perfil-aviso {
+  border: 1px solid rgba(92, 200, 255, 0.55);
+  background: rgba(92, 200, 255, 0.14);
+}
+
+.perfil-fora {
+  border: 1px solid rgba(255, 122, 89, 0.7);
+  background: rgba(255, 122, 89, 0.16);
+}
+
+.perfil-aviso-texto,
+.perfil-fora-texto {
+  flex: 1;
+}
+
+.perfil-rolagem {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+  margin-right: -6px;
+}
+
+/* Quem é: apelido, taco em uso e quantas skins. */
+.perfil-identidade {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.perfil-ficha {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 12px 8px;
+  border: 1px solid rgba(255, 214, 160, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.45);
+}
+
+.perfil-ficha-rotulo {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m-texto-fraco);
+}
+
+.perfil-ficha.apelido {
+  position: relative;
+  padding-left: 46px;
+}
+
+.perfil-ficha-icone {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  display: inline-flex;
+  transform: translateY(-50%);
+  color: var(--m-neon-azul);
+}
+
+.perfil-ficha-icone svg {
+  width: 24px;
+  height: 24px;
+}
+
+.perfil-apelido,
+.perfil-skins {
+  overflow: hidden;
+  font-size: 18px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perfil-ficha.vazio .perfil-apelido {
+  font-size: 15px;
+  font-weight: 500;
+  font-style: italic;
+  color: var(--m-texto-fraco);
+}
+
+.perfil-skins {
+  color: var(--m-dourado);
+}
+
+.perfil-miniatura-caixa {
+  display: inline-flex;
+  align-self: flex-start;
+  max-width: 100%;
+  padding-bottom: 3px;
+  border-bottom: 2px solid var(--faixa, #b0c3d9);
+}
+
+.perfil-miniatura {
+  display: block;
+  width: 260px;
+  max-width: 100%;
+  height: 34px;
+}
+
+.perfil-taco-nome {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.perfil-secao-titulo {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m-giz-suave);
+}
+
+/* As estatísticas: uma tabela, o total à esquerda e uma coluna por modalidade. */
+.perfil-tabela {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.perfil-tabela-legenda {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.perfil-coluna {
+  padding: 4px 10px 6px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-align: right;
+  text-transform: uppercase;
+  color: var(--m-giz-suave);
+  border-bottom: 2px solid rgba(92, 200, 255, 0.4);
+}
+
+.perfil-coluna.total {
+  color: var(--m-giz);
+}
+
+.perfil-rotulo {
+  padding: 3px 10px 3px 0;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--m-texto);
+  cursor: help;
+}
+
+.perfil-rotulo,
+.perfil-valor {
+  border-bottom: 1px solid rgba(255, 214, 160, 0.1);
+}
+
+.perfil-valor {
+  padding: 3px 10px;
+  font-size: 17px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.perfil-valor.total {
+  background: rgba(92, 200, 255, 0.08);
+  color: var(--m-giz);
+}
+
+.perfil-valor.sem-dados {
+  font-weight: 400;
+  color: var(--m-texto-fraco);
+}
+
+.perfil-linha.linha-aproveitamento .perfil-valor:not(.sem-dados) {
+  color: var(--m-neon-azul);
+}
+
+.perfil-linha.linha-moedas .perfil-valor:not(.sem-dados) {
+  color: var(--m-dourado);
+}
+
+.perfil-vazio {
+  margin: 0;
+  padding: 14px 12px;
+  border: 1px dashed rgba(212, 236, 255, 0.28);
+  border-radius: 10px;
+  color: var(--m-giz-suave);
+}
+
+.perfil-nota {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--m-texto-fraco);
+}
+
+/* Levar a carteira para outro aparelho. */
+.perfil-levar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 214, 160, 0.18);
+}
+
+.perfil-levar-dica {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--m-texto-fraco);
+}
+
+.perfil-levar-aberto {
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 8px;
+}
+
+.perfil-levar-alerta {
+  margin: 0;
+  padding: 8px 12px;
+  border: 2px solid var(--m-neon-quente);
+  border-radius: 10px;
+  background: rgba(255, 122, 89, 0.16);
+  box-shadow: 0 0 12px var(--m-neon-quente-brilho);
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffd4c6;
+}
+
+.perfil-levar-linha {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.perfil-levar-campo {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.perfil-botao {
+  flex: none;
+}
+
+/* A pergunta de trocar de carteira pelo link: por cima do perfil e de tudo. */
+.carteira-pergunta {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 16px;
+  background: rgba(6, 5, 4, 0.88);
+  font: 14px/1.4 system-ui, sans-serif;
+  color: var(--m-texto);
+}
+
+.carteira-pergunta-caixa {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 520px;
+  max-width: 100%;
+  padding: 18px 22px 20px;
+  border: 8px solid transparent;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(14, 38, 30, 0.99), rgba(8, 24, 19, 0.99)) padding-box,
+    var(--m-moldura) border-box;
+  box-shadow: 0 0 0 2px #130a04, 0 24px 54px rgba(0, 0, 0, 0.6);
+}
+
+.carteira-pergunta-titulo {
+  margin: 0;
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--m-giz);
+  text-shadow: 0 0 12px var(--m-neon-azul-brilho);
+}
+
+.carteira-pergunta-corpo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.carteira-pergunta-linha {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 12px 8px;
+  border: 1px solid rgba(255, 214, 160, 0.16);
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.carteira-pergunta-linha.do-link {
+  border-color: rgba(92, 200, 255, 0.6);
+  box-shadow: 0 0 10px var(--m-neon-azul-brilho);
+}
+
+.carteira-pergunta-rotulo {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m-texto-fraco);
+}
+
+.carteira-pergunta-valor {
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--m-dourado);
+}
+
+.carteira-pergunta-aviso {
+  margin: 0;
+  padding: 8px 12px;
+  border: 2px solid var(--m-neon-quente);
+  border-radius: 10px;
+  background: rgba(255, 122, 89, 0.16);
+  font-weight: 700;
+  color: #ffd4c6;
+}
+
+.carteira-pergunta-aviso.neutro {
+  border-color: rgba(92, 200, 255, 0.55);
+  background: rgba(92, 200, 255, 0.12);
+  color: var(--m-texto);
+  font-weight: 500;
+}
+
+.carteira-pergunta-acoes {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.carteira-pergunta-botao {
+  padding: 9px 18px;
+}
+
+@media (max-width: 640px) {
+  .perfil-identidade {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .perfil-levar-linha {
+    flex-wrap: wrap;
+  }
+
+  .perfil-levar-campo {
+    flex-basis: 100%;
+  }
+}
+
+body[data-qualidade='baixa'] .menu-barra-item.abre-perfil {
+  transition: none;
+}
+
+/* O bloco "Meu balão" do perfil (L48): o que está equipado e o botão que abre o editor. */
+.perfil-balao {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.perfil-balao-resumo {
+  margin: 0;
+  font-size: 13px;
+  color: var(--m-texto-fraco);
+}
+
+/* O editor "Meu balão" (L48): a prévia 3D à esquerda e as quatro categorias à direita, sobre o perfil. */
+.meu-balao {
+  position: fixed;
+  inset: 0;
+  z-index: 37;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 16px;
+  overflow-y: auto;
+  background: rgba(6, 5, 4, 0.9);
+  font: 14px/1.35 system-ui, sans-serif;
+  color: var(--m-texto);
+}
+
+.meu-balao[hidden],
+.meu-balao [hidden] {
+  display: none;
+}
+
+.meu-balao-caixa {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 920px;
+  max-width: 100%;
+  max-height: calc(100vh - 32px);
+  padding: 12px 20px 16px;
+  border: 8px solid transparent;
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(14, 38, 30, 0.99), rgba(8, 24, 19, 0.99)) padding-box,
+    var(--m-moldura) border-box;
+  box-shadow: 0 0 0 2px #130a04, 0 24px 54px rgba(0, 0, 0, 0.6);
+}
+
+.meu-balao-topo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.meu-balao-titulo {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--m-giz);
+  text-shadow: 0 0 12px var(--m-neon-azul-brilho);
+}
+
+.meu-balao-fechar {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid var(--m-madeira-breu);
+  border-radius: 10px;
+  background: var(--m-veio), linear-gradient(180deg, #5a3a21, #3a2412);
+  color: var(--m-texto);
+  font: 700 20px/1 system-ui, sans-serif;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 214, 160, 0.28), 0 2px 0 var(--m-madeira-breu);
+}
+
+.meu-balao-fechar:hover {
+  filter: brightness(1.15);
+}
+
+.meu-balao-fechar:focus-visible,
+.meu-balao-opcao:focus-visible,
+.meu-balao-reacao:focus-visible,
+.meu-balao-cor:focus-visible {
+  outline: 3px solid #bfe9ff;
+  outline-offset: 2px;
+}
+
+.meu-balao-fora {
+  padding: 8px 12px;
+  border: 1px solid rgba(255, 122, 89, 0.7);
+  border-radius: 10px;
+  background: rgba(255, 122, 89, 0.16);
+  font-size: 13px;
+}
+
+.meu-balao-corpo {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.meu-balao-previa {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.meu-balao-palco {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: clamp(220px, calc(100vh - 410px), 360px);
+  border-radius: 12px;
+  background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, 0.14), rgba(0, 0, 0, 0.35));
+  overflow: hidden;
+}
+
+.meu-balao-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.meu-balao-canvas.girando {
+  cursor: grabbing;
+}
+
+.meu-balao-carregando {
+  margin: 0;
+  padding: 0 16px;
+  text-align: center;
+  color: var(--m-texto-fraco);
+}
+
+.meu-balao-dica {
+  margin: 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--m-texto-fraco);
+}
+
+.meu-balao-cores {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.meu-balao-cor {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 2px solid rgba(232, 230, 223, 0.35);
+  border-radius: 50%;
+  background: var(--cor);
+  cursor: pointer;
+}
+
+.meu-balao-cor[aria-pressed='true'] {
+  border-color: #fff;
+  box-shadow: 0 0 0 2px var(--cor), 0 0 12px var(--cor);
+}
+
+.meu-balao-reacoes {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.meu-balao-reacao {
+  padding: 4px 10px;
+  border: 1px solid rgba(232, 230, 223, 0.28);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: inherit;
+  font: 600 12.5px system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.meu-balao-reacao.acao {
+  border-style: dashed;
+}
+
+.meu-balao-reacao[aria-pressed='true'] {
+  border-color: transparent;
+  background: #3aa0ff;
+  color: #04121f;
+}
+
+.meu-balao-itens {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.meu-balao-categorias {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.meu-balao-categoria-titulo {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--m-giz-suave);
+}
+
+.meu-balao-lista {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.meu-balao-opcao {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 6px 4px 7px;
+  border: 1px solid rgba(232, 230, 223, 0.22);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+
+.meu-balao-opcao:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.meu-balao-opcao.escolhida {
+  border-color: #3aa0ff;
+  background: rgba(58, 160, 255, 0.16);
+  box-shadow: inset 0 0 0 1px #3aa0ff;
+}
+
+.meu-balao-opcao.bloqueado .meu-balao-opcao-icone {
+  opacity: 0.62;
+  filter: grayscale(0.4);
+}
+
+.meu-balao-opcao.bloqueado {
+  border-style: dashed;
+}
+
+.meu-balao-opcao-icone {
+  width: 48px;
+  height: 48px;
+  object-fit: contain;
+}
+
+.meu-balao-opcao-nenhum {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  font-size: 24px;
+  color: var(--m-texto-fraco);
+}
+
+.meu-balao-opcao-nome {
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.15;
+}
+
+.meu-balao-opcao-detalhe {
+  font-size: 11.5px;
+  color: var(--m-texto-fraco);
+}
+
+.meu-balao-opcao.bloqueado .meu-balao-opcao-detalhe {
+  color: #e4ae39;
+}
+
+.meu-balao-rodape {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.meu-balao-status {
+  flex: 1;
+  font-size: 13px;
+  color: var(--m-giz-suave);
+}
+
+.meu-balao-status.erro {
+  color: #ff9a80;
+}
+
+@media (max-width: 760px) {
+  .meu-balao-corpo {
+    grid-template-columns: minmax(0, 1fr);
+    overflow-y: auto;
+  }
+
+  .meu-balao-itens {
+    overflow: visible;
+  }
+
+  .meu-balao-palco {
+    height: 280px;
+  }
+}

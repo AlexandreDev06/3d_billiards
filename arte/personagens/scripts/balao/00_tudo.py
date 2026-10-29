@@ -27,7 +27,7 @@ def principal():
     sc.unit_settings.scale_length = 1.0
     sc.unit_settings.length_unit = "CENTIMETERS"
     sc.render.fps = 30
-    for nome in ("01_malha.py", "02_esqueleto.py", "03_acoes.py"):
+    for nome in ("01_malha.py", "02_esqueleto.py", "02b_acessorios.py", "03_acoes.py"):
         rodar(nome)
     bpy.data.objects["balao_baixa"].hide_set(True)
     argv = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []

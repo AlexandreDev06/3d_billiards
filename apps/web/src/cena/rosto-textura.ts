@@ -1,4 +1,4 @@
-import { CARAS_DO_BALAO, type CaraDoBalao } from '../baloes/rosto';
+import { CARAS_DO_BALAO, CARA_NO_ATLAS, type CaraDoBalao, type CaraNoAtlas } from '../baloes/rosto';
 
 /** O lado de cada quadro da imagem das caras (px). */
 export const LADO_DO_QUADRO = 160;
@@ -8,7 +8,7 @@ const BRANCO = '#fbfbf6';
 
 /** Em que quadro da imagem fica a cara. */
 export function quadroDaCara(cara: CaraDoBalao): number {
-  return CARAS_DO_BALAO.indexOf(cara);
+  return CARAS_DO_BALAO.indexOf(CARA_NO_ATLAS[cara]);
 }
 
 function olhoRedondo(g: CanvasRenderingContext2D, x: number, y: number, rx: number, ry: number): void {
@@ -40,7 +40,7 @@ function gota(g: CanvasRenderingContext2D, x: number, y: number, tamanho: number
 }
 
 /** Desenha uma cara no quadro cujo canto de cima à esquerda é (`x0`, 0). Só traço e preenchimento, sem sombra: lê bem de longe. */
-function desenharCara(g: CanvasRenderingContext2D, cara: CaraDoBalao, x0: number): void {
+function desenharCara(g: CanvasRenderingContext2D, cara: CaraNoAtlas, x0: number): void {
   const cx = x0 + LADO_DO_QUADRO / 2;
   const cy = LADO_DO_QUADRO / 2;
   g.save();

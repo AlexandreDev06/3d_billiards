@@ -1,6 +1,6 @@
-import { SALDO_INICIAL, SKINS_DE_TACO, ehCodigoDeCarteira, precoDaSkin, type CodigoErroCarteira, type EstadoCarteira, type SkinTaco } from '@sinuca/protocolo';
+import { SALDO_INICIAL, SKINS_DE_TACO, ehCodigoDeCarteira, precoDaSkin, type CodigoErroCarteira, type EstadoCarteira, type MissoesDoDia, type SkinTaco } from '@sinuca/protocolo';
 import { describe, expect, it } from 'vitest';
-import { CarteiraDoAparelho, CHAVE_DA_CARTEIRA, textoDoErroDaCarteira, type PedidoHttp, type RespostaHttp } from './carteira';
+import { AVISO_PRECO_MUDOU, CarteiraDoAparelho, CHAVE_DA_CARTEIRA, textoDoErroDaCarteira, type PedidoHttp, type RespostaHttp } from './carteira';
 import { ArmazenamentoFalso, RelogioFalso } from './para-testes';
 
 const letra = (n: number): string => 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_'[n % 64]!;
@@ -367,6 +367,33 @@ describe('CarteiraDoAparelho: a loja', () => {
     expect(t.servidor.chamadas).toHaveLength(antes);
   });
 
+  it('L34b: comprar com o preço mostrado manda `preco` no pedido; usar nunca manda; preço que não é inteiro positivo nem vai', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    await t.carteira.comprar('ebano', 40);
+    expect(JSON.parse(t.servidor.chamadas.at(-1)!.init.body!)).toEqual({ skin: 'ebano', preco: 40 });
+    for (const ruim of [0, -5, 3.5, Number.NaN]) {
+      await t.carteira.comprar('boteco', ruim);
+      expect(JSON.parse(t.servidor.chamadas.at(-1)!.init.body!), String(ruim)).toEqual({ skin: 'boteco' });
+    }
+    await t.carteira.usar('ebano');
+    expect(JSON.parse(t.servidor.chamadas.at(-1)!.init.body!)).toEqual({ skin: 'ebano' });
+  });
+
+  it('L34b: `preco-mudou` não cobra, relê a carteira (o estado novo já está em `estado()`) e avisa "O preço mudou, confira de novo."', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    t.servidor.carteiras.get(t.carteira.codigo()!)!.saldo = 77;
+    t.servidor.proximaResposta = { status: 409, corpo: { erro: 'preco-mudou', mensagem: 'texto do servidor' } };
+    const antes = t.servidor.chamadas.length;
+    const r = await t.carteira.comprar('ouro', 400);
+    expect(r).toMatchObject({ ok: false, erro: 'preco-mudou', mensagem: AVISO_PRECO_MUDOU });
+    expect(AVISO_PRECO_MUDOU).toContain('O preço mudou, confira de novo');
+    expect(t.servidor.chamadas.slice(antes).map((c) => `${c.init.method} ${c.url}`)).toEqual(['POST /carteira/comprar', 'GET /carteira']);
+    expect(t.carteira.estado()?.saldo).toBe(77);
+    expect(t.carteira.estado()?.skins).toEqual(['classico']);
+  });
+
   it('rede fora na compra: fora-do-ar e o saldo não muda', async () => {
     const t = montar({});
     await t.carteira.garantir();
@@ -388,6 +415,38 @@ describe('CarteiraDoAparelho: a loja', () => {
   });
 });
 
+describe('CarteiraDoAparelho: as missões do dia (L32)', () => {
+  const quadro: MissoesDoDia = {
+    dia: '2026-10-26',
+    fimMs: Date.parse('2026-10-27T03:00:00Z'),
+    itens: [
+      { id: 'pelo-meio', progresso: 1, meta: 2, cumprida: false },
+      { id: 'fecha-a-conta', progresso: 0, meta: 1, cumprida: false },
+      { id: 'volta-ao-mundo', progresso: 0, meta: 1, cumprida: false },
+    ],
+  };
+
+  it('o quadro que a sala mandou entra no estado e avisa os ouvintes, sem mexer em saldo nem skins', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const vistos: (EstadoCarteira | null)[] = [];
+    t.carteira.aoMudar((e) => vistos.push(e));
+    t.carteira.adotarMissoes(quadro);
+    expect(t.carteira.estado()).toEqual({ saldo: SALDO_INICIAL, skins: ['classico'], skin: 'classico', missoes: quadro });
+    expect(vistos).toHaveLength(1);
+    expect(t.servidor.chamadas).toHaveLength(1);
+  });
+
+  it('sem a carteira lida não há onde guardar, e nada avisa', () => {
+    const t = montar({});
+    let avisos = 0;
+    t.carteira.aoMudar(() => avisos++);
+    t.carteira.adotarMissoes(quadro);
+    expect(t.carteira.estado()).toBeNull();
+    expect(avisos).toBe(0);
+  });
+});
+
 describe('CarteiraDoAparelho: o código é segredo', () => {
   it('não aparece ao serializar o objeto nem em nenhuma mensagem de erro ou aviso', async () => {
     const t = montar({});
@@ -401,9 +460,185 @@ describe('CarteiraDoAparelho: o código é segredo', () => {
   });
 });
 
+describe('CarteiraDoAparelho: levar a carteira para outro aparelho (L43)', () => {
+  const BASE = 'https://sinuca.exemplo/';
+
+  it('tem() diz se há código guardado, sem mostrá-lo', async () => {
+    const t = montar({});
+    expect(t.carteira.tem()).toBe(false);
+    await t.carteira.garantir();
+    expect(t.carteira.tem()).toBe(true);
+  });
+
+  it('linkParaLevar monta `base#carteira=CODIGO` (fragmento, nunca busca) e é null sem carteira', async () => {
+    const t = montar({});
+    expect(t.carteira.linkParaLevar(BASE)).toBeNull();
+    await t.carteira.garantir();
+    const codigo = t.carteira.codigo()!;
+    const link = t.carteira.linkParaLevar(BASE)!;
+    expect(link).toBe(`${BASE}#carteira=${codigo}`);
+    expect(new URL(link).search).toBe('');
+  });
+
+  it('conferir pergunta à sala com o Bearer DO LINK e não mexe em nada do aparelho', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const minha = t.carteira.codigo()!;
+    const estadoAntes = t.carteira.estado();
+    const outra = t.servidor.criar(250);
+    let avisos = 0;
+    t.carteira.aoMudar(() => void avisos++);
+    t.servidor.chamadas.length = 0;
+
+    const c = await t.carteira.conferir(outra);
+
+    expect(c.ok && c.estado.saldo).toBe(250);
+    expect(c.ok && c.mesma).toBe(false);
+    expect(t.servidor.chamadas).toHaveLength(1);
+    expect(t.servidor.chamadas[0]!.url).toBe('/carteira');
+    expect(t.servidor.chamadas[0]!.init.method).toBe('GET');
+    expect(t.servidor.chamadas[0]!.init.headers.Authorization).toBe(`Bearer ${outra}`);
+    expect(t.carteira.codigo()).toBe(minha);
+    expect(t.carteira.estado()).toEqual(estadoAntes);
+    expect((guardado(t.armazenamento!) as { codigo: string }).codigo).toBe(minha);
+    expect(avisos).toBe(0);
+  });
+
+  it('conferir o código que o aparelho já usa diz `mesma`', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const c = await t.carteira.conferir(t.carteira.codigo()!);
+    expect(c.ok && c.mesma).toBe(true);
+  });
+
+  it('código que a sala não conhece: carteira-invalida, e o aparelho NÃO cria carteira nova nem troca o código', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const minha = t.carteira.codigo()!;
+    t.servidor.chamadas.length = 0;
+
+    const c = await t.carteira.conferir(codigoNumero(60));
+
+    expect(c).toMatchObject({ ok: false, erro: 'carteira-invalida' });
+    expect(t.servidor.chamadas.map((x) => x.init.method)).toEqual(['GET']);
+    expect(t.carteira.codigo()).toBe(minha);
+    expect(t.carteira.aviso()).toBeNull();
+  });
+
+  it('código com a forma errada nem vai à rede', async () => {
+    const t = montar({});
+    const c = await t.carteira.conferir('curto');
+    expect(c).toMatchObject({ ok: false, erro: 'carteira-invalida' });
+    expect(t.servidor.chamadas).toHaveLength(0);
+  });
+
+  it('rede fora ao conferir: fora-do-ar, e nada muda', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const minha = t.carteira.codigo()!;
+    const outra = t.servidor.criar(250);
+    t.servidor.cair = true;
+    const c = await t.carteira.conferir(outra);
+    expect(c).toMatchObject({ ok: false, erro: 'fora-do-ar' });
+    expect(t.carteira.codigo()).toBe(minha);
+  });
+
+  it('usar() adota o código e o estado da sala, guarda no aparelho, avisa os ouvintes e esquece o recado de carteira nova', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const velha = t.carteira.codigo()!;
+    const outra = t.servidor.criar(250);
+    const vistos: (number | null)[] = [];
+    t.carteira.aoMudar((e) => void vistos.push(e?.saldo ?? null));
+
+    const c = await t.carteira.conferir(outra);
+    expect(c.ok).toBe(true);
+    if (!c.ok) return;
+    expect(t.carteira.codigo()).toBe(velha); // conferir não trocou; só o usar() troca
+    c.usar();
+
+    expect(t.carteira.codigo()).toBe(outra);
+    expect(t.carteira.estado()?.saldo).toBe(250);
+    expect(t.carteira.guardada()).toBe(true);
+    expect((guardado(t.armazenamento!) as { versao: number; codigo: string })).toEqual({ versao: 1, codigo: outra });
+    expect(vistos).toEqual([250]);
+    expect(t.carteira.aviso()).toBeNull();
+
+    // e o que vier depois usa a carteira nova
+    t.servidor.chamadas.length = 0;
+    await t.carteira.garantir();
+    expect(t.servidor.chamadas[0]!.init.headers.Authorization).toBe(`Bearer ${outra}`);
+  });
+
+  it('o resultado da conferência não carrega o código (nem serializado)', async () => {
+    const t = montar({});
+    const outra = t.servidor.criar(250);
+    const c = await t.carteira.conferir(outra);
+    expect(JSON.stringify(c)).not.toContain(outra);
+  });
+
+  it('aparelho sem carteira: conferir não cria uma; usar() faz o código do link ser o dele', async () => {
+    const t = montar({});
+    const outra = t.servidor.criar(250);
+    const c = await t.carteira.conferir(outra);
+    expect(t.servidor.chamadas.map((x) => x.init.method)).toEqual(['GET']);
+    expect(t.carteira.tem()).toBe(false);
+    if (c.ok) c.usar();
+    expect(t.carteira.tem()).toBe(true);
+    expect(t.carteira.codigo()).toBe(outra);
+  });
+
+  it('uma leitura da carteira antiga que ainda estava a caminho NÃO sobrescreve a carteira nova', async () => {
+    const t = montar({});
+    await t.carteira.garantir();
+    const velha = t.carteira.codigo()!;
+    const outra = t.servidor.criar(250);
+    // a próxima leitura (com o código velho) fica presa até eu soltar
+    let soltar: () => void = () => {};
+    const resposta = { ok: true, status: 200, json: async () => ({ saldo: 999, skins: ['classico'], skin: 'classico' }) };
+    const original = t.servidor.pedir;
+    let presa = true;
+    const carteira = new CarteiraDoAparelho({
+      armazenamento: t.armazenamento,
+      agendar: t.relogio.agendar,
+      pedir: (url, init) => {
+        if (presa && init.headers.Authorization === `Bearer ${velha}`) {
+          presa = false;
+          return new Promise<RespostaHttp>((resolver) => (soltar = () => resolver(resposta)));
+        }
+        return original(url, init);
+      },
+    });
+    const voando = carteira.garantir();
+    const c = await carteira.conferir(outra);
+    expect(c.ok).toBe(true);
+    if (c.ok) c.usar();
+    expect(carteira.estado()?.saldo).toBe(250);
+
+    soltar();
+    const r = await voando;
+
+    expect(r.ok).toBe(false); // a resposta da carteira de antes não vale
+    expect(carteira.estado()?.saldo).toBe(250);
+    expect(carteira.codigo()).toBe(outra);
+  });
+
+  it('usar() de uma conferência velha demais (a carteira já foi trocada por outra) não faz nada', async () => {
+    const t = montar({});
+    const a = t.servidor.criar(111);
+    const b = t.servidor.criar(222);
+    const ca = await t.carteira.conferir(a);
+    const cb = await t.carteira.conferir(b);
+    if (cb.ok) cb.usar();
+    if (ca.ok) ca.usar();
+    expect(t.carteira.codigo()).toBe(b);
+    expect(t.carteira.estado()?.saldo).toBe(222);
+  });
+});
+
 describe('textoDoErroDaCarteira', () => {
   it('todo código tem uma frase em português, sem o texto cru do servidor', () => {
-    const codigos: (CodigoErroCarteira | 'fora-do-ar')[] = ['carteira-invalida', 'saldo-insuficiente', 'skin-invalida', 'ja-tem', 'nao-tem', 'limite', 'requisicao-invalida', 'fora-do-ar'];
+    const codigos: (CodigoErroCarteira | 'fora-do-ar')[] = ['carteira-invalida', 'saldo-insuficiente', 'skin-invalida', 'ja-tem', 'nao-tem', 'preco-mudou', 'item-invalido', 'aparencia-invalida', 'limite', 'requisicao-invalida', 'fora-do-ar'];
     for (const c of codigos) expect(textoDoErroDaCarteira(c).length).toBeGreaterThan(10);
     expect(textoDoErroDaCarteira('fora-do-ar')).toBe('A loja está fora do ar agora. O jogo segue sem ela.');
   });

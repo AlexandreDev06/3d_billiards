@@ -2,10 +2,11 @@ import type { EventoTacada, IdBola, Rng } from '@sinuca/fisica';
 import { BOLAO, faltaDoToque, fatos } from './fatos';
 import { bolaDeCastigo, bolasAlvo, bolasDaCasa, grupoDaBola, objetivo, type Objetivo } from './leitura';
 import { aplicarMataMata, passarVezMataMata } from './mata-mata';
-import { formacaoDosJogadores, formacoesAceitas, ROTULO_MODALIDADE, rotuloDaFormacao } from './modalidades';
+import { ehTreino, formacaoDosJogadores, formacoesAceitas, ROTULO_MODALIDADE, rotuloDaFormacao } from './modalidades';
 import { incoerenciasDaConfig } from './presets';
 import { intercalar } from './roda';
 import { textoDaTacada, type Desfecho, type Pena } from './texto';
+import { aplicarTreino } from './treino';
 import type {
   ConfigRegras,
   Encacapada,
@@ -65,6 +66,7 @@ export function novaPartida(config: ConfigRegras, jogadores: readonly Jogador[],
  */
 export function aplicarTacada(partida: EstadoPartida, eventos: readonly EventoTacada[]): ResultadoRegras {
   if (partida.vencedor !== null || partida.fase === 'fim') throw new Error('aplicarTacada: a partida já terminou');
+  if (ehTreino(partida.config)) return aplicarTreino(partida, eventos);
   if (partida.config.modalidade === 'mata-mata') return aplicarMataMata(partida, eventos);
   const c = partida.config;
   const castigo = bolaDeCastigo(c);
@@ -238,6 +240,7 @@ export function aplicarTacada(partida: EstadoPartida, eventos: readonly EventoTa
  */
 export function passarVez(partida: EstadoPartida): EstadoPartida {
   if (partida.vencedor !== null || partida.fase === 'fim') throw new Error('passarVez: a partida já terminou');
+  if (ehTreino(partida.config)) return partida;
   if (partida.config.modalidade === 'mata-mata') return passarVezMataMata(partida);
   const depois = perderAMesa(partida, partida.vezDaRoda ?? partida.vez);
   return { ...depois, fase: partida.fase === 'saida' ? 'saida' : FASE_DO_OBJETIVO[objetivo(depois, depois.vez)] };
@@ -378,6 +381,7 @@ function semGrupos(jogadores: readonly Jogador[]): null[] {
 }
 
 function validarJogadores(jogadores: readonly Jogador[], c: ConfigRegras): void {
+  if (ehTreino(c)) return validarTreino(jogadores, c);
   switch (c.modalidade) {
     case 'par-ou-impar':
       validarParOuImpar(jogadores, c);
@@ -392,6 +396,13 @@ function validarJogadores(jogadores: readonly Jogador[], c: ConfigRegras): void 
     const em = formacao !== null && formacao.length > 1 ? ` em ${rotuloDaFormacao(formacao)}` : '';
     throw new Error(`novaPartida: o ${ROTULO_MODALIDADE[c.modalidade]} não aceita ${n} jogador${n === 1 ? '' : 'es'}${em}; aceita ${aceitas.map(rotuloDaFormacao).join(', ')}`);
   }
+}
+
+function validarTreino(jogadores: readonly Jogador[], c: ConfigRegras): void {
+  const erros = incoerenciasDaConfig(c);
+  if (erros.length > 0) throw new Error(`novaPartida: a config do treino não fecha:\n- ${erros.join('\n- ')}`);
+  if (jogadores.length !== 1) throw new Error(`novaPartida: o treino é de uma pessoa só, não de ${jogadores.length}`);
+  if (jogadores[0]!.equipe !== 0) throw new Error('novaPartida: no treino a pessoa fica na equipe 0');
 }
 
 function validarMataMata(jogadores: readonly Jogador[], c: ConfigRegras): void {

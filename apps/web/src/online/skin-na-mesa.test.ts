@@ -1,6 +1,6 @@
 import { SKIN_PADRAO, type SkinTaco } from '@sinuca/protocolo';
 import { describe, expect, it } from 'vitest';
-import { lugarDoTaco, skinDoLugar } from './skin-na-mesa';
+import { bolasDoLugar, lugarDoTaco, sementeDoLugar, skinDoLugar } from './skin-na-mesa';
 
 const sala = (...skins: (SkinTaco | undefined)[]) => ({ lugares: skins.map((skin) => ({ skin })) });
 
@@ -21,6 +21,40 @@ describe('skinDoLugar', () => {
   it('uma skin que o catálogo não tem (sala mais nova) cai na clássica em vez de quebrar', () => {
     const estado = { lugares: [{ skin: 'platina' as unknown as SkinTaco }] };
     expect(skinDoLugar(estado, 0)).toBe(SKIN_PADRAO);
+  });
+});
+
+const com = (...lugares: { semente?: number | null; bolas?: number | null }[]) => ({ lugares });
+
+describe('sementeDoLugar', () => {
+  it('a semente que a sala mandou para o lugar, de 0 a 999', () => {
+    expect(sementeDoLugar(com({ semente: 347 }, { semente: 0 }, { semente: 999 }), 0)).toBe(347);
+    expect(sementeDoLugar(com({ semente: 347 }, { semente: 0 }, { semente: 999 }), 1)).toBe(0);
+    expect(sementeDoLugar(com({ semente: 347 }, { semente: 0 }, { semente: 999 }), 2)).toBe(999);
+  });
+
+  it('sem sala, sem lugar, vago, sem carteira ou com número que não vale: nenhuma (o desenho de fábrica)', () => {
+    expect(sementeDoLugar(null, 0)).toBeNull();
+    expect(sementeDoLugar(com({ semente: 5 }), null)).toBeNull();
+    expect(sementeDoLugar(com({ semente: 5 }), 3)).toBeNull();
+    expect(sementeDoLugar(com({ semente: null }, {}), 0)).toBeNull();
+    expect(sementeDoLugar(com({}), 0)).toBeNull();
+    for (const ruim of [-1, 1000, 3.5, Number.NaN]) expect(sementeDoLugar(com({ semente: ruim }), 0), String(ruim)).toBeNull();
+  });
+});
+
+describe('bolasDoLugar', () => {
+  it('o contador de bolas do taco de quem está no lugar, de 0 para cima', () => {
+    expect(bolasDoLugar(com({ bolas: 0 }, { bolas: 42 }), 0)).toBe(0);
+    expect(bolasDoLugar(com({ bolas: 0 }, { bolas: 42 }), 1)).toBe(42);
+  });
+
+  it('sem número válido, o taco não mostra a placa', () => {
+    expect(bolasDoLugar(null, 0)).toBeNull();
+    expect(bolasDoLugar(com({ bolas: 5 }), null)).toBeNull();
+    expect(bolasDoLugar(com({ bolas: 5 }), 2)).toBeNull();
+    expect(bolasDoLugar(com({}, { bolas: null }), 0)).toBeNull();
+    for (const ruim of [-1, 2.5, Number.NaN]) expect(bolasDoLugar(com({ bolas: ruim }), 0), String(ruim)).toBeNull();
   });
 });
 

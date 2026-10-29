@@ -1,12 +1,12 @@
 # Templates
 
-Todo prompt vai num arquivo do scratchpad e é enviado com `maestri ask "<Terminal>" "$(cat "<arquivo>")"`. Escreva só o delta: o recruta já tem o role, o `CLAUDE.md` da raiz (o da pasta dele carrega quando ele lê arquivos lá) e lê as notas sozinho.
+Todo prompt vai num arquivo em `.outros/prompts/` e o Principal o dispara com o Agent (`model` e `effort` explícitos, pela tabela "Esforço por tarefa" do `SKILL.md`; `run_in_background`). Escreva só o delta: o subagente começa sem contexto, mas já tem o `CLAUDE.md` da raiz (o da pasta dele carrega quando ele lê arquivos lá); o resto ele lê pelo que o prompt mandar. Se o Maestri voltar, o envio muda (`maestri.md`).
 
 ## Prompt de lote
 
 ```text
-L<n> (<fase>) — <papel>: <objetivo em 1 linha>.
-Antes: releia docs/decisoes.md (histórico em docs/decisoes-arquivo.md, só se precisar) e a seção "L<n-1>" de sinuca-status (histórico em .outros/status-arquivo.md, só se precisar). Leia só: <arquivos de tipos / seção do estudo / doc de design>.
+L<n> (<fase>) — <papel> [<modelo>/<effort>]: <objetivo em 1 linha>.
+Antes: leia docs/decisoes.md (histórico em docs/decisoes-arquivo.md, só se precisar), o corpo de .claude/skills/sinuca-maestri-time/papeis/<papel>.md (ignore o bloco de prompt e o que cita maestri) e a seção "L<n-1>" de .outros/status.md (histórico em .outros/status-arquivo.md, só se precisar). Leia só: <arquivos de tipos / seção do estudo / doc de design>.
 Construa sobre <o que já existe>; não refaça. Fora do escopo: <pastas de outros donos neste lote>.
 
 [Preâmbulo — ajustes da revisão do L<n-1>, por severidade: arquivo, problema, correção]
@@ -16,14 +16,14 @@ Construa sobre <o que já existe>; não refaça. Fora do escopo: <pastas de outr
 ## Provas — <comandos que têm de passar; o que gravar em .outros/lote-<n>/>
 ## Doc viva — <CLAUDE.md da pasta mexida (apps/web, apps/sala, packages/*) ou da raiz (comandos, regras) / decisoes.md / skill a atualizar, se o lote mudar algo citado>
 ## Limites — sem commit/push/deploy; <o que NÃO fazer neste lote>
-Ao terminar: seção "## L<n> <papel>" em sinuca-status e relatório no formato padrão via ask-back.
+Ao terminar: seção "## L<n> <papel>" em .outros/status.md e, como mensagem final, o relatório no formato padrão (até 10 linhas), também gravado em .outros/lote-<n>/relatorio-<papel>.txt.
 ```
 
 ## Pedido de revisão (Juiz)
 
 ```text
 Revise o L<n> (<papel>). Escopo: <arquivos e pastas>. Ignore: <pastas de outros lotes em andamento>.
-Em paralelo, <terminal> está no L<n+1> mexendo em <arquivos>: diga se algo do escopo mudou no meio e revise o estado final.
+Em paralelo, <papel> está no L<n+1> mexendo em <arquivos>: diga se algo do escopo mudou no meio e revise o estado final.
 Confira em especial: (1) <critério de aceite do lote> (2) <risco específico> (3) checklist do seu papel.
 Rode: <typecheck/test do pacote>. Só leitura. Achados e veredito no formato do seu role.
 ```
@@ -42,7 +42,7 @@ Rode a suíte inteira. Achados e veredito no formato do seu role.
 
 ```text
 Tema: <tema> (Fase <f>). Seções do estudo: <§x, §y> (sed -n). Restrições: <decisões fixas que tocam o tema>.
-Entregue docs/design/<tema>.md no formato do seu papel. Perguntas ao usuário fechadas, recomendada primeiro, também em sinuca-perguntas.
+Entregue docs/design/<tema>.md no formato do seu papel. Perguntas ao usuário fechadas, recomendada primeiro, também em .outros/perguntas.md (seção Novas).
 ```
 
 ## Fechamento de fase (para o usuário)
@@ -51,5 +51,5 @@ Entregue docs/design/<tema>.md no formato do seu papel. Perguntas ao usuário fe
 - Tabela pasta × o que mudou.
 - Commits sugeridos na ordem (o usuário commita), com as mensagens.
 - Pendências fora do código (conta Cloudflare, assets, decisões em aberto).
-- Perguntas abertas de `sinuca-perguntas`.
+- Perguntas abertas de `.outros/perguntas.md`.
 - Custo da fase por terminal (`cost-tracking`).

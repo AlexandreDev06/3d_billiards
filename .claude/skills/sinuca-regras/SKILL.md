@@ -15,7 +15,7 @@ aplicarTacada(partida, eventos: EventoTacada[]) → { partida, consequencias }  
 passarVez(partida) → partida   (a sala pula quem caiu: a vez passa à outra equipe, como numa tacada sem falta que não encaçapou)
 ```
 
-Duas modalidades (`ConfigRegras.modalidade`, L15): `par-ou-impar` (tudo abaixo, salvo a seção "Mata-mata") e `mata-mata`. `aplicarTacada`, `passarVez` e `novaPartida` despacham por ela no começo; o resto da config só vale no `par-ou-impar`.
+Duas modalidades (`ConfigRegras.modalidade`, L15): `par-ou-impar` (tudo abaixo, salvo a seção "Mata-mata") e `mata-mata`. `aplicarTacada`, `passarVez` e `novaPartida` despacham por ela no começo; o resto da config só vale no `par-ou-impar`. Mais o **treino** (L39, seção própria abaixo): não é um valor de `modalidade`, é `ConfigRegras.treino: true` sobre o mata-mata, e o despacho olha `ehTreino(config)` antes dela.
 
 `packages/regras` não monta mesa nem resolve coordenada: devolve ids e lugares semânticos (`LugarMesa`). Quem joga (hot-seat em `apps/web`, sala na Fase 2) monta a mesa com `fisica.mesaInicial` e resolve lugares com `fisica.lugares` + `posicaoLivre`.
 
@@ -59,6 +59,18 @@ Como o L2 leu o estudo (código em `src/partida.ts`, frase do HUD em `src/texto.
 - **Coerência:** `validarPreset` e `novaPartida` exigem, no mata-mata, `bolas: '1-15'` e `bolaFinal: 'ultima-do-grupo'` (`incoerenciasDaConfig`); não cobram grupos iguais (8 ímpares × 7 pares). Ao contrário, `validarPreset` do par ou ímpar recusa `suicidioNoMataMata` e `cegarNoMataMata` em `'perde-proxima-vez'` (as opções só existem no mata-mata); `novaPartida` do par ou ímpar não confere isso.
 - **Catálogo de modos:** `formacoesAceitas(config)` devolve os tamanhos das equipes da modalidade: par ou ímpar `[1,1] [2,1] [1,2] [2,2]`, mata-mata `[1,1] [1,1,1] [1,1,1,1]`. A sala e o lobby montam a escolha de modo por ela (com `ROTULO_MODALIDADE`, `rotuloDaFormacao`, `PRESETS_DE_FABRICA`), e `novaPartida` recusa com "o Mata-mata não aceita ...; aceita 1×1, 1×1×1, 1×1×1×1" o que estiver fora. Modalidade nova = preset + um valor em `Modalidade`/`OPCOES_REGRAS.modalidade` + uma linha em `FORMACOES` + um ramo em cada `switch (modalidade)` (o TypeScript lista o que falta) + uma linha em `CENARIOS` de `partida.test.ts` (a tabela cobra um cenário por valor de opção).
 
+## Treino (L39, pedido do usuário de 2026-10-26: modo treino sozinho)
+
+Uma pessoa sozinha, as 15 bolas, sem grupo nem pontos que valham. Dado: `presets/treino.json` (`PRESET_TREINO`, mata-mata com as duas penas em `sem-pena` e `"treino": true`); código: `src/treino.ts` (`aplicarTreino`, interno, chamado por `aplicarTacada`; `sincronizarMesa`, exportada), `textoDoTreino` em `src/texto.ts`, `ehTreino(config)` e a formação `[[1]]` em `src/modalidades.ts`.
+
+- **Por que uma chave e não um valor de `Modalidade`:** `MODOS_POR_MODALIDADE` (protocolo) é um `Record<Modalidade, …>` e a sala confere `MODALIDADES_DE_SALA` contra `OPCOES_REGRAS.modalidade`; um valor novo quebraria os dois e levaria o treino ao catálogo da sala. `treino?: true` é opcional, fica **fora de `OPCOES_REGRAS`** e de `PRESETS_DE_FABRICA`, e `validarPreset(dado)` o recusa ("só local"): a sala valida com essa chamada, então um cliente não abre sala de treino. `PRESET_TREINO` usa `validarPreset(treino, { aceitaTreino: true })`. `incoerenciasDaConfig` do treino: modalidade `mata-mata`, as 15 bolas, sem bola final, `suicidioNoMataMata` e `cegarNoMataMata` em `sem-pena`.
+- **Vez fixa:** `vez` e `consequencias.proximo` ficam em quem treina (0); `passarVez` devolve a partida como está; nunca `perdemAProximaVez`. `novaPartida` só aceita uma pessoa na equipe 0 (`formacoesAceitas` = `[[1]]`).
+- **Falta sem pena:** `cegar`, `suicidio`, `branca-fora` (e `bola-fora` só com `bolaForaDaMesa: 'falta'`) vêm em `consequencias.faltas`; `retirar` é sempre `[]`, nada de castigo nem de bola devolvida por pena. A numerada que pula volta a `bolaDevolvidaLugar` (mantém a mesa; não é pena). A frase diz "Cegou! Falta sem pena."
+- **Branca na mão:** branca caída ou fora da mesa traz `Consequencias.brancaNaMao: true` (opcional; ausente nas outras tacadas e modalidades), e `recolocar` leva a branca à marca de saída como lugar de partida. A mão a qualquer hora é do web.
+- **Fim da mesa:** a tacada que encaçapa a última bola dá `fase: 'fim'`, `vencedor: 0` (a pessoa), "Mesa limpa!". Mesa esvaziada à mão e tacada sem bola não acabam nada.
+- **`sincronizarMesa(partida, naMesa)`:** depois de o jogador arrumar a mesa, alinha a partida às numeradas que ficaram nela (o bolão na lista é ignorado). Quem saiu da lista sem ter caído vai para `retiradas` (não vira ponto); quem estava em `retiradas` ou `encacapadas` e voltou, sai de lá e volta a `naMesa` (ordenada); partida em `fim` com bola na mesa reabre (`aberta`, sem vencedor); esvaziar à mão nunca encerra. Lança para bola de fora de 1–15, repetida e partida que não é de treino. Mover bola não muda a lista de ids, então não pede chamada.
+- **Testes:** `src/treino.test.ts` (novaPartida, vez fixa, falta sem pena, branca na mão, fim da mesa, `sincronizarMesa`, preset e `validarPreset`, partidas ao acaso com arrumação; `SOLO`, `configTreino`, `treinoCom` de `para-testes.ts`). Mutações: `.outros/lote-39/mutar-dev.py` (28).
+
 ## Preset "Boteco" (de fábrica — estudo §1, último parágrafo, com as respostas do usuário de 2026-10-09)
 
 | Chave (nome sugerido; o contrato real é `packages/regras/src/tipos.ts`) | Valor |
@@ -98,7 +110,7 @@ As demais variantes da tabela "Regras da casa" de §1 viram opções com o mesmo
 - Pena invertida: qual bola volta (`penaInvertidaBola`, hoje a menor) e onde (`bolaDevolvidaLugar`).
 - A 8 caindo na saída (`castigoNaSaida`) e para onde a 8 volta no meio da partida (`castigoLugar`).
 
-Enquanto não houver resposta: o preset usa um valor provisório conservador, lista a chave em `"provisorio": [...]` no próprio JSON, e a pergunta vai para `sinuca-perguntas`. O jogo nunca trava por falta de decisão.
+Enquanto não houver resposta: o preset usa um valor provisório conservador, lista a chave em `"provisorio": [...]` no próprio JSON, e a pergunta vai para `.outros/perguntas.md`. O jogo nunca trava por falta de decisão.
 
 ## Invariantes (testar todas)
 

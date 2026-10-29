@@ -13,7 +13,10 @@
  */
 import type { EstadoMesa, Gravacao, ParametrosTacada } from '@sinuca/fisica';
 import type { ConfigRegras, Consequencias, EstadoPartida, Modalidade } from '@sinuca/regras';
+import type { AparenciaDoBalao } from './balao';
 import type { ApostaSala, SkinTaco } from './carteira';
+import type { ResumoDeEstatisticas } from './estatisticas';
+import type { FisicaParcial, FisicaSala } from './fisica-da-sala';
 import type { IdMissao, MissoesDoDia } from './missoes';
 
 /**
@@ -33,8 +36,20 @@ import type { IdMissao, MissoesDoDia } from './missoes';
  * nem o `aposta-paga` e recarrega.
  * A 7 trouxe as missões diárias (L31): a mensagem `missoes` e, no HTTP da carteira, o campo `missoes` do `EstadoCarteira`.
  * O esquema é estrito, então uma aba da versão 6 não saberia ler a mensagem nova e recarrega.
+ * A 8 trouxe as skins no estilo do CS (L34): o catálogo de 21 skins em faixas de raridade, o taco único de cada carteira (item com
+ * semente e contador de bolas), a vitrine do dia, `semente` e `bolas` em cada `LugarSala`, e o `parte` ('nariz' | 'boca') no
+ * `bola-tabela` da gravação (formato 2 dos bytes). O esquema é estrito e o formato dos eventos mudou, então uma aba da versão 7
+ * não leria nem a gravação nem o `estado-sala` e recarrega.
+ * A 9 trouxe a física pelo anfitrião e as estatísticas por carteira (L38): `fisica` em `configurar-sala` (parcial; `null` restaura o
+ * padrão), `fisica`, `fisicaMexida` e `fisicaTravada` no `estado-sala`, a mensagem `fisica-alterada` (a todos, quando o anfitrião
+ * muda a física no meio da partida; sem `seq`: vale o `estado-sala.fisica` na hora), `estatisticas` em cada `LugarSala` e, no HTTP da carteira, `EstadoCarteira.estatisticas`. O esquema
+ * é estrito, então uma aba da versão 8 não leria o `estado-sala` nem o aviso novo e recarrega.
+ * A 10 trouxe a aparência do balão (L47): `aparencia` em cada `LugarSala` e, no HTTP da carteira, `EstadoCarteira.balao` e as rotas
+ * de comprar item e equipar. Diferente das anteriores, a 9 NÃO recarrega: `PROTOCOLO_VERSAO_MINIMA` (compat.ts) é 9, a sala aceita
+ * as duas e, para o cliente da 9, tira a aparência do `estado-sala` (`paraVersaoDoCliente`) e do HTTP; ele joga como sempre e vê
+ * todo balão no padrão. Quando a janela fechar (a mínima subir para 10), a 9 volta a ser recusada com `versao`.
  */
-export const PROTOCOLO_VERSAO = 7;
+export const PROTOCOLO_VERSAO = 10;
 
 /**
  * O catálogo de emojis que a sala retransmite. Lista fechada de propósito: nada de texto livre, e todo emoji é um ponto de
@@ -370,6 +385,15 @@ export interface MsgConfigurarSala {
   readonly forca?: ForcaSala;
   /** A aposta por jogador com carteira (L22). Vale para a partida que começar depois. */
   readonly aposta?: ApostaSala;
+  /**
+   * A física da sala (L38), SÓ do anfitrião: parcial, muda só as chaves que vierem sobre a física da sala; cada valor é cortado à
+   * faixa de `FAIXAS_DA_FISICA_DA_SALA`. `null` restaura a física padrão. Na espera vale sempre. Na partida este é o ÚNICO campo
+   * que o `configurar-sala` aceita (qualquer outro é `fase-errada`), e só enquanto a sala deixa: sem aposta valendo (a aposta trava a
+   * física, também na tela de fim: com aposta a física só muda na espera) e sem tacada em voo (a que já foi aceita ainda está
+   * animando); recusado, é `fase-errada` com a razão no texto e nada muda. Vale da próxima tacada em diante, e todos recebem
+   * `fisica-alterada` antes do `estado-sala`.
+   */
+  readonly fisica?: FisicaParcial | null;
 }
 
 export interface MsgPing {
@@ -446,6 +470,25 @@ export interface LugarSala {
   readonly saldo?: number | null;
   /** A skin do taco de quem está no lugar (L22); `SKIN_PADRAO` sem carteira ou vago. A sala sempre manda; ausente só em montagens de teste. */
   readonly skin?: SkinTaco;
+  /**
+   * A semente do taco em uso de quem está no lugar (L34), para todo mundo ver o taco único dele; `null` = sem carteira (ou vago:
+   * o taco é o clássico comum). A sala sempre manda; ausente só em montagens de teste = `null`.
+   */
+  readonly semente?: number | null;
+  /** O contador de bolas do taco em uso (L34), público como o saldo; `null` = sem carteira (ou vago). A sala sempre manda. */
+  readonly bolas?: number | null;
+  /**
+   * O resumo público das estatísticas de quem está no lugar (L38): partidas, vitórias e bolas matadas, no total. Nunca o código da
+   * carteira nem nada que a identifique. `null` = sem carteira (ou vago). Opcional no tipo para o web de antes compilar; a sala sempre manda.
+   */
+  readonly estatisticas?: ResumoDeEstatisticas | null;
+  /**
+   * O balão que quem está no lugar está usando (L47), para todo mundo vê-lo. Vem da carteira, nunca de uma mensagem do cliente: quem
+   * está sem carteira usa o padrão (`APARENCIA_PADRAO`); `null` = lugar vago. Muda no meio da partida quando a pessoa equipa outro
+   * balão (a sala manda um `estado-sala` novo). Opcional no tipo para o web de antes compilar; a sala sempre manda aos clientes da
+   * versão 10 e NÃO manda ao da 9, que então desenha o balão padrão.
+   */
+  readonly aparencia?: AparenciaDoBalao | null;
 }
 
 /** Um lado de um confronto do placar da sala. */
@@ -511,6 +554,15 @@ export interface MsgEstadoSala {
   readonly forca?: ForcaSala;
   /** Quanto cada jogador com carteira põe na partida (L22); a sala sempre manda, ausente só em montagens de teste = `APOSTA_PADRAO`. */
   readonly aposta?: ApostaSala;
+  /** A física da sala (L38), os 8 valores completos: é com eles que cada cliente simula. A sala sempre manda; ausente só em montagens de teste = a física padrão. */
+  readonly fisica?: FisicaSala;
+  /** A física da sala difere da padrão (L38): tacada e partida assim não contam missão nem estatística. A sala sempre manda; ausente = `false`. */
+  readonly fisicaMexida?: boolean;
+  /**
+   * O anfitrião não pode mexer na física agora (L38): há aposta valendo na partida em andamento, ou a partida acabou e a próxima, com
+   * os mesmos lugares, teria aposta valendo (L38b: a física só muda na espera). Na espera é `false`. A sala sempre manda; ausente = `false`.
+   */
+  readonly fisicaTravada?: boolean;
   /**
    * Quanto falta, EM MS A PARTIR DO ENVIO, para acabar o tempo de quem tem a vez: o cliente soma o instante
    * em que recebeu e nunca depende de relógio absoluto. Já conta a animação da tacada anterior e uma margem
@@ -650,6 +702,27 @@ export interface MsgMissoes {
   readonly cumpridas: readonly IdMissao[];
 }
 
+/**
+ * O anfitrião mudou a física no meio da partida (L38): vai a TODOS (jogadores e espectadores, ele inclusive), logo antes do
+ * `estado-sala` que já a leva. Fica como mensagem, e não só como campo do estado, porque é um evento: o `estado-sala` se repete a
+ * cada tacada e a cada entrada, e um campo faria o aviso reaparecer; a mensagem chega uma vez por mudança. Só sai de verdade que
+ * mudou (pedir a física que a sala já tem, ou mexer na espera, não a manda).
+ *
+ * O contrato é "vale o `estado-sala.fisica` na hora": quem recebe o aviso troca a física que usa pela que o aviso (e o `estado-sala`
+ * seguinte) traz, e vale da próxima tacada que simular. O aviso NÃO leva `seq` de propósito: o `seq` volta a 0 a cada partida
+ * (`nova-partida`), e um "vale do seq N em diante" faria uma partida nova usar a física antiga. A sala recusa a mudança com
+ * tacada em voo, então não há tacada aceita ainda por simular quando a física muda.
+ */
+export interface MsgFisicaAlterada {
+  readonly tipo: 'fisica-alterada';
+  /** O apelido do anfitrião, para o aviso ("Ana mexeu na física"). */
+  readonly por: string;
+  /** A física nova, completa: a que vale agora (a mesma do `estado-sala.fisica` que vem logo depois). */
+  readonly fisica: FisicaSala;
+  /** A física nova difere da padrão (`false` = o anfitrião restaurou o padrão). */
+  readonly mexida: boolean;
+}
+
 /** Quem decidiu a expulsão; por enquanto só o anfitrião, e o campo pode ganhar valores. */
 export type MotivoExpulsao = 'anfitriao';
 
@@ -684,6 +757,7 @@ export type MensagemDaSala =
   | MsgEmojiRetransmitido
   | MsgApostaPaga
   | MsgMissoes
+  | MsgFisicaAlterada
   | MsgTempoEsgotado
   | MsgExpulso
   | MsgErro

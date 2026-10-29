@@ -1,0 +1,914 @@
+{
+  "versao": 2,
+  "gerado_por": "arte/skins/scripts/meta.py",
+  "convencoes": {
+    "arquivos": "arte/skins/exportados/<skin>-<peca>.png (cor), -emissivo.png (brilho), -raro.png / -raro-emissivo.png (variante rara)",
+    "pixels": "sRGB, 8 bits, RGB sem alfa; maior lado <= 2048 px; proporcional a circunferencia x comprimento da peca (ppm abaixo)",
+    "colorSpace": "SRGBColorSpace no mapa de cor e no emissivo; no emissivo, preto = apagado (multiplicar por emissiveIntensity, ~1 a 3)",
+    "origem": "a linha de baixo do PNG e v=0 (lado da ponta do taco), o que o TextureLoader do three.js (flipY) espera",
+    "espelho": "o UV de torneado.ts corre u para a esquerda vendo de fora: use texture.repeat.x = -1 e offset.x = 1 (RepeatWrapping em S) para a arte sair como no PNG",
+    "orientacao": "o alto da figura aponta para a ponta do taco, que na camera do jogo fica no alto da tela; por isso o PNG sai de cabeca para baixo, de proposito",
+    "emenda": "o PNG fecha em x (u = 0 e u = 1 se encontram sem emenda): RepeatWrapping em S; em T, ClampToEdge",
+    "variacao_por_taco": "o rolo (offset.x) gira a arte em volta do taco sem emenda; o -raro.png e uma variante de paleta, nao precisa de deslocamento",
+    "margem_v": "a arte chega ate as bordas de cada peca (as vizinhas sao pecas separadas; junta e anel, de raio ~4% maior, escondem no maximo o ultimo milimetro); a cauda do dragao termina a 9 mm do fim do cabo, antes da borracha",
+    "metal": "-metal.png (so onde ha metal, nas skins do P3): mascara de metal sRGB-linear em tons de cinza, branco = ouro/prata batido, preto = nao e metal; use como metalnessMap com metalness 1 (o mapa de cor e a cor do metal); sem envMap o metal escurece, entao se o jogo nao tem ambiente use metalness 0.6 a 0.7 (a previa do Blender usa 0.7)",
+    "haste": "a haste fica em 2,95 px/mm (limite de 2048 px no comprimento de 695 mm); antebraco, punho e base ficam entre 3 e 8 px/mm"
+  },
+  "skins": [
+    {
+      "skin": "coral",
+      "nome": "Coral",
+      "faixa_sugerida": "Camarote",
+      "fora_do_catalogo": false,
+      "notas": "So o antebraco e pintado: escamas de cobra-coral (vermelho, amarelo, preto). A haste e o cabo ficam lisos; veja complementos.",
+      "pecas_pintadas": [
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/coral-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.26,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.85,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/coral-antebraco-raro.png",
+          "px": [
+            566,
+            2048
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#f3efe6",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "haste": {
+          "cor": "#0e0c12",
+          "rugosidade": 0.26,
+          "metal": 0.0,
+          "verniz": 0.9,
+          "faixas_q_m": [
+            [
+              0.0,
+              0.06,
+              "#e0281c"
+            ],
+            [
+              0.06,
+              0.073,
+              "#f7de4c"
+            ],
+            [
+              0.15,
+              0.163,
+              "#f7de4c"
+            ],
+            [
+              0.163,
+              0.223,
+              "#e0281c"
+            ],
+            [
+              0.223,
+              0.236,
+              "#f7de4c"
+            ],
+            [
+              0.31,
+              0.323,
+              "#f7de4c"
+            ],
+            [
+              0.323,
+              0.383,
+              "#e0281c"
+            ],
+            [
+              0.383,
+              0.396,
+              "#f7de4c"
+            ],
+            [
+              0.47,
+              0.483,
+              "#f7de4c"
+            ],
+            [
+              0.483,
+              0.543,
+              "#e0281c"
+            ],
+            [
+              0.543,
+              0.556,
+              "#f7de4c"
+            ],
+            [
+              0.63,
+              0.643,
+              "#f7de4c"
+            ],
+            [
+              0.643,
+              0.703,
+              "#e0281c"
+            ],
+            [
+              0.703,
+              0.716,
+              "#f7de4c"
+            ]
+          ]
+        },
+        "junta": {
+          "cor": "#c9ccd1",
+          "rugosidade": 0.3,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "punho": {
+          "cor": "#15110f",
+          "rugosidade": 0.7,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "anel": {
+          "cor": "#c9ccd1",
+          "rugosidade": 0.3,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "base": {
+          "cor": "#0e0c12",
+          "rugosidade": 0.26,
+          "metal": 0.0,
+          "verniz": 0.9,
+          "faixas_q_m": [
+            [
+              0.1,
+              0.16,
+              "#e0281c"
+            ],
+            [
+              0.16,
+              0.19,
+              "#f7de4c"
+            ],
+            [
+              0.81,
+              0.84,
+              "#f7de4c"
+            ],
+            [
+              0.84,
+              0.9,
+              "#e0281c"
+            ]
+          ]
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      }
+    },
+    {
+      "skin": "bicho-solto",
+      "nome": "Bicho Solto",
+      "faixa_sugerida": "Camarote",
+      "fora_do_catalogo": false,
+      "notas": "Mosaico de doze bichos de adesivo, dois por volta (sem emenda). Haste e antebraco pintados; junta, anel e base lisos em rosa e azul.",
+      "pecas_pintadas": [
+        {
+          "peca": "haste",
+          "arquivo": "exportados/bicho-solto-haste.png",
+          "comprimento_mm": 693.5,
+          "circunferencia_mm": 52.3,
+          "raio_ponta_mm": 6.18,
+          "raio_cabo_mm": 10.47,
+          "px_esperados": [
+            154,
+            2048
+          ],
+          "px_por_mm": 2.95,
+          "rugosidade_sugerida": 0.3,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.9,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/bicho-solto-haste-raro.png",
+          "px": [
+            154,
+            2048
+          ]
+        },
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/bicho-solto-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.3,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.9,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/bicho-solto-antebraco-raro.png",
+          "px": [
+            566,
+            2048
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#f3efe6",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "junta": {
+          "cor": "#ff2e93",
+          "rugosidade": 0.25,
+          "metal": 0.0,
+          "verniz": 0.9
+        },
+        "punho": {
+          "cor": "#1b1030",
+          "rugosidade": 0.7,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "anel": {
+          "cor": "#ff2e93",
+          "rugosidade": 0.25,
+          "metal": 0.0,
+          "verniz": 0.9
+        },
+        "base": {
+          "cor": "#1e8bff",
+          "rugosidade": 0.25,
+          "metal": 0.0,
+          "verniz": 0.9
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      }
+    },
+    {
+      "skin": "corujao",
+      "nome": "Corujão",
+      "faixa_sugerida": "Relíquia",
+      "fora_do_catalogo": true,
+      "notas": "Coruja de olhos ambar no antebraco, ceu da madrugada na haste (corujinhas de olhos acesos), plumagem barrada no punho. Emissivo nos olhos, estrelas e vagalumes.",
+      "pecas_pintadas": [
+        {
+          "peca": "haste",
+          "arquivo": "exportados/corujao-haste.png",
+          "comprimento_mm": 693.5,
+          "circunferencia_mm": 52.3,
+          "raio_ponta_mm": 6.18,
+          "raio_cabo_mm": 10.47,
+          "px_esperados": [
+            154,
+            2048
+          ],
+          "px_por_mm": 2.95,
+          "rugosidade_sugerida": 0.34,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.8,
+          "emissivo": true,
+          "raro": true,
+          "arquivo_emissivo": "exportados/corujao-haste-emissivo.png",
+          "arquivo_raro": "exportados/corujao-haste-raro.png",
+          "arquivo_raro_emissivo": "exportados/corujao-haste-raro-emissivo.png",
+          "px": [
+            154,
+            2048
+          ]
+        },
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/corujao-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.36,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.7,
+          "emissivo": true,
+          "raro": true,
+          "arquivo_emissivo": "exportados/corujao-antebraco-emissivo.png",
+          "arquivo_raro": "exportados/corujao-antebraco-raro.png",
+          "arquivo_raro_emissivo": "exportados/corujao-antebraco-raro-emissivo.png",
+          "px": [
+            566,
+            2048
+          ]
+        },
+        {
+          "peca": "punho",
+          "arquivo": "exportados/corujao-punho.png",
+          "comprimento_mm": 249.4,
+          "circunferencia_mm": 81.6,
+          "raio_ponta_mm": 12.21,
+          "raio_cabo_mm": 13.76,
+          "px_esperados": [
+            652,
+            1996
+          ],
+          "px_por_mm": 8.0,
+          "rugosidade_sugerida": 0.62,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.0,
+          "emissivo": true,
+          "raro": true,
+          "arquivo_emissivo": "exportados/corujao-punho-emissivo.png",
+          "arquivo_raro": "exportados/corujao-punho-raro.png",
+          "arquivo_raro_emissivo": "exportados/corujao-punho-raro-emissivo.png",
+          "px": [
+            652,
+            1996
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#f3efe6",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "junta": {
+          "cor": "#8a8f99",
+          "rugosidade": 0.28,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "anel": {
+          "cor": "#8a8f99",
+          "rugosidade": 0.28,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "base": {
+          "cor": "#0b1226",
+          "rugosidade": 0.3,
+          "metal": 0.0,
+          "verniz": 0.9,
+          "faixas_q_m": [
+            [
+              0.08,
+              0.11,
+              "#e9dcbc"
+            ],
+            [
+              0.89,
+              0.92,
+              "#e9dcbc"
+            ]
+          ]
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      },
+      "motivo_fora": "substituida no catalogo por Howl (decisao de 2026-10-26); a arte fica em exportados/"
+    },
+    {
+      "skin": "dragao",
+      "nome": "Dragão das Quinze",
+      "faixa_sugerida": "Relíquia",
+      "fora_do_catalogo": true,
+      "notas": "Um dragao so, em hélice, do pescoco (haste) ate a cauda (cabo), continuo de uma peca a outra; o punho (liso, escuro) esconde o trecho entre o antebraco e o cabo. Emissivo nos olhos, na boca e na fumaca de giz.",
+      "pecas_pintadas": [
+        {
+          "peca": "haste",
+          "arquivo": "exportados/dragao-haste.png",
+          "comprimento_mm": 693.5,
+          "circunferencia_mm": 52.3,
+          "raio_ponta_mm": 6.18,
+          "raio_cabo_mm": 10.47,
+          "px_esperados": [
+            154,
+            2048
+          ],
+          "px_por_mm": 2.95,
+          "rugosidade_sugerida": 0.3,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.9,
+          "emissivo": true,
+          "raro": true,
+          "arquivo_emissivo": "exportados/dragao-haste-emissivo.png",
+          "arquivo_raro": "exportados/dragao-haste-raro.png",
+          "arquivo_raro_emissivo": "exportados/dragao-haste-raro-emissivo.png",
+          "px": [
+            154,
+            2048
+          ]
+        },
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/dragao-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.28,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.9,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/dragao-antebraco-raro.png",
+          "px": [
+            566,
+            2048
+          ]
+        },
+        {
+          "peca": "base",
+          "arquivo": "exportados/dragao-base.png",
+          "comprimento_mm": 166.7,
+          "circunferencia_mm": 90.1,
+          "raio_ponta_mm": 13.83,
+          "raio_cabo_mm": 14.87,
+          "px_esperados": [
+            722,
+            1334
+          ],
+          "px_por_mm": 8.0,
+          "rugosidade_sugerida": 0.28,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.9,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/dragao-base-raro.png",
+          "px": [
+            722,
+            1334
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#f3efe6",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "junta": {
+          "cor": "#9db4d8",
+          "rugosidade": 0.28,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "punho": {
+          "cor": "#1a0f2e",
+          "rugosidade": 0.62,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "anel": {
+          "cor": "#9db4d8",
+          "rugosidade": 0.28,
+          "metal": 0.95,
+          "verniz": 0.0
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      },
+      "motivo_fora": "substituida no catalogo por Dragon Lore (decisao de 2026-10-26); a arte fica em exportados/"
+    },
+    {
+      "skin": "dragon-lore",
+      "nome": "Dragon Lore",
+      "faixa_sugerida": "Relíquia",
+      "fora_do_catalogo": false,
+      "notas": "Dragao europeu nosso em manuscrito celta (nome do CS, desenho proprio): pergaminho bege-oliva com ornamentos celtas apagados; corpo de nos entrelacados marrom e ouro; cabeca e garras vermelho-alaranjadas, chifres claros, olho que acende; chama de vitral (vermelho ao amarelo, contorno claro, espirais) saindo da boca (antebraco) e correndo pela haste ate a ponta. Haste = a chama; antebraco = cabeca, asas e pescoco; base = patas e cauda em nó de ouro; o punho (liso) esconde o meio. Emissivo: olho, boca e chama (suave); metal: ouro. Rara: Esmeralda (verde e ouro).",
+      "pecas_pintadas": [
+        {
+          "peca": "haste",
+          "arquivo": "exportados/dragon-lore-haste.png",
+          "comprimento_mm": 693.5,
+          "circunferencia_mm": 52.3,
+          "raio_ponta_mm": 6.18,
+          "raio_cabo_mm": 10.47,
+          "px_esperados": [
+            154,
+            2048
+          ],
+          "px_por_mm": 2.95,
+          "rugosidade_sugerida": 0.4,
+          "metal_sugerido": 1.0,
+          "verniz_sugerido": 0.55,
+          "emissivo": true,
+          "raro": true,
+          "emissive_intensity_sugerida": 1.8,
+          "arquivo_emissivo": "exportados/dragon-lore-haste-emissivo.png",
+          "arquivo_raro": "exportados/dragon-lore-haste-raro.png",
+          "arquivo_raro_emissivo": "exportados/dragon-lore-haste-raro-emissivo.png",
+          "px": [
+            154,
+            2048
+          ]
+        },
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/dragon-lore-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.38,
+          "metal_sugerido": 1.0,
+          "verniz_sugerido": 0.6,
+          "emissivo": true,
+          "raro": true,
+          "emissive_intensity_sugerida": 2.0,
+          "metal_mapa": true,
+          "arquivo_metal": "exportados/dragon-lore-antebraco-metal.png",
+          "arquivo_emissivo": "exportados/dragon-lore-antebraco-emissivo.png",
+          "arquivo_raro": "exportados/dragon-lore-antebraco-raro.png",
+          "arquivo_raro_emissivo": "exportados/dragon-lore-antebraco-raro-emissivo.png",
+          "arquivo_raro_metal": "exportados/dragon-lore-antebraco-raro-metal.png",
+          "px": [
+            566,
+            2048
+          ]
+        },
+        {
+          "peca": "base",
+          "arquivo": "exportados/dragon-lore-base.png",
+          "comprimento_mm": 166.7,
+          "circunferencia_mm": 90.1,
+          "raio_ponta_mm": 13.83,
+          "raio_cabo_mm": 14.87,
+          "px_esperados": [
+            722,
+            1334
+          ],
+          "px_por_mm": 8.0,
+          "rugosidade_sugerida": 0.38,
+          "metal_sugerido": 1.0,
+          "verniz_sugerido": 0.6,
+          "emissivo": false,
+          "raro": true,
+          "metal_mapa": true,
+          "arquivo_metal": "exportados/dragon-lore-base-metal.png",
+          "arquivo_raro": "exportados/dragon-lore-base-raro.png",
+          "arquivo_raro_metal": "exportados/dragon-lore-base-raro-metal.png",
+          "px": [
+            722,
+            1334
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#e9dcb4",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "junta": {
+          "cor": "#c8972a",
+          "rugosidade": 0.26,
+          "metal": 1.0,
+          "verniz": 0.0
+        },
+        "punho": {
+          "cor": "#4b2f16",
+          "rugosidade": 0.62,
+          "metal": 0.0,
+          "verniz": 0.0,
+          "faixas_q_m": [
+            [
+              0.04,
+              0.075,
+              "#c8972a"
+            ],
+            [
+              0.075,
+              0.085,
+              "#2a1608"
+            ],
+            [
+              0.915,
+              0.925,
+              "#2a1608"
+            ],
+            [
+              0.925,
+              0.96,
+              "#c8972a"
+            ]
+          ]
+        },
+        "anel": {
+          "cor": "#c8972a",
+          "rugosidade": 0.26,
+          "metal": 1.0,
+          "verniz": 0.0
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      },
+      "pecas_lisas_sugeridas_raro": {
+        "punho": {
+          "cor": "#16452a",
+          "rugosidade": 0.62,
+          "metal": 0.0,
+          "verniz": 0.0,
+          "faixas_q_m": [
+            [
+              0.04,
+              0.075,
+              "#d6a52e"
+            ],
+            [
+              0.075,
+              0.085,
+              "#0f2010"
+            ],
+            [
+              0.915,
+              0.925,
+              "#0f2010"
+            ],
+            [
+              0.925,
+              0.96,
+              "#d6a52e"
+            ]
+          ]
+        }
+      }
+    },
+    {
+      "skin": "howl",
+      "nome": "Howl",
+      "faixa_sugerida": "Relíquia",
+      "fora_do_catalogo": false,
+      "notas": "Lobo uivando nosso (nome do CS, desenho proprio), grafico e chapado em vermelho, laranja e preto, fundo escuro com detalhes vermelhos: cabeca de perfil com a boca aberta e o focinho voltado para a ponta (antebraco, com lua e pelo em lascas pontudas), o uivo como chevrons que esfriam ate a ponta (haste) e o pelame com tres pares de olhos acesos (punho). Emissivo: olhos e boca. Rara: Lobo da Geada (azul-gelo e branco).",
+      "pecas_pintadas": [
+        {
+          "peca": "haste",
+          "arquivo": "exportados/howl-haste.png",
+          "comprimento_mm": 693.5,
+          "circunferencia_mm": 52.3,
+          "raio_ponta_mm": 6.18,
+          "raio_cabo_mm": 10.47,
+          "px_esperados": [
+            154,
+            2048
+          ],
+          "px_por_mm": 2.95,
+          "rugosidade_sugerida": 0.34,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.8,
+          "emissivo": false,
+          "raro": true,
+          "arquivo_raro": "exportados/howl-haste-raro.png",
+          "px": [
+            154,
+            2048
+          ]
+        },
+        {
+          "peca": "antebraco",
+          "arquivo": "exportados/howl-antebraco.png",
+          "comprimento_mm": 259.5,
+          "circunferencia_mm": 71.7,
+          "raio_ponta_mm": 10.6,
+          "raio_cabo_mm": 12.21,
+          "px_esperados": [
+            566,
+            2048
+          ],
+          "px_por_mm": 7.89,
+          "rugosidade_sugerida": 0.34,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.8,
+          "emissivo": true,
+          "raro": true,
+          "emissive_intensity_sugerida": 2.0,
+          "arquivo_emissivo": "exportados/howl-antebraco-emissivo.png",
+          "arquivo_raro": "exportados/howl-antebraco-raro.png",
+          "arquivo_raro_emissivo": "exportados/howl-antebraco-raro-emissivo.png",
+          "px": [
+            566,
+            2048
+          ]
+        },
+        {
+          "peca": "punho",
+          "arquivo": "exportados/howl-punho.png",
+          "comprimento_mm": 249.4,
+          "circunferencia_mm": 81.6,
+          "raio_ponta_mm": 12.21,
+          "raio_cabo_mm": 13.76,
+          "px_esperados": [
+            652,
+            1996
+          ],
+          "px_por_mm": 8.0,
+          "rugosidade_sugerida": 0.55,
+          "metal_sugerido": 0.0,
+          "verniz_sugerido": 0.2,
+          "emissivo": true,
+          "raro": true,
+          "emissive_intensity_sugerida": 2.0,
+          "arquivo_emissivo": "exportados/howl-punho-emissivo.png",
+          "arquivo_raro": "exportados/howl-punho-raro.png",
+          "arquivo_raro_emissivo": "exportados/howl-punho-raro-emissivo.png",
+          "px": [
+            652,
+            1996
+          ]
+        }
+      ],
+      "pecas_lisas_sugeridas": {
+        "sola": {
+          "cor": "#76502c",
+          "rugosidade": 0.9,
+          "metal": 0.0,
+          "verniz": 0.0
+        },
+        "virola": {
+          "cor": "#f3efe6",
+          "rugosidade": 0.35,
+          "metal": 0.0,
+          "verniz": 0.5
+        },
+        "junta": {
+          "cor": "#c4281c",
+          "rugosidade": 0.28,
+          "metal": 0.2,
+          "verniz": 0.8
+        },
+        "anel": {
+          "cor": "#c4281c",
+          "rugosidade": 0.28,
+          "metal": 0.2,
+          "verniz": 0.8
+        },
+        "base": {
+          "cor": "#120a0a",
+          "rugosidade": 0.3,
+          "metal": 0.0,
+          "verniz": 0.9,
+          "faixas_q_m": [
+            [
+              0.08,
+              0.12,
+              "#d4301d"
+            ],
+            [
+              0.12,
+              0.14,
+              "#ff8a1f"
+            ],
+            [
+              0.86,
+              0.88,
+              "#ff8a1f"
+            ],
+            [
+              0.88,
+              0.92,
+              "#d4301d"
+            ]
+          ]
+        },
+        "borracha": {
+          "cor": "#101011",
+          "rugosidade": 0.85,
+          "metal": 0.0,
+          "verniz": 0.0
+        }
+      },
+      "pecas_lisas_sugeridas_raro": {
+        "junta": {
+          "cor": "#2f86d6",
+          "rugosidade": 0.28,
+          "metal": 0.2,
+          "verniz": 0.8
+        },
+        "anel": {
+          "cor": "#2f86d6",
+          "rugosidade": 0.28,
+          "metal": 0.2,
+          "verniz": 0.8
+        },
+        "base": {
+          "cor": "#0a111e",
+          "rugosidade": 0.3,
+          "metal": 0.0,
+          "verniz": 0.9,
+          "faixas_q_m": [
+            [
+              0.08,
+              0.12,
+              "#2f86d6"
+            ],
+            [
+              0.12,
+              0.14,
+              "#e2f6ff"
+            ],
+            [
+              0.86,
+              0.88,
+              "#e2f6ff"
+            ],
+            [
+              0.88,
+              0.92,
+              "#2f86d6"
+            ]
+          ]
+        }
+      }
+    }
+  ]
+}

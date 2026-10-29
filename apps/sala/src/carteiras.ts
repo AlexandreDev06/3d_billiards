@@ -1,140 +1,45 @@
 /**
- * As carteiras (L22): saldo, skins do taco e a skin em uso, guardadas na memória e num arquivo JSON em disco.
- *
- * O código secreto que o navegador guarda só existe aqui por um instante: o armazém o troca por um resumo SHA-256 (o `id`),
- * e é o `id` que as salas, o arquivo e os testes manipulam. Achar uma carteira é achar o resumo num `Map`, então não há
- * comparação de texto cujo tempo conte quantos caracteres do código batem, e quem ler o disco não ganha a carteira de
- * ninguém. Nada aqui chega ao log com o código nem com o `id`.
- *
- * Tudo é síncrono e atômico dentro do processo (um único thread): a checagem de saldo e o desconto de uma compra não têm
- * `await` no meio, então duas compras ao mesmo tempo nunca gastam o mesmo dinheiro duas vezes. O disco acompanha a memória
- * com atraso curto (várias mudanças viram uma escrita) e `descarregar()` espera tudo chegar ao arquivo, para o encerramento.
+ * As carteiras da sala Node (L22): o núcleo (`CarteirasBase`, carteiras-base.ts) mais um arquivo JSON em disco, `carteiras.json` em
+ * `PASTA_DADOS`, com a trava exclusiva da pasta. O balão de quem comprou (L47b) vai a um arquivo à parte, `carteiras-balao.json`: o
+ * `carteiras.json` fica exatamente como a versão anterior o lê (ela descarta a carteira que traz uma chave que não conhece), e a anterior
+ * nem sabe do outro arquivo. A gravação é o do balão primeiro e o das carteiras depois: uma queda no meio deixa o item sem o desconto,
+ * nunca o desconto sem o item. O disco acompanha a memória com atraso curto (várias mudanças viram uma escrita) e
+ * `descarregar()` espera tudo chegar ao arquivo, para o encerramento. As regras de saldo, loja, missões e estatísticas moram no núcleo.
  */
-import { createHash, randomBytes } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, readFileSync, readdirSync, renameSync, unlinkSync } from 'node:fs';
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  SALDO_INICIAL,
-  SKIN_PADRAO,
-  diaDaMissao,
-  ehCodigoDeCarteira,
-  ehDiaDaMissao,
-  ehIdDeMissao,
-  ehSkinDeTaco,
-  fimDoDia,
-  missaoDoCatalogo,
-  missoesDoDia,
-  ordemDaSkin,
-  precoDaSkin,
-  premioDaMissao,
-  type EstadoCarteira,
-  type IdMissao,
-  type MissoesDoDia,
-  type SkinTaco,
-} from '@sinuca/protocolo';
-import type { ValoresDasMissoes } from './missoes';
-import type { Logger } from './log';
+import { CarteirasBase, VERSAO_DO_ARQUIVO_DO_BALAO, aplicarBaloes, objetoSimples, type Guardada, type OpcoesDasCarteiras } from './carteiras-base';
 import { pegarTrava, ErroDeTrava, type Trava } from './trava';
 
-const VERSAO_DO_ARQUIVO = 1;
+export type {
+  EstatisticaDaPartida,
+  ErroDeLoja,
+  OuvinteDeCarteira,
+  ResultadoDaImportacao,
+  ResultadoDeLoja,
+  ResultadoDeMissoes,
+  Variacao,
+} from './carteiras-base';
+
 const NOME_DO_ARQUIVO = 'carteiras.json';
-const ID_VALIDO = /^[0-9a-f]{64}$/;
-const TEMPORARIO = /^carteiras\.json\.\d+\.tmp$/;
+/** O balão de quem comprou (L47b), fora do arquivo que a versão anterior lê. */
+const NOME_DO_BALAO = 'carteiras-balao.json';
+const TEMPORARIO = /^carteiras(-balao)?\.json\.\d+\.tmp$/;
+
 /** Depois de uma gravação que falhou, tenta de novo daqui a tanto (além de tentar a cada mudança e ao descarregar). */
 const REPETIR_APOS_FALHA_MS = 5000;
 const TENTATIVAS_AO_DESCARREGAR = 3;
-const TENTATIVAS_DE_CODIGO = 8;
 
-export interface OpcoesDoArmazem {
+
+export interface OpcoesDoArmazem extends OpcoesDasCarteiras {
   /** Pasta do arquivo; `null` = só memória (testes e quem não quer persistir). Criada na primeira gravação. */
   readonly pasta: string | null;
-  readonly maxCarteiras: number;
   /** Espera entre a primeira mudança e a gravação; as que vierem nesse intervalo entram na mesma escrita. */
   readonly atrasoMs: number;
-  readonly relogio: () => number;
-  readonly log: Logger;
-  /** Sorteia o código; os testes injetam o seu. Padrão: 32 bytes aleatórios do sistema em base64url. */
-  readonly gerarCodigo?: () => string;
 }
 
-/** O progresso das missões de UM dia (L31); virou o dia, o de antes não vale mais e o próximo registro o troca. */
-interface ProgressoDasMissoes {
-  dia: string;
-  progresso: Partial<Record<IdMissao, number>>;
-}
-
-interface Guardada {
-  saldo: number;
-  skins: SkinTaco[];
-  skin: SkinTaco;
-  readonly criadaEm: number;
-  /** Já esteve num lugar de partida ou levou/pagou uma aposta: nunca mais é reaproveitada no teto. */
-  jogou: boolean;
-  /** Ausente no arquivo de antes do L31 (e para quem nunca andou numa missão): zero em tudo. */
-  missoes?: ProgressoDasMissoes;
-}
-
-/** O que `registrarMissoes` fez numa carteira que andou: o quadro de agora e as missões que fecharam (e pagaram) nesta chamada. */
-export interface ResultadoDeMissoes {
-  readonly missoes: MissoesDoDia;
-  readonly cumpridas: readonly IdMissao[];
-}
-
-/** `encerrado`: o armazém já fechou (o servidor está saindo) e não aceita mais mudança. */
-export type ErroDeLoja = 'carteira-invalida' | 'skin-invalida' | 'ja-tem' | 'saldo-insuficiente' | 'nao-tem' | 'encerrado';
-export type ResultadoDeLoja = { readonly ok: true; readonly estado: EstadoCarteira } | { readonly ok: false; readonly erro: ErroDeLoja };
-
-export interface Variacao {
-  readonly id: string;
-  readonly delta: number;
-}
-
-/** Quem quer saber que uma carteira mudou; `origem` é o que quem mudou passou (para não avisar a si mesmo). */
-export type OuvinteDeCarteira = (id: string, origem?: unknown) => void;
-
-const resumo = (codigo: string): string => createHash('sha256').update(codigo).digest('hex');
-
-const codigoAleatorio = (): string => randomBytes(32).toString('base64url');
-
-const CHAVES_DA_CARTEIRA = ['saldo', 'skins', 'skin', 'criadaEm', 'jogou', 'missoes'];
-
-/**
- * O progresso guardado das missões, ou `undefined` se não presta. Diferente do saldo, aqui o que não presta não derruba a
- * carteira: é um dado do dia, sem dinheiro, e perdê-lo custa no máximo recomeçar as missões de hoje. Missão que saiu do
- * catálogo é descartada e o que passa da meta volta a ela.
- */
-function missoesValidas(valor: unknown): ProgressoDasMissoes | undefined {
-  if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) return undefined;
-  const { dia, progresso } = valor as Record<string, unknown>;
-  if (!ehDiaDaMissao(dia) || typeof progresso !== 'object' || progresso === null || Array.isArray(progresso)) return undefined;
-  const lido: Partial<Record<IdMissao, number>> = {};
-  for (const [id, n] of Object.entries(progresso)) {
-    if (!ehIdDeMissao(id) || !Number.isSafeInteger(n) || (n as number) < 0) continue;
-    lido[id] = Math.min(n as number, missaoDoCatalogo(id).meta);
-  }
-  return { dia, progresso: lido };
-}
-
-function guardadaValida(valor: unknown): Guardada | null {
-  if (typeof valor !== 'object' || valor === null || Array.isArray(valor)) return null;
-  const v = valor as Record<string, unknown>;
-  // `jogou` veio no L25 e `missoes` no L31: o arquivo de antes vale como carteira já usada, sem missões, porque não há como saber o contrário
-  if (!Object.keys(v).every((k) => CHAVES_DA_CARTEIRA.includes(k))) return null;
-  for (const k of ['saldo', 'skins', 'skin', 'criadaEm']) if (!(k in v)) return null;
-  const { saldo, skins, skin, criadaEm } = v;
-  const jogou = 'jogou' in v ? v.jogou : true;
-  if (typeof jogou !== 'boolean') return null;
-  if (!Number.isSafeInteger(saldo) || typeof criadaEm !== 'number' || !Number.isFinite(criadaEm)) return null;
-  if (!Array.isArray(skins) || skins.length < 1 || !skins.every(ehSkinDeTaco) || new Set(skins).size !== skins.length) return null;
-  if (!skins.includes(SKIN_PADRAO) || !ehSkinDeTaco(skin) || !skins.includes(skin)) return null;
-  const missoes = 'missoes' in v ? missoesValidas(v.missoes) : undefined;
-  return { saldo: saldo as number, skins: [...skins].sort((a, b) => ordemDaSkin(a) - ordemDaSkin(b)), skin, criadaEm, jogou, ...(missoes ? { missoes } : {}) };
-}
-
-export class ArmazemDeCarteiras {
-  private readonly carteiras = new Map<string, Guardada>();
-  private readonly ouvintes = new Set<OuvinteDeCarteira>();
+export class ArmazemDeCarteiras extends CarteirasBase {
   private readonly arquivo: string | null;
   /** Conta as mudanças; o disco sabe até qual já recebeu. */
   private versao = 0;
@@ -146,14 +51,17 @@ export class ArmazemDeCarteiras {
   /** A trava da pasta já saiu: outro servidor pode estar gravando ali, então este não escreve mais nada. */
   private travaSolta = false;
   private avisouPastaSemFsync = false;
+  /** O arquivo do balão existe na pasta: mesmo sem balão nenhum na memória ele é regravado (a importação, por exemplo, pode ter esvaziado). */
+  private baloesNoDisco = false;
 
   /**
    * Abre as carteiras da pasta e pega a trava exclusiva dela: se outro processo (ou outro armazém deste) a segura, lança
    * `ErroDeTrava`. Quem precisa esperar o dono sair usa `ArmazemDeCarteiras.abrir`.
    */
-  constructor(private readonly opcoes: OpcoesDoArmazem) {
-    this.arquivo = opcoes.pasta === null ? null : join(opcoes.pasta, NOME_DO_ARQUIVO);
-    this.trava = opcoes.pasta === null ? null : pegarTrava(opcoes.pasta, opcoes.log);
+  constructor(private readonly disco: OpcoesDoArmazem) {
+    super(disco);
+    this.arquivo = disco.pasta === null ? null : join(disco.pasta, NOME_DO_ARQUIVO);
+    this.trava = disco.pasta === null ? null : pegarTrava(disco.pasta, disco.log);
     try {
       this.limparTemporariosOrfaos();
       this.carregar();
@@ -184,215 +92,10 @@ export class ArmazemDeCarteiras {
     }
   }
 
-  get total(): number {
-    return this.carteiras.size;
-  }
-
   /** `true` desde o começo do `fechar()`: nenhuma mudança entra mais. */
-  get encerrado(): boolean {
+  override get encerrado(): boolean {
     return this.fechando !== null;
   }
-
-  // ---------------------------------------------------------------- achar e criar
-
-  /**
-   * Cria uma carteira nova. No teto de carteiras ela toma o lugar da nunca usada mais velha (saldo inicial, só o clássico,
-   * nunca num lugar de partida); sem nenhuma assim, `null`. O código sai daqui uma única vez.
-   */
-  criar(): { readonly codigo: string; readonly id: string } | null {
-    if (this.recusaPorEncerrado()) return null;
-    if (this.carteiras.size >= this.opcoes.maxCarteiras && !this.reaproveitarUma()) {
-      this.opcoes.log('carteiras-cheio', { maximo: this.opcoes.maxCarteiras });
-      return null;
-    }
-    const gerar = this.opcoes.gerarCodigo ?? codigoAleatorio;
-    for (let tentativa = 0; tentativa < TENTATIVAS_DE_CODIGO; tentativa++) {
-      const codigo = gerar();
-      const id = resumo(codigo);
-      if (this.carteiras.has(id)) continue;
-      this.carteiras.set(id, { saldo: SALDO_INICIAL, skins: [SKIN_PADRAO], skin: SKIN_PADRAO, criadaEm: this.opcoes.relogio(), jogou: false });
-      this.opcoes.log('carteira-criada', { carteiras: this.carteiras.size });
-      this.mudou();
-      return { codigo, id };
-    }
-    this.opcoes.log('carteiras-codigo-repetido');
-    return null;
-  }
-
-  /** Tira a carteira nunca usada mais velha para dar lugar a uma nova; `false` se todas estão em uso. */
-  private reaproveitarUma(): boolean {
-    let velha: [string, Guardada] | null = null;
-    for (const par of this.carteiras) {
-      const c = par[1];
-      const nunca = !c.jogou && c.saldo === SALDO_INICIAL && c.skins.length === 1 && c.skin === SKIN_PADRAO;
-      if (nunca && (velha === null || c.criadaEm < velha[1].criadaEm)) velha = par;
-    }
-    if (velha === null) return false;
-    this.carteiras.delete(velha[0]);
-    this.opcoes.log('carteira-reaproveitada', { carteiras: this.carteiras.size });
-    return true;
-  }
-
-  /**
-   * Estas carteiras estão num lugar de uma partida que começou: deixam de ser "nunca usadas". Não é uma mudança que alguém
-   * veja (nenhum ouvinte é avisado), só vai ao disco. Id que não existe é ignorado.
-   */
-  registrarPartida(ids: readonly string[]): void {
-    if (this.recusaPorEncerrado()) return;
-    let mudou = false;
-    for (const id of ids) {
-      const c = this.carteiras.get(id);
-      if (c && !c.jogou) {
-        c.jogou = true;
-        mudou = true;
-      }
-    }
-    if (mudou) this.mudou();
-  }
-
-  /** O `id` da carteira deste código, ou `undefined` se a forma está errada ou ela não existe. */
-  resolver(codigo: unknown): string | undefined {
-    if (!ehCodigoDeCarteira(codigo)) return undefined;
-    const id = resumo(codigo);
-    return this.carteiras.has(id) ? id : undefined;
-  }
-
-  /** O que a carteira tem agora (uma cópia), com as missões do dia de agora, ou `undefined` se o `id` não existe. */
-  ler(id: string): EstadoCarteira | undefined {
-    const c = this.carteiras.get(id);
-    return c && { saldo: c.saldo, skins: [...c.skins], skin: c.skin, missoes: this.quadroDeMissoes(c) };
-  }
-
-  /** As 3 missões de hoje com o que esta carteira já andou nelas; o progresso de outro dia não conta. */
-  private quadroDeMissoes(c: Guardada): MissoesDoDia {
-    const dia = diaDaMissao(this.opcoes.relogio());
-    const andado = c.missoes?.dia === dia ? c.missoes.progresso : {};
-    return {
-      dia,
-      fimMs: fimDoDia(dia),
-      itens: missoesDoDia(dia).map((m) => {
-        const progresso = Math.min(andado[m.id] ?? 0, m.meta);
-        return { id: m.id, progresso, meta: m.meta, cumprida: progresso >= m.meta };
-      }),
-    };
-  }
-
-  // ---------------------------------------------------------------- mexer
-
-  /** Compra uma skin: só com saldo para o preço inteiro (o saldo nunca fica abaixo de zero por uma compra). Não a coloca em uso. */
-  comprar(id: string, skin: string, origem?: unknown): ResultadoDeLoja {
-    if (this.recusaPorEncerrado()) return { ok: false, erro: 'encerrado' };
-    const c = this.carteiras.get(id);
-    if (!c) return { ok: false, erro: 'carteira-invalida' };
-    if (!ehSkinDeTaco(skin)) return { ok: false, erro: 'skin-invalida' };
-    if (c.skins.includes(skin)) return { ok: false, erro: 'ja-tem' };
-    const preco = precoDaSkin(skin);
-    if (c.saldo < preco) return { ok: false, erro: 'saldo-insuficiente' };
-    c.saldo -= preco;
-    c.skins.push(skin);
-    c.skins.sort((a, b) => ordemDaSkin(a) - ordemDaSkin(b));
-    this.opcoes.log('carteira-comprou', { skin, preco });
-    this.mudou(id, origem);
-    return { ok: true, estado: this.ler(id)! };
-  }
-
-  /** Põe em uso uma skin que a carteira tem. */
-  usar(id: string, skin: string, origem?: unknown): ResultadoDeLoja {
-    if (this.recusaPorEncerrado()) return { ok: false, erro: 'encerrado' };
-    const c = this.carteiras.get(id);
-    if (!c) return { ok: false, erro: 'carteira-invalida' };
-    if (!ehSkinDeTaco(skin)) return { ok: false, erro: 'skin-invalida' };
-    if (!c.skins.includes(skin)) return { ok: false, erro: 'nao-tem' };
-    c.skin = skin;
-    this.mudou(id, origem);
-    return { ok: true, estado: this.ler(id)! };
-  }
-
-  /**
-   * Soma as variações aos saldos, que podem ficar negativos sem limite. Tudo ou nada: se uma só está errada — carteira que
-   * não existe, o mesmo `id` duas vezes, delta que não é inteiro ou que tiraria o saldo do que um número conta sem perder
-   * unidade — nenhuma é aplicada e devolve `false`. `true` = todas foram aplicadas.
-   */
-  aplicar(variacoes: readonly Variacao[], origem?: unknown): boolean {
-    if (this.recusaPorEncerrado()) return false;
-    const alvos: { carteira: Guardada; id: string; delta: number }[] = [];
-    const vistos = new Set<string>();
-    for (const { id, delta } of variacoes) {
-      const carteira = this.carteiras.get(id);
-      if (!carteira || vistos.has(id)) {
-        this.opcoes.log('carteiras-variacao-recusada', { motivo: carteira ? 'carteira-repetida' : 'carteira-inexistente' });
-        return false;
-      }
-      vistos.add(id);
-      if (!Number.isSafeInteger(delta) || !Number.isSafeInteger(carteira.saldo + delta)) {
-        this.opcoes.log('carteiras-variacao-recusada', { delta: Number.isFinite(delta) ? delta : 'invalido' });
-        return false;
-      }
-      alvos.push({ carteira, id, delta });
-    }
-    for (const { carteira, delta } of alvos) {
-      carteira.saldo += delta;
-      carteira.jogou = true; // dinheiro que mexe é dinheiro de quem jogou, mesmo que o saldo volte a 100
-    }
-    for (const { id } of alvos) this.mudou(id, origem);
-    return true;
-  }
-
-  /**
-   * Soma o que uma tacada (ou o fim de uma partida) vale às missões de hoje desta carteira e paga o prêmio do nível (`premioDaMissao`) de cada
-   * uma que chegar à meta. Síncrono e tudo ou nada, como `aplicar`: o progresso e o prêmio entram juntos, e a missão que já
-   * chegou à meta no dia não paga de novo, venha de onde vier (duas abas, duas salas, a mesma tacada repetida). Só vale o
-   * que for das 3 missões do dia; valor que não é inteiro positivo recusa tudo. Virou o dia, o progresso de ontem some.
-   *
-   * Devolve o quadro novo e as missões que fecharam agora; `null` se nada andou (carteira que não existe, nenhum valor das
-   * missões de hoje, tudo já cumprido) ou se o valor era inválido. Só o prêmio avisa as outras salas da carteira (o saldo
-   * mudou); progresso sem prêmio vai só ao disco. `origem` é a sala que pagou, para ela não se reavisar.
-   */
-  registrarMissoes(id: string, valores: ValoresDasMissoes, origem?: unknown): ResultadoDeMissoes | null {
-    if (this.recusaPorEncerrado()) return null;
-    const c = this.carteiras.get(id);
-    if (!c) return null;
-    for (const v of Object.values(valores)) {
-      if (!Number.isSafeInteger(v) || (v as number) <= 0) {
-        this.opcoes.log('carteiras-missao-recusada', { valor: Number.isFinite(v) ? v : 'invalido' });
-        return null;
-      }
-    }
-    const dia = diaDaMissao(this.opcoes.relogio());
-    const antes = c.missoes?.dia === dia ? c.missoes.progresso : {};
-    const progresso: Partial<Record<IdMissao, number>> = { ...antes };
-    const cumpridas: IdMissao[] = [];
-    let andou = false;
-    for (const m of missoesDoDia(dia)) {
-      const valor = valores[m.id];
-      const atual = antes[m.id] ?? 0;
-      if (valor === undefined || atual >= m.meta) continue;
-      const novo = Math.min(m.meta, m.acumulo === 'soma' ? atual + valor : Math.max(atual, valor));
-      if (novo === atual) continue;
-      progresso[m.id] = novo;
-      andou = true;
-      if (novo >= m.meta) cumpridas.push(m.id);
-    }
-    if (!andou) return null;
-    const premio = cumpridas.reduce((soma, m) => soma + premioDaMissao(m), 0);
-    if (!Number.isSafeInteger(c.saldo + premio)) {
-      this.opcoes.log('carteiras-missao-recusada', { motivo: 'saldo-no-limite' });
-      return null;
-    }
-    c.missoes = { dia, progresso };
-    c.saldo += premio;
-    if (premio > 0) c.jogou = true; // dinheiro que mexe é dinheiro de quem jogou
-    if (premio > 0) this.mudou(id, origem);
-    else this.mudou();
-    return { missoes: this.quadroDeMissoes(c), cumpridas };
-  }
-
-  /** Avisa sempre que uma carteira existente muda (compra, uso, variação). Devolve como cancelar. */
-  aoMudar(ouvinte: OuvinteDeCarteira): () => void {
-    this.ouvintes.add(ouvinte);
-    return () => this.ouvintes.delete(ouvinte);
-  }
-
   // ---------------------------------------------------------------- disco
 
   /** Espera o que está na memória chegar ao arquivo (o encerramento chama isto). Falha de disco é logada, não lançada. */
@@ -426,23 +129,10 @@ export class ArmazemDeCarteiras {
     this.temporizador = null;
   }
 
-  private recusaPorEncerrado(): boolean {
-    if (this.fechando === null) return false;
-    this.opcoes.log('carteiras-encerrado');
-    return true;
-  }
-
-  private mudou(id?: string, origem?: unknown): void {
+  /** O núcleo mudou algo: o disco acompanha com atraso curto (várias mudanças viram uma escrita). */
+  protected persistir(): void {
     this.versao++;
-    this.agendar(this.opcoes.atrasoMs);
-    if (id === undefined) return;
-    for (const ouvinte of [...this.ouvintes]) {
-      try {
-        ouvinte(id, origem);
-      } catch (e) {
-        this.opcoes.log('carteiras-ouvinte-falhou', { erro: e instanceof Error ? e.message : 'desconhecido' });
-      }
-    }
+    this.agendar(this.disco.atrasoMs);
   }
 
   private agendar(ms: number): void {
@@ -459,8 +149,10 @@ export class ArmazemDeCarteiras {
     if (this.travaSolta) return Promise.resolve(false);
     if (this.emCurso) return this.emCurso;
     const alvo = this.versao;
-    const texto = this.serializar();
-    this.emCurso = this.escrever(texto)
+    const principal = JSON.stringify(this.paraOArquivo());
+    const baloes = this.baloesParaGuardar();
+    const balao = Object.keys(baloes).length === 0 && !this.baloesNoDisco ? null : JSON.stringify({ versao: VERSAO_DO_ARQUIVO_DO_BALAO, baloes });
+    this.emCurso = this.escrever(principal, balao)
       .then(
         () => {
           this.gravadaAte = alvo;
@@ -473,23 +165,30 @@ export class ArmazemDeCarteiras {
       )
       .then((deuCerto) => {
         this.emCurso = null;
-        if (this.gravadaAte < this.versao) this.agendar(deuCerto ? this.opcoes.atrasoMs : REPETIR_APOS_FALHA_MS);
+        if (this.gravadaAte < this.versao) this.agendar(deuCerto ? this.disco.atrasoMs : REPETIR_APOS_FALHA_MS);
         return deuCerto;
       });
     return this.emCurso;
   }
 
-  private serializar(): string {
-    const carteiras: Record<string, Guardada> = {};
-    for (const [id, c] of this.carteiras) carteiras[id] = c;
-    return JSON.stringify({ versao: VERSAO_DO_ARQUIVO, carteiras });
+  /**
+   * O balão (se há o que gravar) e depois as carteiras, cada um por temporário e `rename`. Se o do balão falha, o das carteiras não é
+   * tocado: o desconto de uma compra nunca chega ao disco sem o item.
+   */
+  private async escrever(principal: string, balao: string | null): Promise<void> {
+    const pasta = this.disco.pasta!;
+    await mkdir(pasta, { recursive: true, mode: 0o700 });
+    if (balao !== null) {
+      await this.escreverArquivo(NOME_DO_BALAO, balao);
+      this.baloesNoDisco = true;
+    }
+    await this.escreverArquivo(NOME_DO_ARQUIVO, principal);
   }
 
   /** Arquivo temporário na mesma pasta, escrito até o disco, e `rename` por cima: quem lê vê o antigo inteiro ou o novo inteiro. */
-  private async escrever(texto: string): Promise<void> {
-    const pasta = this.opcoes.pasta!;
-    await mkdir(pasta, { recursive: true, mode: 0o700 });
-    const temporario = join(pasta, `${NOME_DO_ARQUIVO}.${process.pid}.tmp`);
+  private async escreverArquivo(nome: string, texto: string): Promise<void> {
+    const pasta = this.disco.pasta!;
+    const temporario = join(pasta, `${nome}.${process.pid}.tmp`);
     const f = await open(temporario, 'w', 0o600);
     try {
       await f.writeFile(texto);
@@ -498,7 +197,7 @@ export class ArmazemDeCarteiras {
       await f.close();
     }
     try {
-      await rename(temporario, this.arquivo!);
+      await rename(temporario, join(pasta, nome));
     } catch (e) {
       await rm(temporario, { force: true }).catch(() => undefined);
       throw e;
@@ -526,14 +225,14 @@ export class ArmazemDeCarteiras {
   private limparTemporariosOrfaos(): void {
     let nomes: string[];
     try {
-      nomes = readdirSync(this.opcoes.pasta!);
+      nomes = readdirSync(this.disco.pasta!);
     } catch {
       return;
     }
     const orfaos = nomes.filter((n) => TEMPORARIO.test(n));
     for (const nome of orfaos) {
       try {
-        unlinkSync(join(this.opcoes.pasta!, nome));
+        unlinkSync(join(this.disco.pasta!, nome));
       } catch {
         // sumiu enquanto isso
       }
@@ -549,16 +248,24 @@ export class ArmazemDeCarteiras {
    */
   private carregar(): void {
     if (this.arquivo === null) return;
+    this.carregarCarteiras();
+    this.carregarBaloes();
+  }
+
+  private carregarCarteiras(): void {
     let bruto: string;
     try {
-      bruto = readFileSync(this.arquivo, 'utf8');
+      bruto = readFileSync(this.arquivo!, 'utf8');
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw new Error(`carteiras: não consegui ler ${this.arquivo}: ${e instanceof Error ? e.message : 'erro desconhecido'}`, { cause: e });
     }
-    const lidas = this.interpretar(bruto);
+    const lidas = this.interpretar(bruto) ?? { carteiras: new Map<string, Guardada>(), descartadas: 1, migradas: 0 };
     for (const [id, c] of lidas.carteiras) this.carteiras.set(id, c);
-    if (lidas.descartadas === 0) return;
+    if (lidas.descartadas === 0) {
+      if (lidas.migradas > 0) this.migrou(lidas.migradas);
+      return;
+    }
     const copia = this.guardarOEstragado();
     this.opcoes.log('carteiras-corrompidas', { copia, mantidas: lidas.carteiras.size, descartadas: lidas.descartadas });
     if (lidas.carteiras.size > 0) {
@@ -567,36 +274,73 @@ export class ArmazemDeCarteiras {
     }
   }
 
-  private interpretar(bruto: string): { carteiras: Map<string, Guardada>; descartadas: number } {
-    const vazio = { carteiras: new Map<string, Guardada>(), descartadas: 1 };
+  /**
+   * Lê o balão guardado à parte e o põe nas carteiras que existem (o de quem não está mais no arquivo é ignorado). Arquivo que não se
+   * entende é GUARDADO de lado (`carteiras-balao.corrompido-<instante>.json`, nunca sobrescrito) e a sala sobe sem balões, como com o
+   * `carteiras.json` estragado; se nem guardar o original dá, lança. Sem arquivo, não há balão.
+   */
+  private carregarBaloes(): void {
+    const arquivo = join(this.disco.pasta!, NOME_DO_BALAO);
+    let bruto: string;
+    try {
+      bruto = readFileSync(arquivo, 'utf8');
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw new Error(`carteiras: não consegui ler ${arquivo}: ${e instanceof Error ? e.message : 'erro desconhecido'}`, { cause: e });
+      this.migrarBalaoDaLinha();
+      return;
+    }
+    this.baloesNoDisco = true;
     let dado: unknown;
     try {
       dado = JSON.parse(bruto);
     } catch {
-      return vazio;
+      dado = null;
     }
-    if (typeof dado !== 'object' || dado === null || Array.isArray(dado)) return vazio;
-    const { versao, carteiras } = dado as Record<string, unknown>;
-    if (versao !== VERSAO_DO_ARQUIVO || typeof carteiras !== 'object' || carteiras === null || Array.isArray(carteiras)) return vazio;
-    const lidas = new Map<string, Guardada>();
-    let descartadas = 0;
-    for (const [id, valor] of Object.entries(carteiras)) {
-      const c = ID_VALIDO.test(id) ? guardadaValida(valor) : null;
-      if (c) lidas.set(id, c);
-      else descartadas++;
+    if (!objetoSimples(dado) || dado.versao !== VERSAO_DO_ARQUIVO_DO_BALAO || !objetoSimples(dado.baloes)) {
+      const copia = this.guardarOEstragado(arquivo, 'carteiras-balao.corrompido');
+      this.baloesNoDisco = false;
+      this.opcoes.log('carteiras-balao-corrompido', { copia });
+      return;
     }
-    return { carteiras: lidas, descartadas };
+    aplicarBaloes(Object.entries(dado.baloes), this.carteiras);
   }
 
-  private guardarOEstragado(): string {
-    const pasta = this.opcoes.pasta!;
-    const base = `carteiras.corrompido-${this.opcoes.relogio()}`;
+  /** O balão que uma linha ainda trazia (só o L47, que nunca foi publicado) vai ao arquivo dele já: carteira com balão na memória e arquivo que não existe. */
+  private migrarBalaoDaLinha(): void {
+    if (![...this.carteiras.values()].some((c) => c.balao)) return;
+    this.versao++;
+    this.agendar(0);
+  }
+
+  /**
+   * Carteiras do formato de antes ganharam itens com semente sorteada. A semente é sorteada uma vez só, então vai ao disco já (e
+   * não "na próxima mudança": uma queda antes disso sortearia outra no boot seguinte). O arquivo de antes fica guardado ao lado
+   * (`carteiras.antes-da-migracao-<instante>.json`, só uma vez), porque é o único exemplar do formato antigo; se nem copiar dá,
+   * avisa no log e segue (o arquivo novo é válido).
+   */
+  private migrou(quantas: number): void {
+    let copia: string | null = null;
+    try {
+      const nome = `carteiras.antes-da-migracao-${this.opcoes.relogio()}.json`;
+      copyFileSync(this.arquivo!, join(this.disco.pasta!, nome), constants.COPYFILE_EXCL);
+      copia = nome;
+    } catch (e) {
+      this.opcoes.log('carteiras-migracao-sem-copia', { erro: e instanceof Error ? e.message : 'desconhecido' });
+    }
+    this.opcoes.log('carteiras-migradas', { carteiras: quantas, copia });
+    this.versao++;
+    this.agendar(0);
+  }
+
+  private guardarOEstragado(origem: string = this.arquivo!, prefixo = 'carteiras.corrompido'): string {
+    const pasta = this.disco.pasta!;
+    const base = `${prefixo}-${this.opcoes.relogio()}`;
     for (let n = 0; n < 1000; n++) {
       const nome = n === 0 ? `${base}.json` : `${base}-${n}.json`;
       const destino = join(pasta, nome);
       if (existsSync(destino)) continue; // só este processo escreve ali, então conferir antes basta para nunca sobrescrever uma cópia
       try {
-        renameSync(this.arquivo!, destino);
+        renameSync(origem, destino);
         return nome;
       } catch (e) {
         throw new Error(`carteiras: não consegui guardar o arquivo estragado em ${destino}: ${e instanceof Error ? e.message : 'erro desconhecido'}`, { cause: e });

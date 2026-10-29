@@ -8,20 +8,18 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { gzipSync } from 'node:zlib';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
-import { codificarMensagem, decodificarMensagemDoCliente, type MensagemDaSala } from '@sinuca/protocolo';
-import { SEGURANCA } from './cabecalhos';
+import { SEGURANCA, politicaDeConteudo } from './cabecalhos';
 import { criarHttpDaCarteira } from './carteira-http';
+import { carteiraNoNode } from './carteira-http-node';
 import { ArmazemDeCarteiras } from './carteiras';
 import type { ConfigSala } from './config';
-import { PESO_DA_RECUSA, TEXTO_DO_ERRO } from './erros';
 import { resolverEstatico } from './estatico';
 import { ipDoCliente } from './ip';
-import { BaldeDeTokens, BaldesPorChave } from './limite-taxa';
+import { LigacaoDaSala } from './ligacao';
+import { BaldesPorChave } from './limite-taxa';
 import { origemPermitida } from './origem';
 import { logSilencioso, type Logger } from './log';
-import { RastroDaConexao } from './rastro';
 import { Registro, type DependenciasRegistro } from './registro';
-import type { Conexao } from './sala';
 
 export interface Servidor {
   readonly porta: number;
@@ -44,46 +42,9 @@ export interface OpcoesDoServidor {
 const COMPRESSIVEL = /^(text\/|application\/(json|manifest\+json|wasm)|image\/svg\+xml)|javascript/;
 const MIN_GZIP = 1024;
 const MAX_ENTRADAS_GZIP = 200;
-/** Cliente lento demais: se o buffer de envio passar disto, a conexão cai em vez de encher a memória. */
-const MAX_BUFFER_ENVIO = 4 * 1024 * 1024;
-
-const cacheDeCodificacao = new WeakMap<MensagemDaSala, string | Uint8Array>();
-
-function codificarUmaVez(mensagem: MensagemDaSala): string | Uint8Array {
-  let dado = cacheDeCodificacao.get(mensagem);
-  if (dado === undefined) {
-    dado = codificarMensagem(mensagem);
-    cacheDeCodificacao.set(mensagem, dado);
-  }
-  return dado;
-}
-
 const ipDe = (req: IncomingMessage): string => ipDoCliente(req.headers['x-forwarded-for'], req.socket.remoteAddress);
 
-const PARECE_HOST = /^[a-z0-9.-]+(:\d{1,5})?$/i;
-
-/**
- * Política de conteúdo do HTML: só scripts do próprio site (sem eval nem inline), imagens e áudio locais ou
- * gerados em memória (blob/data), e WebSocket só para o próprio host (`ws`/`wss` escritos, porque `'self'`
- * nem sempre vale para esquemas ws em todo navegador). Estilo inline fica: o HUD usa `style`.
- */
-export function politicaDeConteudo(host: string | undefined): string {
-  const proprio = host !== undefined && PARECE_HOST.test(host) ? ` ws://${host} wss://${host}` : '';
-  return [
-    "default-src 'self'",
-    "script-src 'self'",
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: blob:",
-    "font-src 'self' data:",
-    "media-src 'self' data: blob:",
-    `connect-src 'self'${proprio}`,
-    "worker-src 'self' blob:",
-    "object-src 'none'",
-    "base-uri 'none'",
-    "form-action 'self'",
-    "frame-ancestors 'none'",
-  ].join('; ');
-}
+export { politicaDeConteudo };
 
 function recusarUpgrade(socket: Duplex, status: number, texto: string): void {
   socket.write(`HTTP/1.1 ${status} ${texto}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
@@ -103,14 +64,14 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
   const carteiras =
     opcoes.carteiras ??
     (await ArmazemDeCarteiras.abrir(
-      { pasta: config.pastaDados, maxCarteiras: config.maxCarteiras, atrasoMs: config.carteira.atrasoGravacaoMs, relogio, log },
+      { pasta: config.pastaDados, maxCarteiras: config.maxCarteiras, atrasoMs: config.carteira.atrasoGravacaoMs, relogio, log, presenteDeTeste: config.presenteDeTeste },
       { esperaMs: config.carteira.esperaTravaMs },
     ));
   const registro = new Registro({ config, log, relogio, carteiras, ...opcoes.registro });
   const novasConexoes = new BaldesPorChave(config.conexoesNovasPorIp.capacidade, config.conexoesNovasPorIp.porSegundo, relogio);
   /** Origin aceitos: a lista da config mais o próprio servidor (a página que ele serve), depois que a porta é conhecida. */
   let origensAceitas: readonly string[] = config.origensPermitidas;
-  const carteira = criarHttpDaCarteira({ config, carteiras, relogio, origensAceitas: () => origensAceitas, ipDe });
+  const carteira = carteiraNoNode(criarHttpDaCarteira({ config, carteiras, relogio, origensAceitas: () => origensAceitas }), ipDe);
   const gzipEmCache = new Map<string, { mtimeMs: number; dado: Buffer }>();
 
   // ---------------------------------------------------------------- HTTP estático
@@ -177,7 +138,7 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
     // e a saída já é compacta (gravação ~12 KB), então comprimir não rende e custa memória por conexão.
     perMessageDeflate: false,
   });
-  const vivos = new Map<WebSocket, { vivo: boolean; rastro: RastroDaConexao }>();
+  const vivos = new Map<WebSocket, { vivo: boolean; ligacao: LigacaoDaSala }>();
   const porIp = new Map<string, number>();
 
   http.on('upgrade', (req, socket, head) => {
@@ -191,70 +152,31 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
   });
 
   function aceitar(ws: WebSocket, ip: string): void {
-    const estado = { vivo: true, rastro: new RastroDaConexao(relogio) };
+    const ligacao = new LigacaoDaSala({
+      config,
+      registro,
+      relogio,
+      log,
+      ip,
+      soquete: {
+        aberto: () => ws.readyState === WebSocket.OPEN,
+        enviar: (dado) => ws.send(dado, { binary: typeof dado !== 'string' }),
+        fechar: (codigo, motivo) => ws.close(codigo, motivo),
+        derrubar: () => ws.terminate(),
+        presos: () => ws.bufferedAmount,
+      },
+    });
+    const estado = { vivo: true, ligacao };
     vivos.set(ws, estado);
     porIp.set(ip, (porIp.get(ip) ?? 0) + 1);
-    const balde = new BaldeDeTokens(config.mensagens.capacidade, config.mensagens.porSegundo, relogio);
-    const tolerancia = new BaldeDeTokens(config.tolerancia.capacidade, config.tolerancia.porSegundo, relogio);
-
-    /** Conta uma infração de `peso` fichas; esgotada a tolerância, derruba a conexão. */
-    const punir = (peso: number): boolean => {
-      if (tolerancia.tentar(peso)) return true;
-      estado.rastro.encerrando('tolerancia', ws.bufferedAmount);
-      ws.close(1008, 'Mensagens demais ou recusadas demais.');
-      return false;
-    };
-
-    const conn: Conexao = {
-      id: 'ws',
-      ip,
-      punir(peso) {
-        punir(peso);
-      },
-      enviar(mensagem) {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        if (ws.bufferedAmount > MAX_BUFFER_ENVIO) {
-          estado.rastro.encerrando('envio-lento', ws.bufferedAmount);
-          return ws.terminate();
-        }
-        const dado = codificarUmaVez(mensagem);
-        ws.send(dado, { binary: typeof dado !== 'string' });
-      },
-      fechar(codigo, motivo) {
-        ws.close(codigo, motivo);
-      },
-    };
 
     ws.on('pong', () => {
       estado.vivo = true;
-      estado.rastro.sinal();
+      ligacao.rastro.sinal();
     });
     ws.on('message', (dado: RawData, binario: boolean) => {
       estado.vivo = true;
-      estado.rastro.sinal();
-      const bruto = dado as Buffer;
-      // Mensagem grande gasta mais do balde. Os tetos por tipo de quadro e a ordem das conferências ficam no decodificador:
-      // tamanho antes de qualquer parse, e a gravação (a parte cara) só depois de sala, vez e seq.
-      if (!balde.tentar(1 + Math.floor(bruto.length / config.bytesPorFicha))) {
-        if (punir(1)) conn.enviar({ tipo: 'erro', codigo: 'limite-mensagens', mensagem: TEXTO_DO_ERRO['limite-mensagens'] });
-        return;
-      }
-      const r = decodificarMensagemDoCliente(bruto, {
-        texto: !binario,
-        limites: { quadro: config.bytesPorMensagem },
-        autorizarGravacao: ({ seq }) => registro.conferirTacada(conn, seq),
-      });
-      if (!r.ok) {
-        if (r.recusadaPelaSala) return registro.recusarTacada(conn, r.codigo);
-        conn.enviar({ tipo: 'erro', codigo: r.codigo, mensagem: TEXTO_DO_ERRO[r.codigo] });
-        punir(PESO_DA_RECUSA[r.codigo] ?? 1);
-        return;
-      }
-      try {
-        registro.receber(conn, r.valor);
-      } catch (e) {
-        log('erro-interno', { tipo: r.valor.tipo, erro: e instanceof Error ? e.message : 'desconhecido' });
-      }
+      ligacao.aoReceber(dado as Buffer, binario);
     });
     ws.on('error', () => {});
     ws.on('close', (codigo: number, motivo: Buffer) => {
@@ -262,18 +184,18 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
       const n = (porIp.get(ip) ?? 1) - 1;
       if (n <= 0) porIp.delete(ip);
       else porIp.set(ip, n);
-      registro.desconectar(conn, estado.rastro.saida(codigo, motivo, ws.bufferedAmount));
+      ligacao.aoFechar(codigo, motivo);
     });
   }
 
   const batimento = setInterval(() => {
     for (const [ws, estado] of vivos) {
       if (!estado.vivo) {
-        estado.rastro.encerrando('heartbeat', ws.bufferedAmount);
+        estado.ligacao.rastro.encerrando('heartbeat', ws.bufferedAmount);
         ws.terminate();
         continue;
       }
-      estado.rastro.amostrar(ws.bufferedAmount);
+      estado.ligacao.rastro.amostrar(ws.bufferedAmount);
       estado.vivo = false;
       ws.ping();
     }

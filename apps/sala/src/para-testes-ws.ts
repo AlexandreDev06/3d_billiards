@@ -15,7 +15,7 @@ import {
 } from '@sinuca/protocolo';
 import { PRESET_BOTECO, type ConfigRegras } from '@sinuca/regras';
 import { CONFIG_SALA_PADRAO, type ConfigSala } from './config';
-import { SEM_LIMITE, mensagemDeCriar, sortearDeTeste, visaoDasMensagens, type VisaoDoCliente } from './para-testes';
+import { SEM_LIMITE, mensagemDeCriar, relogioSemVitrine, sortearDeTeste, visaoDasMensagens, type VisaoDoCliente } from './para-testes';
 import { iniciarServidor, type OpcoesDoServidor, type Servidor } from './servidor';
 
 export class ClienteWs {
@@ -23,6 +23,8 @@ export class ClienteWs {
   /** Tamanho de cada quadro recebido, em bytes, com o tipo da mensagem. */
   readonly quadros: { tipo: string; bytes: number }[] = [];
   readonly invalidas: string[] = [];
+  /** O texto cru de cada quadro de texto recebido (L47: prova do que o cliente de uma versão antiga vê no fio, não só o que o decodificador devolve). */
+  readonly brutos: string[] = [];
   fechou: { codigo: number; motivo: string } | null = null;
   private leitores: (() => void)[] = [];
 
@@ -32,6 +34,7 @@ export class ClienteWs {
   ) {
     ws.on('message', (data, isBinary) => {
       const bruto = data as Buffer;
+      if (!isBinary) this.brutos.push(bruto.toString('utf8'));
       const r = decodificarMensagemDaSala(isBinary ? bruto : bruto.toString('utf8'));
       if (r.ok) {
         this.recebidas.push(r.valor);
@@ -56,12 +59,17 @@ export class ClienteWs {
     });
   }
 
+  /** Quadros que este cliente mandou à sala (cada um é uma mensagem de WebSocket para a conta do plano da Cloudflare) e os bytes deles. */
+  enviadas = 0;
+  bytesEnviados = 0;
+
   enviar(mensagem: MensagemDoCliente): this {
-    this.ws.send(codificarMensagem(mensagem));
-    return this;
+    return this.enviarBruto(codificarMensagem(mensagem));
   }
 
   enviarBruto(dado: string | Uint8Array): this {
+    this.enviadas++;
+    this.bytesEnviados += typeof dado === 'string' ? Buffer.byteLength(dado) : dado.length;
     this.ws.send(dado);
     return this;
   }
@@ -75,10 +83,13 @@ export class ClienteWs {
     return this.enviar({ tipo: 'entrar', versao: PROTOCOLO_VERSAO, codigo, nome: this.nome, ...(token ? { token } : {}), ...(carteira ? { carteira } : {}) });
   }
 
+  /** Quanto `esperar` espera quando o teste não diz; o teste do Worker (outro processo, workerd) sobe para não depender da carga da máquina. */
+  static esperaPadraoMs = 5000;
+
   /** Espera (até `ms`) pela primeira mensagem, já recebida ou futura, que satisfaz `serve`. */
   async esperar<T extends MensagemDaSala>(serve: (m: MensagemDaSala) => m is T, ms?: number): Promise<T>;
   async esperar(serve: (m: MensagemDaSala) => boolean, ms?: number): Promise<MensagemDaSala>;
-  async esperar(serve: (m: MensagemDaSala) => boolean, ms = 5000): Promise<MensagemDaSala> {
+  async esperar(serve: (m: MensagemDaSala) => boolean, ms = ClienteWs.esperaPadraoMs): Promise<MensagemDaSala> {
     const limite = Date.now() + ms;
     for (;;) {
       const achada = this.recebidas.find(serve);
@@ -87,7 +98,7 @@ export class ClienteWs {
       const restante = limite - Date.now();
       if (restante <= 0) throw new Error(`${this.nome}: tempo esgotado; recebeu ${this.recebidas.map((m) => m.tipo).join(',')}`);
       await new Promise<void>((resolve, reject) => {
-        const t = setTimeout(() => reject(new Error(`${this.nome}: tempo esgotado`)), restante);
+        const t = setTimeout(() => reject(new Error(`${this.nome}: tempo esgotado; recebeu ${this.recebidas.map((m) => m.tipo).join(',')}`)), restante);
         this.leitores.push(() => {
           clearTimeout(t);
           resolve();
@@ -155,7 +166,7 @@ export class AmbienteDeRede {
   async subir(config: Partial<ConfigSala> = {}, opcoes: OpcoesDoServidor = {}): Promise<Servidor> {
     const s = await iniciarServidor(
       { ...CONFIG_SALA_PADRAO, porta: 0, pastaWeb: this.pasta, pastaDados: join(this.base, `dados-${++this.pastasDeDados}`), ...config },
-      { ...opcoes, registro: { sortear: sortearDeTeste(), ...opcoes.registro } },
+      { relogio: relogioSemVitrine(), ...opcoes, registro: { sortear: sortearDeTeste(), ...opcoes.registro } },
     );
     this.servidores.push(s);
     return s;
