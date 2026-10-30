@@ -1,0 +1,20 @@
+{
+  "name": "@sinuca/conta",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./contrato": "./src/contrato.ts",
+    "./nucleo": "./src/nucleo.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.worker.json",
+    "dev": "WRANGLER_SEND_METRICS=false wrangler dev --local",
+    "types": "WRANGLER_SEND_METRICS=false wrangler types --include-runtime=false"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261022.1",
+    "@sinuca/protocolo": "workspace:*",
+    "@types/node": "^24.19.1",
+    "wrangler": "4.151.3"
+  }
+}

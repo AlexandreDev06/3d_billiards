@@ -16,6 +16,11 @@ export interface ConfigSala extends ConfigDoNucleo {
   readonly pastaWeb: string;
   /** Onde ficam as carteiras (L22), um arquivo JSON. As salas ficam na memória; isto é o que sobrevive a reinício. */
   readonly pastaDados: string;
+  /**
+   * O pepper das senhas da conta local (L61, `PEPPER_DA_SENHA`, 32 caracteres ou mais; só vale com `SALDO_NO_BANCO=1`, que abre o Banco
+   * local). Ausente: as rotas de conta respondem, mas as operações de senha dão `nao-configurado`.
+   */
+  readonly pepperDaSenha: string | null;
 }
 
 export const CONFIG_SALA_PADRAO: ConfigSala = {
@@ -24,6 +29,7 @@ export const CONFIG_SALA_PADRAO: ConfigSala = {
   host: '127.0.0.1',
   pastaWeb: fileURLToPath(new URL('../../web/dist', import.meta.url)),
   pastaDados: fileURLToPath(new URL('../dados', import.meta.url)),
+  pepperDaSenha: null,
 };
 
 function pasta(env: Record<string, string | undefined>, chave: string, padrao: string): string {
@@ -34,7 +40,7 @@ function pasta(env: Record<string, string | undefined>, chave: string, padrao: s
 }
 
 /**
- * Variáveis aceitas: PORT, HOST, PASTA_WEB, PASTA_DADOS e as do núcleo (`configNucleoDoAmbiente`: MAX_SALAS, MAX_SALAS_POR_IP,
+ * Variáveis aceitas: PORT, HOST, PASTA_WEB, PASTA_DADOS, PEPPER_DA_SENHA (L61) e as do núcleo (`configNucleoDoAmbiente`: MAX_SALAS, MAX_SALAS_POR_IP,
  * MAX_CONEXOES, MAX_CARTEIRAS, TOLERANCIA_VEZ_S, TETO_DA_VEZ_APOSTADA_S, MISSOES_DIARIAS, ORIGENS, PRESENTE_DE_TESTE e
  * PRESENTE_DE_TESTE_ROTULO). O resto é padrão.
  *
@@ -49,5 +55,6 @@ export function configDoAmbiente(env: Record<string, string | undefined>): Confi
     host: env.HOST ?? p.host,
     pastaWeb: env.PASTA_WEB ?? p.pastaWeb,
     pastaDados: pasta(env, 'PASTA_DADOS', p.pastaDados),
+    pepperDaSenha: env.PEPPER_DA_SENHA === undefined || env.PEPPER_DA_SENHA === '' ? null : env.PEPPER_DA_SENHA,
   };
 }

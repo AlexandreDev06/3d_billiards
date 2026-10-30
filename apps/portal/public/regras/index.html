@@ -6,9 +6,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Regras do par ou ímpar e do mata-mata | Beco Games</title>
 <meta name="description" content="As regras da sinuca de boteco: par ou ímpar e mata-mata. Saída, grupos, bola da vez, faltas, castigo da bola 8, vitória e as regras da casa que dá para mudar.">
-<meta name="theme-color" content="#12301f">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="canonical" href="https://becogames.app/regras">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<link rel="preload" href="/fontes/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/estilo.css">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
@@ -21,11 +23,22 @@
 </head>
 <body>
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
+<div class="faixa" id="faixa-cookies" role="region" aria-label="Aviso de cookies">
+  <p>Usamos o armazenamento do navegador para lembrar suas escolhas, e o Google e parceiros de anúncios usam cookies para exibir anúncios. Saiba mais na <a href="/privacidade">política de privacidade</a>.</p>
+  <button type="button">Entendi</button>
+</div>
 <header class="topo">
-  <a class="marca" href="/">Beco Games</a>
-  <nav aria-label="Principal"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a><a href="/privacidade">Privacidade</a></nav>
+  <div class="topo-in">
+    <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+    <nav class="nav-desk" aria-label="Principal"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras" aria-current="page">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a></nav>
+    <div class="topo-acoes">
+      <a class="entrar" href="/entrar">Entrar</a>
+      <a class="botao contorno pequeno" href="https://sinuca.becogames.app">Jogar agora</a>
+      <details class="nav-cel"><summary>Menu</summary><nav aria-label="Principal (celular)"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras" aria-current="page">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a><a class="jogar" href="https://sinuca.becogames.app">Jogar agora</a></nav></details>
+    </div>
+  </div>
 </header>
-<main id="conteudo" class="texto">
+<main id="conteudo" class="texto cap-azulejo">
 <h1>Regras</h1>
 <p class="data">Par ou ímpar e mata-mata, como se joga no bar e como a Sinuca do Beco Games aplica. Atualizado em 29 de outubro de 2026.</p>
 <p>Na mesa de boteco, cada lado joga com as bolas pares ou com as ímpares: é o <strong>par ou ímpar</strong>, o jogo que as turmas de bar mais jogam. Esta página explica o par ou ímpar (preset &ldquo;Boteco&rdquo;) e o <strong>mata-mata</strong>, exatamente como o jogo os aplica. Para saber como mirar, bater e usar as teclas, veja <a href="/como-jogar">Como jogar</a>.</p>
@@ -96,14 +109,24 @@
 <p class="atalho"><a class="botao" href="https://sinuca.becogames.app">Jogar agora</a> <a class="botao claro" href="/como-jogar">Ver como jogar</a></p>
 </main>
 <footer class="rodape">
-  <nav aria-label="Rodapé"><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a><a href="/privacidade">Privacidade</a><a href="/termos">Termos</a><a href="mailto:contato@becogames.app">Contato</a></nav>
-  <p class="grande">Beco Games</p>
-  <small>&copy; 2026 Beco Games. Jogos de navegador para jogar com os amigos.</small>
+  <div class="rodape-in">
+    <div class="rodape-topo">
+      <div class="rodape-marca">
+        <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+        <p>Jogos de navegador para jogar com os amigos.</p>
+        <a class="email" href="mailto:contato@becogames.app">contato@becogames.app</a>
+      </div>
+      <nav aria-label="Jogos"><p>Jogos</p><a href="https://sinuca.becogames.app">Sinuca</a><a href="/#em-breve">Em breve</a></nav>
+      <nav aria-label="Ajuda"><p>Ajuda</p><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a></nav>
+      <nav aria-label="Legal"><p>Legal</p><a href="/privacidade">Privacidade</a><a href="/termos">Termos de uso</a></nav>
+    </div>
+    <div class="rodape-meta">
+      <span>&copy; 2026 Beco Games</span>
+      <span>Fontes Instrument Serif e Inter, licença OFL</span>
+      <a class="subir" href="#conteudo">Voltar ao topo</a>
+    </div>
+  </div>
 </footer>
-<div class="faixa" id="faixa-cookies" role="region" aria-label="Aviso de cookies" hidden>
-  <p>Usamos o armazenamento do navegador para lembrar suas escolhas e, no futuro, parceiros de anúncios podem usar cookies. Saiba mais na <a href="/privacidade">política de privacidade</a>.</p>
-  <button type="button">Entendi</button>
-</div>
 <script src="/faixa.js"></script>
 </body>
 </html>

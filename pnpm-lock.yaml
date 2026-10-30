@@ -182,14 +182,38 @@ importers:
         specifier: ^5.0.3
         version: 5.0.3(@types/node@24.19.1)(vite@8.3.3(@types/node@24.19.1)(esbuild@0.28.2)(tsx@4.23.15))
 
+  apps/conta:
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261022.1
+        version: 5.20261022.1
+      '@sinuca/protocolo':
+        specifier: workspace:*
+        version: link:../../packages/protocolo
+      '@types/node':
+        specifier: ^24.19.1
+        version: 24.19.1
+      wrangler:
+        specifier: 4.151.3
+        version: 4.151.3(@cloudflare/workers-types@5.20261022.1)(@types/node@24.19.1)
+
   apps/portal:
     devDependencies:
+      '@cloudflare/workers-types':
+        specifier: 5.20261022.1
+        version: 5.20261022.1
+      '@sinuca/conta':
+        specifier: workspace:*
+        version: link:../conta
       wrangler:
         specifier: 4.151.3
         version: 4.151.3(@cloudflare/workers-types@5.20261022.1)(@types/node@24.19.1)
 
   apps/sala:
     dependencies:
+      '@sinuca/conta':
+        specifier: workspace:*
+        version: link:../conta
       '@sinuca/protocolo':
         specifier: workspace:*
         version: link:../../packages/protocolo

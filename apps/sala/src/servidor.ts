@@ -8,11 +8,13 @@ import type { AddressInfo } from 'node:net';
 import type { Duplex } from 'node:stream';
 import { gzipSync } from 'node:zlib';
 import { WebSocket, WebSocketServer, type RawData } from 'ws';
+import { abrirBancoLocal } from './banco-local';
 import { SEGURANCA, politicaDeConteudo } from './cabecalhos';
 import { criarHttpDaCarteira } from './carteira-http';
-import { carteiraNoNode } from './carteira-http-node';
+import { carteiraNoNode, escreverResposta, pedidoDoNode } from './carteira-http-node';
 import { ArmazemDeCarteiras } from './carteiras';
 import type { ConfigSala } from './config';
+import { ehCaminhoDaConta, tratarContaDaSinuca, type BancoDaConta } from './conta-na-sinuca';
 import { resolverEstatico } from './estatico';
 import { ipDoCliente } from './ip';
 import { LigacaoDaSala } from './ligacao';
@@ -20,6 +22,8 @@ import { BaldesPorChave } from './limite-taxa';
 import { origemPermitida } from './origem';
 import { logSilencioso, type Logger } from './log';
 import { Registro, type DependenciasRegistro } from './registro';
+import { tokenDaSessao } from './sessao-da-conta';
+import { VarreduraDeExcluidas } from './varredura-de-excluidas';
 
 export interface Servidor {
   readonly porta: number;
@@ -43,6 +47,12 @@ const COMPRESSIVEL = /^(text\/|application\/(json|manifest\+json|wasm)|image\/sv
 const MIN_GZIP = 1024;
 const MAX_ENTRADAS_GZIP = 200;
 const ipDe = (req: IncomingMessage): string => ipDoCliente(req.headers['x-forwarded-for'], req.socket.remoteAddress);
+/** O endereço como o Banco o quer (ele calcula a chave do balde): o último do `X-Forwarded-For` (o do proxy) ou o do socket. */
+const ipBrutoDe = (req: IncomingMessage): string => {
+  const xff = req.headers['x-forwarded-for'];
+  const ultimo = (typeof xff === 'string' ? xff : (xff ?? []).join(',')).split(',').map((i) => i.trim()).filter((i) => i !== '').at(-1);
+  return ultimo ?? req.socket.remoteAddress ?? '';
+};
 
 export { politicaDeConteudo };
 
@@ -61,17 +71,43 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
   const relogio = opcoes.relogio ?? Date.now;
   // A pasta de dados tem um dono só (trava): quem sobe sobre um servidor que está saindo espera a trava soltar; se não solta, a
   // chamada rejeita com o motivo e nada foi aberto.
-  const carteiras =
-    opcoes.carteiras ??
-    (await ArmazemDeCarteiras.abrir(
-      { pasta: config.pastaDados, maxCarteiras: config.maxCarteiras, atrasoMs: config.carteira.atrasoGravacaoMs, relogio, log, presenteDeTeste: config.presenteDeTeste },
-      { esperaMs: config.carteira.esperaTravaMs },
-    ));
-  const registro = new Registro({ config, log, relogio, carteiras, ...opcoes.registro });
+  // L57: com SALDO_NO_BANCO=1 o Banco da sala Node é o núcleo do apps/conta sobre node:sqlite, em PASTA_DADOS/banco.sqlite (o SQLite trava
+  // o arquivo por conta própria; a caixa de saída que o alimenta mora no carteiras.json, que tem a trava da pasta).
+  const bancoLocal = opcoes.carteiras === undefined && config.saldoNoBanco ? abrirBancoLocal(config.pastaDados, relogio) : null;
+  let carteiras: ArmazemDeCarteiras;
+  try {
+    carteiras =
+      opcoes.carteiras ??
+      (await ArmazemDeCarteiras.abrir(
+        { pasta: config.pastaDados, maxCarteiras: config.maxCarteiras, atrasoMs: config.carteira.atrasoGravacaoMs, relogio, log, presenteDeTeste: config.presenteDeTeste, banco: bancoLocal?.banco ?? null },
+        { esperaMs: config.carteira.esperaTravaMs },
+      ));
+  } catch (e) {
+    bancoLocal?.fechar();
+    throw e;
+  }
   const novasConexoes = new BaldesPorChave(config.conexoesNovasPorIp.capacidade, config.conexoesNovasPorIp.porSegundo, relogio);
   /** Origin aceitos: a lista da config mais o próprio servidor (a página que ele serve), depois que a porta é conhecida. */
   let origensAceitas: readonly string[] = config.origensPermitidas;
-  const carteira = carteiraNoNode(criarHttpDaCarteira({ config, carteiras, relogio, origensAceitas: () => origensAceitas }), ipDe);
+  // L61: as contas da Beco Games (só com o Banco local, `SALDO_NO_BANCO=1`): `/conta/*`, a sessão do cookie e a varredura das excluídas
+  const origensDeDevDaConta: string[] = config.origensPermitidas.map((o) => o.toLowerCase());
+  const conta: BancoDaConta | null = bancoLocal === null ? null : bancoLocal.abrirConta({ pepper: config.pepperDaSenha, origensDeDev: origensDeDevDaConta, log });
+  // L61b: com o Banco local a sessão de quem tem conta é relida (no máximo a cada 10 min por conexão) antes de criar, entrar ou começar partida com aposta
+  const registro = new Registro({ config, log, relogio, carteiras, ...(conta === null ? {} : { contaDaSessao: (token: string) => conta.contaDaSessao(token) }), ...opcoes.registro });
+  /** O `id` da conta do cookie do pedido (o Banco local diz) e o token que o provou, ou `undefined`: sem cookie, ou sessão que ele não reconhece, vale o código. */
+  const contaDaSessaoDoPedido = async (req: IncomingMessage): Promise<{ readonly id: string; readonly token: string } | undefined> => {
+    const token = tokenDaSessao(req.headers.cookie);
+    if (token === null || conta === null) return undefined;
+    const c = await conta.contaDaSessao(token);
+    return c === null ? undefined : { id: c.id, token };
+  };
+  const idDaSessao = async (req: IncomingMessage): Promise<string | undefined> => (await contaDaSessaoDoPedido(req))?.id;
+  const carteira = carteiraNoNode(criarHttpDaCarteira({ config, carteiras, relogio, origensAceitas: () => origensAceitas }), ipDe, idDaSessao);
+  const varredura =
+    conta === null
+      ? null
+      : new VarreduraDeExcluidas({ banco: conta, apagar: (ids, ate) => carteiras.apagarDasContas(ids, ate), relogio, log, lerAte: () => carteiras.varridasAte });
+  void varredura?.varrer(true);
   const gzipEmCache = new Map<string, { mtimeMs: number; dado: Buffer }>();
 
   // ---------------------------------------------------------------- HTTP estático
@@ -85,6 +121,25 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
   async function tratarHttp(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const alvo = req.url ?? '/';
     const caminho = alvo.split(/[?#]/, 1)[0] ?? '/';
+    if (ehCaminhoDaConta(caminho)) {
+      if (conta === null) return textoSimples(res, 404, 'Não encontrado.');
+      const pedido = pedidoDoNode(req, ipDe(req));
+      const r = await tratarContaDaSinuca({
+        pedido,
+        ipParaOBanco: ipBrutoDe(req),
+        banco: conta,
+        efeitos: {
+          marcarDaConta: (id) => carteiras.marcarDaConta(id),
+          apagarDaConta: (id) => carteiras.apagarDasContas([id]),
+          esquecerConta: (id, sessao) => registro.esquecerConta(id, sessao),
+          adiarMarca: (id) => carteiras.adiarMarca(id),
+        },
+        tempoDoCorpoMs: config.carteira.tempoDoCorpoMs,
+        log,
+      });
+      if (r !== 'abortada') escreverResposta(res, r);
+      return;
+    }
     if (await carteira.tratar(req, res)) return;
     if (req.method !== 'GET' && req.method !== 'HEAD') return textoSimples(res, 405, 'Método não permitido.', { Allow: 'GET, HEAD' });
     if (caminho === '/saude') return textoSimples(res, 200, 'ok', { 'Cache-Control': 'no-store' });
@@ -148,16 +203,23 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
     const ip = ipDe(req);
     if ((porIp.get(ip) ?? 0) >= config.maxConexoesPorIp) return recusarUpgrade(socket, 429, 'Too Many Requests');
     if (!novasConexoes.tentar(ip)) return recusarUpgrade(socket, 429, 'Too Many Requests');
-    wss.handleUpgrade(req, socket, head, (ws) => aceitar(ws, ip));
+    // L61: a sessão da conta manda; a conta é perguntada ao Banco local antes de aceitar. Quem tem cookie e o Banco não responde, não entra.
+    const aceitarComConta = (c: { readonly id: string; readonly token: string } | undefined): void => {
+      if (socket.destroyed) return;
+      wss.handleUpgrade(req, socket, head, (ws) => aceitar(ws, ip, c));
+    };
+    if (conta === null || tokenDaSessao(req.headers.cookie) === null) return aceitarComConta(undefined);
+    contaDaSessaoDoPedido(req).then(aceitarComConta, () => recusarUpgrade(socket, 503, 'Service Unavailable'));
   });
 
-  function aceitar(ws: WebSocket, ip: string): void {
+  function aceitar(ws: WebSocket, ip: string, daConta?: { readonly id: string; readonly token: string }): void {
     const ligacao = new LigacaoDaSala({
       config,
       registro,
       relogio,
       log,
       ip,
+      ...(daConta === undefined ? {} : { idDaConta: daConta.id, sessao: daConta.token }),
       soquete: {
         aberto: () => ws.readyState === WebSocket.OPEN,
         enviar: (dado) => ws.send(dado, { binary: typeof dado !== 'string' }),
@@ -205,6 +267,8 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
       registro.tick();
       novasConexoes.limpar();
       carteira.limpar();
+      void varredura?.varrer();
+      carteiras.tentarMarcasPendentes(); // L61b: a marca `daConta` que falhou é tentada de novo
     } catch (e) {
       log('erro-interno', { tipo: 'tick', erro: e instanceof Error ? e.message : 'desconhecido' });
     }
@@ -224,10 +288,12 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
     clearInterval(passar);
     wss.close();
     await carteiras.fechar();
+    bancoLocal?.fechar();
     throw e;
   }
   const { port, address } = http.address() as AddressInfo;
   origensAceitas = [...config.origensPermitidas, `http://localhost:${port}`, `http://127.0.0.1:${port}`];
+  origensDeDevDaConta.push(`http://localhost:${port}`, `http://127.0.0.1:${port}`);
   log('servidor-ouvindo', { porta: port });
 
   return {
@@ -242,7 +308,10 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
       wss.close();
       // As carteiras primeiro, com a porta ainda presa: o arquivo chega ao disco e a trava solta ANTES de a porta ficar livre,
       // que é o sinal para o reiniciar-sala.sh subir o servidor novo. Daqui em diante o armazém recusa qualquer mudança.
+      // L57: as salas morrem com o servidor, então as apostas em curso soltam a reserva no Banco (a operação fica no arquivo e sai quando ele voltar)
+      registro.devolverApostas();
       await carteiras.fechar();
+      bancoLocal?.fechar();
       http.closeAllConnections();
       await new Promise<void>((resolve) => http.close(() => resolve()));
     },

@@ -75,6 +75,18 @@ describe('ArmazemDeSessao', () => {
     expect(sem.apelido()).toBe('');
   });
 
+  it('com a conta ativa não sobrescreve o apelido do convidado (L62)', () => {
+    const t = montar();
+    t.aba('a').lembrarApelido('Ana');
+    const conta = t.aba('a');
+    conta.definirContaAtiva(true);
+    conta.lembrarApelido('NomeDaConta');
+    expect(t.aba('b').apelido()).toBe('Ana');
+    conta.definirContaAtiva(false);
+    conta.lembrarApelido('Bia');
+    expect(t.aba('b').apelido()).toBe('Bia');
+  });
+
   it('lembra o apelido', () => {
     const t = montar();
     t.aba('a').lembrarApelido('Ana');

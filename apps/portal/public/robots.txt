@@ -1,4 +1,9 @@
 User-agent: *
 Allow: /
+Disallow: /entrar
+Disallow: /criar-conta
+Disallow: /esqueci-a-senha
+Disallow: /nova-senha
+Disallow: /minha-conta
 
 Sitemap: https://becogames.app/sitemap.xml

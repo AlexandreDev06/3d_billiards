@@ -1,5 +1,7 @@
 import { aparenciaDoTaco } from '../cena/aparencia-do-taco';
 import type { CarteiraDoAparelho, ResultadoDaCarteira } from '../online/carteira';
+import type { ContaDoAparelho, FalhaDaConta } from '../online/conta';
+import { textoDaEspera } from '../online/conta-modelo';
 import { AVISO_DO_LINK } from '../online/levar-carteira';
 import { AVISO_PERFIL_FORA_DO_AR, SEM_PARTIDAS_NO_PERFIL, perfilNaTela, type PerfilNaTela } from '../online/perfil-modelo';
 import { CATEGORIAS_DO_BALAO, textoDoCampoDoBalao } from '../online/balao-modelo';
@@ -14,6 +16,16 @@ export interface OpcoesDoPerfil {
   readonly base: () => string;
   /** O jogador quer personalizar o balão (L48): o jogo fecha o perfil e abre o editor "Meu balão". Sem isto o bloco do balão não aparece. */
   readonly aoAbrirMeuBalao?: () => void;
+  /** A conta da Beco Games (L62): sem isto o bloco "Conta" não aparece. */
+  readonly conta?: ContaDoAparelho;
+  /** Falso dentro de uma sala: criar, entrar, sair e excluir ficam desligados (a identidade da mesa não troca no meio dela). */
+  readonly podeMudarDeConta?: () => boolean;
+  readonly aoCriarConta?: () => void;
+  readonly aoEntrarNaConta?: () => void;
+  /** "Sair": o jogo apaga a sessão e o código, cria a carteira nova e volta ao menu. `null` = deu certo; senão a falha para mostrar. */
+  readonly aoSair?: () => Promise<FalhaDaConta | null>;
+  /** "Excluir minha conta", já com a senha e confirmado no segundo botão. `null` = deu certo. */
+  readonly aoExcluir?: (senha: string) => Promise<FalhaDaConta | null>;
 }
 
 export interface Perfil {
@@ -154,7 +166,69 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
   levarAberto.append(levarAlerta, linhaDoLink, levarPasso);
   levar.append(levarTitulo, levarDica, levarBotao, levarAberto);
 
-  rolagem.append(identidade, balao, estatisticas, levar);
+  // A conta da Beco Games (L62): criar e entrar para o convidado; nome, e-mail, sair e excluir para quem tem conta.
+  const contaSecao = el('section', 'perfil-conta');
+  contaSecao.setAttribute('aria-labelledby', 'perfil-conta-titulo');
+  contaSecao.hidden = opcoes.conta === undefined;
+  const contaTitulo = el('h3', 'perfil-secao-titulo', 'Conta Beco Games');
+  contaTitulo.id = 'perfil-conta-titulo';
+  const contaConvidado = el('div', 'perfil-conta-convidado');
+  const contaConvidadoTexto = el('p', 'perfil-levar-dica', 'Você joga como convidado: as suas moedas e os seus tacos ficam só neste navegador. Com uma conta eles valem em qualquer aparelho.');
+  const contaConvidadoBotoes = el('div', 'perfil-conta-linha');
+  const criarContaBotao = el('button', 'menu-botao perfil-botao principal', 'Criar conta');
+  criarContaBotao.type = 'button';
+  const entrarContaBotao = el('button', 'menu-botao perfil-botao', 'Entrar');
+  entrarContaBotao.type = 'button';
+  contaConvidadoBotoes.append(criarContaBotao, entrarContaBotao);
+  contaConvidado.append(contaConvidadoTexto, contaConvidadoBotoes);
+
+  const contaLogada = el('div', 'perfil-conta-logada');
+  const nomeRotulo = el('label', 'perfil-conta-rotulo', 'Nome na mesa');
+  const nomeLinha = el('div', 'perfil-conta-linha');
+  const nomeCampo = el('input', 'menu-entrada perfil-conta-campo');
+  nomeCampo.type = 'text';
+  nomeCampo.name = 'nome';
+  nomeCampo.maxLength = 20;
+  nomeCampo.setAttribute('autocomplete', 'nickname');
+  nomeCampo.spellcheck = false;
+  nomeCampo.id = 'perfil-conta-nome';
+  nomeRotulo.htmlFor = nomeCampo.id;
+  const nomeBotao = el('button', 'menu-botao perfil-botao', 'Salvar nome');
+  nomeBotao.type = 'button';
+  nomeLinha.append(nomeCampo, nomeBotao);
+  const emailLinha = el('p', 'perfil-conta-email');
+  const contaAcoes = el('div', 'perfil-conta-linha');
+  const sairBotao = el('button', 'menu-botao perfil-botao', 'Sair');
+  sairBotao.type = 'button';
+  const excluirBotao = el('button', 'menu-botao perfil-botao perigo', 'Excluir minha conta');
+  excluirBotao.type = 'button';
+  contaAcoes.append(sairBotao, excluirBotao);
+  const excluirAberto = el('div', 'perfil-conta-excluir');
+  excluirAberto.hidden = true;
+  const excluirAlerta = el('p', 'perfil-levar-alerta', 'Isto apaga a sua conta, o seu e-mail e as suas moedas e itens. Não tem volta.');
+  excluirAlerta.setAttribute('role', 'alert');
+  const senhaRotulo = el('label', 'perfil-conta-rotulo', 'Digite a sua senha para confirmar');
+  const senhaCampo = el('input', 'menu-entrada perfil-conta-campo');
+  senhaCampo.type = 'password';
+  senhaCampo.name = 'senha';
+  senhaCampo.autocomplete = 'current-password';
+  senhaCampo.maxLength = 128;
+  senhaCampo.id = 'perfil-conta-senha';
+  senhaRotulo.htmlFor = senhaCampo.id;
+  const excluirLinha = el('div', 'perfil-conta-linha');
+  const excluirConfirmar = el('button', 'menu-botao perfil-botao perigo', 'Excluir de vez');
+  excluirConfirmar.type = 'button';
+  const excluirCancelar = el('button', 'menu-botao perfil-botao', 'Cancelar');
+  excluirCancelar.type = 'button';
+  excluirLinha.append(excluirConfirmar, excluirCancelar);
+  excluirAberto.append(excluirAlerta, senhaRotulo, senhaCampo, excluirLinha);
+  contaLogada.append(nomeRotulo, nomeLinha, emailLinha, contaAcoes, excluirAberto);
+  const contaMsg = el('p', 'perfil-conta-msg');
+  contaMsg.setAttribute('role', 'status');
+  contaMsg.hidden = true;
+  contaSecao.append(contaTitulo, contaConvidado, contaLogada, contaMsg);
+
+  rolagem.append(identidade, contaSecao, balao, estatisticas, levar);
   caixa.append(topo, aviso, fora, rolagem);
   raiz.append(caixa);
   pai.append(raiz);
@@ -166,6 +240,8 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
   let desassinar: (() => void) | null = null;
   let temporizadorDoCopiado: number | null = null;
   let chaveDaMiniatura = '';
+  let excluindo = false;
+  let contaOcupada = false;
   let ultimo: PerfilNaTela = perfilNaTela(null, '');
 
   const desenharEstatisticas = (p: PerfilNaTela): void => {
@@ -218,6 +294,37 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
     campoDoLink.value = linkAberto ? (carteira.linkParaLevar(opcoes.base()) ?? '') : '';
   };
 
+  const mostrarMsgDaConta = (texto: string, erro: boolean): void => {
+    contaMsg.textContent = texto;
+    contaMsg.hidden = texto === '';
+    contaMsg.classList.toggle('erro', erro);
+    contaMsg.setAttribute('role', erro ? 'alert' : 'status');
+  };
+  const falhaDaConta = (f: FalhaDaConta): string => `${f.mensagem}${textoDaEspera(f.tenteEmS)}`;
+
+  const desenharConta = (): void => {
+    const c = opcoes.conta;
+    if (c === undefined) return;
+    const estado = c.estado();
+    const podeMudar = opcoes.podeMudarDeConta?.() ?? true;
+    const dica = podeMudar ? '' : 'Saia da sala para mexer na conta.';
+    contaConvidado.hidden = estado.tipo !== 'convidado';
+    contaLogada.hidden = estado.tipo !== 'conta';
+    for (const b of [criarContaBotao, entrarContaBotao, sairBotao, excluirBotao]) {
+      b.disabled = !podeMudar || contaOcupada;
+      b.title = dica;
+    }
+    if (estado.tipo === 'conta') {
+      if (document.activeElement !== nomeCampo) nomeCampo.value = estado.nome;
+      emailLinha.textContent = `E-mail: ${estado.email}`;
+      nomeBotao.disabled = contaOcupada;
+      excluirAberto.hidden = !excluindo;
+      excluirBotao.hidden = excluindo;
+      excluirConfirmar.disabled = contaOcupada;
+      excluirCancelar.disabled = contaOcupada;
+    }
+  };
+
   const desenhar = (): void => {
     const p = perfilNaTela(carteira.estado(), opcoes.apelido());
     ultimo = p;
@@ -242,6 +349,9 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
     caixa.classList.toggle('sem-carteira', !p.temCarteira);
     desenharEstatisticas(p);
     nota.textContent = p.nota;
+    // Com conta ela já vale em qualquer aparelho: não há o que levar.
+    levar.hidden = opcoes.conta?.estado().tipo === 'conta';
+    desenharConta();
     levarBotao.disabled = !carteira.tem();
     levarBotao.title = levarBotao.disabled ? 'Ainda não há carteira neste aparelho' : '';
     desenharLink();
@@ -262,6 +372,82 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
   };
 
   tentar.addEventListener('click', ler);
+
+  const trabalhando = async (fazer: () => Promise<FalhaDaConta | null>, aoDarCerto: () => void): Promise<void> => {
+    contaOcupada = true;
+    mostrarMsgDaConta('', false);
+    desenharConta();
+    const f = await fazer();
+    contaOcupada = false;
+    if (!aberto && f === null) return;
+    if (f === null) aoDarCerto();
+    else mostrarMsgDaConta(falhaDaConta(f), true);
+    if (aberto) desenhar();
+  };
+  const fecharExcluir = (): void => {
+    excluindo = false;
+    senhaCampo.value = '';
+  };
+  criarContaBotao.addEventListener('click', () => opcoes.aoCriarConta?.());
+  entrarContaBotao.addEventListener('click', () => opcoes.aoEntrarNaConta?.());
+  nomeBotao.addEventListener('click', () => {
+    const nome = nomeCampo.value.trim();
+    if (nome === '') {
+      mostrarMsgDaConta('Digite o nome da mesa.', true);
+      nomeCampo.focus();
+      return;
+    }
+    void trabalhando(
+      async () => {
+        const r = await opcoes.conta!.nome(nome);
+        return r.ok ? null : r;
+      },
+      () => mostrarMsgDaConta('Nome salvo.', false),
+    );
+  });
+  nomeCampo.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      nomeBotao.click();
+    }
+  });
+  sairBotao.addEventListener('click', () => {
+    if (opcoes.aoSair === undefined) return;
+    void trabalhando(opcoes.aoSair, () => {});
+  });
+  excluirBotao.addEventListener('click', () => {
+    excluindo = true;
+    mostrarMsgDaConta('', false);
+    desenhar();
+    senhaCampo.focus();
+  });
+  excluirCancelar.addEventListener('click', () => {
+    fecharExcluir();
+    mostrarMsgDaConta('', false);
+    desenhar();
+    excluirBotao.focus();
+  });
+  excluirConfirmar.addEventListener('click', () => {
+    if (opcoes.aoExcluir === undefined) return;
+    if (senhaCampo.value === '') {
+      mostrarMsgDaConta('Digite a sua senha.', true);
+      senhaCampo.focus();
+      return;
+    }
+    const senha = senhaCampo.value;
+    void trabalhando(
+      () => opcoes.aoExcluir!(senha),
+      () => {},
+    ).finally(() => {
+      senhaCampo.value = '';
+    });
+  });
+  senhaCampo.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      excluirConfirmar.click();
+    }
+  });
 
   levarBotao.addEventListener('click', () => {
     if (levarBotao.disabled) return;
@@ -328,7 +514,14 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
       foraTexto.textContent = '';
       raiz.hidden = false;
       document.addEventListener('keydown', aoTeclar, true);
-      desassinar = carteira.aoMudar(() => aberto && desenhar());
+      const desassinarCarteira = carteira.aoMudar(() => aberto && desenhar());
+      const desassinarConta = opcoes.conta?.aoMudar(() => aberto && desenhar());
+      desassinar = () => {
+        desassinarCarteira();
+        desassinarConta?.();
+      };
+      fecharExcluir();
+      mostrarMsgDaConta('', false);
       fechar.focus();
       // Põe a carteira em dia: o saldo, as skins e as estatísticas mudam a cada partida.
       ler();
@@ -338,6 +531,7 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
       if (!aberto) return;
       aberto = false;
       linkAberto = false;
+      fecharExcluir();
       campoDoLink.value = '';
       raiz.hidden = true;
       document.removeEventListener('keydown', aoTeclar, true);
@@ -365,6 +559,7 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
         limpo(foraTexto),
         ...(linhas.length > 0 ? linhas : [limpo(estatisticasCorpo)]),
         limpo(nota),
+        ...(opcoes.conta === undefined ? [] : [`Conta: ${opcoes.conta.estado().tipo === 'conta' ? `${nomeCampo.value} · ${limpo(emailLinha)}` : 'convidado'}${limpo(contaMsg) === '' ? '' : ` (${limpo(contaMsg)})`}`]),
         linkAberto ? 'link da carteira à mostra' : 'link da carteira escondido',
       ]
         .filter(Boolean)

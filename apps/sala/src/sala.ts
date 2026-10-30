@@ -59,6 +59,7 @@ import { jogadoresDaProxima, type ConfigRegras, type Consequencias, type EstadoP
 import type { Rng } from '@sinuca/fisica';
 import { completarAposta, completarGiz, completarLinha, completarRelogio, escolherModo, type LinhaCompleta } from './ajustes';
 import { calcularAposta, valeMoeda, type ParticipanteDoRol } from './aposta';
+import { chaveDaAposta } from './caixa-do-banco';
 import type { CarteirasBase } from './carteiras-base';
 import type { ConfigDoNucleo } from './config-nucleo';
 import { PESO_DA_RECUSA, TEXTO_DO_ERRO } from './erros';
@@ -75,6 +76,19 @@ export interface Conexao {
   readonly id: string;
   /** Endereço de quem está do outro lado, só para limites (nunca registrar em log). */
   readonly ip: string;
+  /**
+   * O `id` da conta da Beco Games que a sessão (cookie) provou quando a conexão abriu (L61), ou ausente. Com ele a carteira da conexão é a
+   * da conta e o código que o cliente mandar em `criar-sala`/`entrar` é ignorado. Perde-se (fica ausente) quando a conta sai, é excluída ou a
+   * sessão morre (L61b: `Registro.esquecerConta`, a releitura da sessão): a conexão segue, sem conta.
+   */
+  idDaConta?: string;
+  /**
+   * O token da sessão (o do cookie `becogames_sessao`) com que a conexão abriu (L61b), só para reler `contaDaSessao` antes de mexer em moeda.
+   * É segredo: nunca vai a log, a mensagem nem a erro.
+   */
+  sessao?: string;
+  /** Quando a sessão foi conferida com o Banco pela última vez (ms do relógio da sala); ausente = nunca depois de abrir (a abertura já a provou). */
+  sessaoConferidaEm?: number;
   /**
    * A versão do protocolo que o cliente declarou em `criar-sala`/`entrar` (L47: a sala atende a janela de `PROTOCOLO_VERSAO_MINIMA`
    * a `PROTOCOLO_VERSAO`). O `Registro` a grava ao aceitar a entrada; a ligação a usa para falar com cada um como ele entende.
@@ -143,8 +157,11 @@ interface Participante {
   readonly baldeEmoji: BaldeDeTokens;
   /** Quando o último `diagnostico` desta conexão foi aceito; zera ao religar. */
   diagnosticoEm: number | null;
-  /** O `id` da carteira com que entrou (nunca o código); fixo enquanto a pessoa volta com o mesmo token. `null` = joga sem apostar. */
-  readonly carteira: string | null;
+  /**
+   * O `id` da carteira com que entrou (nunca o código); fixo enquanto a pessoa volta com o mesmo token, até a conta dela sair ou ser
+   * excluída (`esquecerCarteira`) ou a volta chegar sem a conta (`religar`). `null` = joga sem apostar.
+   */
+  carteira: string | null;
 }
 
 /** O que vale desde que a partida começou, para pagar no fim: a aposta daquela hora e quem estava em cada lugar. */
@@ -157,6 +174,8 @@ interface ApostaEmCurso {
   readonly seguidas: Map<number, number>;
   /** O que cada lugar fez na partida (L38): só vira estatística da carteira se ela acabar de verdade, com aposta valendo e a física padrão. */
   readonly parciais: Map<number, ParcialDaPartida>;
+  /** A chave com que a partida reservou o pote no Banco (L57); `null` sem a caixa do saldo, sem aposta valendo ou sem moeda. */
+  readonly chaveDoBanco: string | null;
 }
 
 /** Por que a física não muda agora (`fase-errada` com o motivo no texto: o código é o mesmo da fase, o texto diz qual). */
@@ -351,6 +370,43 @@ export class Sala {
     this.transmitirEstado();
   }
 
+  /**
+   * A carteira `id` deixa de valer para quem está sentado com ela (L61b: a conta saiu ou foi excluída, ou a sessão morreu): o lugar segue, sem
+   * carteira, e o `estado-sala` passa a mostrar `saldo: null`. A aposta que já está em curso (`apostaEmCurso`, com o rol dela) continua até o
+   * fim, como a de quem sai no meio de uma partida. Devolve se alguém foi tocado.
+   */
+  esquecerCarteira(id: string, segue?: (conn: Conexao) => boolean): boolean {
+    let mudou = false;
+    for (const p of this.participantes) {
+      if (p.carteira !== id) continue;
+      if (p.conn !== null && segue?.(p.conn)) continue;
+      p.carteira = null;
+      mudou = true;
+    }
+    if (mudou) this.transmitirEstado();
+    return mudou;
+  }
+
+  /** Como `esquecerCarteira`, só para quem está nesta conexão e só se a carteira é a de `id` (a sessão dela morreu; outras conexões da mesma conta seguem). */
+  esquecerCarteiraDe(conn: Conexao, id: string): boolean {
+    const p = this.porConexao.get(conn);
+    if (!p || p.carteira !== id) return false;
+    p.carteira = null;
+    this.transmitirEstado();
+    return true;
+  }
+
+  /**
+   * As conexões de quem está sentado com a carteira de uma conta, quando a sala tem aposta (L61b): são elas que o `Registro` confere com o
+   * Banco (a sessão ainda vale?) antes de uma partida com aposta começar.
+   */
+  conexoesDeContaNaAposta(): readonly Conexao[] {
+    if (this.apostaDaSala <= 0) return [];
+    const conexoes: Conexao[] = [];
+    for (const p of this.participantes) if (p.lugar !== null && p.conn !== null && p.carteira !== null && p.conn.idDaConta !== undefined) conexoes.push(p.conn);
+    return conexoes;
+  }
+
   /** Tira da sala quem saiu por conta própria, lembrando a identidade para quando voltar com o mesmo token. */
   private remover(p: Participante): void {
     this.participantes.splice(this.participantes.indexOf(p), 1);
@@ -384,6 +440,8 @@ export class Sala {
   }
 
   private religar(p: Participante, conn: Conexao): void {
+    // L61b: a carteira de uma conta só continua com quem prova ser a conta (o token da sala sozinho não basta: quem saiu da conta não volta com a carteira dela)
+    if (p.carteira !== null && this.deps.carteiras.ehDaConta(p.carteira) && conn.idDaConta !== p.carteira) p.carteira = null;
     const substituiu = p.conn !== null;
     const ausenteMs = p.desconectadoEm === null ? 0 : this.deps.relogio() - p.desconectadoEm;
     if (p.conn) {
@@ -508,6 +566,7 @@ export class Sala {
     this.mesa = null;
     this.seq = 0;
     this.ultima = null;
+    this.devolverApostaEmCurso(); // a partida acabou sem vencedor e sem pagar: a reserva do Banco volta
     this.apostaEmCurso = null;
     this.fisicaMexidaNaPartida = false;
     this.voandoAte = 0;
@@ -641,8 +700,10 @@ export class Sala {
     const rng: Rng = criarRng(this.deps.sortear(2 ** 32));
     const { partida, arrumacao } = this.deps.regras.novaPartida(this.casa.regras, jogadores, rng);
     this.partida = partida;
+    this.devolverApostaEmCurso(); // uma aposta anterior que ainda tem chave solta a reserva antes de a nova prender a sua
     const rol = this.rolDaPartida(partida);
-    this.apostaEmCurso = { valor: this.apostaDaSala, rol, faltas: new Map(), seguidas: new Map(), parciais: new Map() };
+    const valor = this.apostaDaSala;
+    this.apostaEmCurso = { valor, rol, faltas: new Map(), seguidas: new Map(), parciais: new Map(), chaveDoBanco: this.reservarNoBanco(rol, valor) };
     this.fisicaMexidaNaPartida = false;
     this.voandoAte = 0;
     this.deps.carteiras.registrarPartida(rol.flatMap((q) => (q.carteira === null ? [] : [q.carteira])));
@@ -771,6 +832,27 @@ export class Sala {
   }
 
   /**
+   * L57, só com o saldo no Banco: a partida que vale moeda prende `valor` de cada carteira do rol (`reservar`) sob uma chave que é única
+   * no mundo. O código da sala se repete com o tempo, então a chave leva também o instante e um sorteio: uma chave repetida com outro
+   * conteúdo é `chave-reusada` no Banco e o pote some. Devolve a chave, ou `null` quando não há o que reservar.
+   */
+  private reservarNoBanco(rol: readonly ParticipanteDoRol[], valor: number): string | null {
+    const carteiras = this.deps.carteiras;
+    if (!carteiras.saldoNoBanco || valor <= 0 || !valeMoeda(rol)) return null;
+    const chave = chaveDaAposta(this.codigo, this.deps.relogio(), this.deps.sortear(2 ** 32));
+    carteiras.reservarAposta(chave, rol.flatMap((q) => (q.carteira === null ? [] : [{ id: q.carteira, valor }])));
+    return chave;
+  }
+
+  /** Solta no Banco a reserva da aposta em curso, se ela tem uma (anulada, sem dinheiro a mover, volta ao lobby, partida nova, sala fechada). Zera a chave: nunca devolve duas vezes. */
+  devolverApostaEmCurso(): void {
+    const emCurso = this.apostaEmCurso;
+    if (!emCurso || emCurso.chaveDoBanco === null) return;
+    this.deps.carteiras.devolverAposta(emCurso.chaveDoBanco);
+    this.apostaEmCurso = { ...emCurso, chaveDoBanco: null };
+  }
+
+  /**
    * Quem está em cada lugar da partida que começa, com a carteira de cada um: é este o rol que a aposta vai pagar. Só entra
    * a carteira de quem está conectado agora (quem já saiu nunca é posto no pote por uma partida que não aceitou jogar).
    * Com `contarDesconectados`, a de quem está sentado conta também: é o rol que a próxima partida teria se todos voltassem (a
@@ -802,10 +884,18 @@ export class Sala {
     const emCurso = this.apostaEmCurso;
     if (!emCurso || partida.vencedor === null) return null;
     this.apostaEmCurso = null;
-    const { valor, rol } = emCurso;
+    const { valor, rol, chaveDoBanco } = emCurso;
     const modalidade = partida.config.modalidade;
     const conta = calcularAposta(rol, valor, partida.vencedor);
+    // L57: a reserva do Banco sai por `liquidar` (junto do saldo, em `aplicar`) ou por `devolver`; nunca fica presa
+    let devolvida = false;
+    const devolver = (): void => {
+      if (chaveDoBanco === null || devolvida) return;
+      devolvida = true;
+      this.deps.carteiras.devolverAposta(chaveDoBanco);
+    };
     if (conta.anulada) {
+      devolver();
       this.deps.log('aposta', { sala: this.codigo, valor, anulada: conta.motivo });
       this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: conta.motivo });
       return { tipo: 'aposta-paga', valor, variacoes: [], anulada: conta.motivo };
@@ -813,12 +903,14 @@ export class Sala {
     const motivoDeNaoContar = !valeMoeda(rol) ? 'menos-de-duas-carteiras' : this.fisicaMexidaNaPartida ? 'fisica-mexida' : null;
     const estatisticas = motivoDeNaoContar === null ? estatisticasDaPartida({ rol, vencedor: partida.vencedor, modalidade, parciais: emCurso.parciais, pagamentos: conta.pagamentos }) : [];
     const semDinheiro = conta.pagamentos.every((pg) => pg.delta === 0);
+    if (semDinheiro) devolver();
     if (semDinheiro && estatisticas.length === 0) {
       this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: motivoDeNaoContar ?? 'sem-carteira' });
       return null;
     }
     const variacoes = semDinheiro ? [] : conta.pagamentos.map((pg) => ({ id: pg.carteira, delta: pg.delta }));
-    if (!this.deps.carteiras.aplicar(variacoes, this, estatisticas)) {
+    if (!this.deps.carteiras.aplicar(variacoes, this, estatisticas, chaveDoBanco ?? undefined)) {
+      devolver(); // a carteira de alguém sumiu no meio da partida: o pote não é pago aqui, então a reserva não fica presa
       // sem dinheiro a mover, o que falhou foi só a estatística: o log não acusa a aposta (tudo ou nada: com dinheiro, é o lote)
       if (semDinheiro) this.deps.log('estatistica', { sala: this.codigo, modalidade, contou: false, motivo: 'falhou' });
       else this.deps.log('aposta-falhou', { sala: this.codigo, valor });
@@ -1024,6 +1116,7 @@ export class Sala {
   }
 
   encerrar(motivo: string): void {
+    this.devolverApostaEmCurso();
     for (const conn of [...this.porConexao.keys()]) conn.fechar(FECHAMENTO.expirada, motivo);
     this.porConexao.clear();
     this.participantes.length = 0;

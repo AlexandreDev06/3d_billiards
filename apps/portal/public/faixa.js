@@ -9,8 +9,10 @@
       return false;
     }
   }
-  if (jaAceito()) return;
-  faixa.hidden = false;
+  if (jaAceito()) {
+    faixa.hidden = true;
+    return;
+  }
   faixa.querySelector('button').addEventListener('click', function () {
     try {
       globalThis.localStorage.setItem(CHAVE, '1');

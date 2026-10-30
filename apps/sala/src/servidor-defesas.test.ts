@@ -249,6 +249,15 @@ describe('baixos — 503 sem caminho absoluto e Content-Security-Policy no HTML'
     expect(local).toContain(`ws://127.0.0.1:${s.porta} wss://127.0.0.1:${s.porta}`);
   });
 
+  it('L52: a sala Node não libera o AdSense nem com Host sinuca.becogames.app (só o Worker, com nonce, faz isso)', async () => {
+    const s = await rede.subir();
+    for (const host of ['sinuca.becogames.app', `127.0.0.1:${s.porta}`]) {
+      const politica = await csp(s.porta, host);
+      expect(politica, host).toMatch(/script-src 'self'(;|$)/);
+      expect(politica, host).not.toMatch(/google|doubleclick|googlesyndication|adtrafficquality|nonce|strict-dynamic|frame-src/);
+    }
+  });
+
   it('o JS e os assets não precisam de CSP; erros em texto simples seguem com os cabeçalhos de segurança', async () => {
     const s = await rede.subir();
     const r = await fetch(`http://127.0.0.1:${s.porta}/nao-existe.js`);

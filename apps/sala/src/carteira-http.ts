@@ -17,6 +17,10 @@
  * existência da carteira (código errado gasta o balde de falhas do IP, que esgotado vira `limite`); limite por carteira (só
  * as que existem têm balde, então chutar códigos não enche a memória); e só então o corpo é lido, com prazo.
  *
+ * Conta (L61): com uma sessão válida da conta (`pedido.idDaConta`, já provada por quem montou o pedido) a identidade é a da conta e o
+ * `Authorization` é ignorado; `POST /carteira` devolve (200, sem `codigo`) a carteira da conta em vez de criar outra. A carteira de uma
+ * conta (`daConta`) não abre só pelo código: sem a sessão do mesmo `id`, o código vale `carteira-invalida`.
+ *
  * Nunca há CORS: a página fala com o próprio servidor (ou pelo proxy do Vite), e outro site não lê nada daqui. O código e
  * o IP nunca vão a log.
  */
@@ -52,6 +56,11 @@ export interface PedidoDaCarteira {
   readonly caminho: string;
   /** A CHAVE do balde do IP (`ipDoCliente`); nunca vai a log. */
   readonly ip: string;
+  /**
+   * O `id` da conta que a sessão (o cookie) já provou, resolvido por quem montou o pedido (o Worker, ou o servidor Node), ou ausente (L61).
+   * Com ele, a identidade é a da conta e o código do pedido é ignorado; sem ele vale o código do convidado, como sempre.
+   */
+  readonly idDaConta?: string;
   cabecalho(nome: string): string | undefined;
   lerCorpo(limite: number, tempoMs: number): Promise<LeituraDoCorpo>;
   /** O corpo ainda pode chegar (ninguém o leu): a resposta pede para fechar a conexão e o resto é descartado. Sem corpo ou já lido: `false`. */
@@ -110,6 +119,8 @@ const TEXTO_DO_ERRO: Readonly<Record<CodigoErroCarteira, string>> = {
 };
 
 const MENSAGEM_ENCERRANDO = 'O servidor está reiniciando. Tente de novo daqui a pouco.';
+const MENSAGEM_BANCO_FORA = 'Não deu para falar com o banco agora. Se a compra entrar, o item aparece sozinho.';
+const MENSAGEM_CONGELADA = 'A sala está em manutenção por alguns minutos.';
 
 const ROTAS: Readonly<Record<string, readonly string[]>> = {
   '/carteira': ['GET', 'POST'],
@@ -172,6 +183,8 @@ export function criarHttpDaCarteira(deps: DependenciasDaCarteira): HttpDaCarteir
     const ip = pedido.ip;
     if (!requisicoesPorIp.tentar(ip)) return limite(pedido);
     const versao = versaoDoCabecalho(pedido.cabecalho(CABECALHO_DO_PROTOCOLO));
+    // L60b: durante a migração do saldo nenhuma carteira é escrita (criar, comprar, usar, balão); ler segue valendo
+    if (metodo === 'POST' && carteiras.congelada) return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_CONGELADA, extra: { 'Retry-After': 60 } });
 
     const criando = metodo === 'POST' && caminho === '/carteira';
     const lendo = metodo === 'GET';
@@ -179,9 +192,14 @@ export function criarHttpDaCarteira(deps: DependenciasDaCarteira): HttpDaCarteir
     const temCorpo = pedido.cabecalho('transfer-encoding') !== undefined || (declarado !== undefined && declarado !== '0');
     const autorizacao = pedido.cabecalho('authorization');
 
-    // quem é: tudo menos criar exige o código certo no cabeçalho
+    // quem é: a sessão da conta manda (L61) e o código do pedido é ignorado; sem sessão, tudo menos criar exige o código certo no cabeçalho
     let id: string | undefined;
-    if (criando) {
+    const idDaConta = pedido.idDaConta;
+    if (idDaConta !== undefined) {
+      const g = carteiras.garantirDaConta(idDaConta);
+      if (!g.ok) return recusarDaConta(pedido, g.erro);
+      id = g.id;
+    } else if (criando) {
       if (autorizacao !== undefined) return recusar(pedido, 'requisicao-invalida', { mensagem: 'Criar uma carteira não leva código.' });
     } else {
       const codigo = BEARER.exec(autorizacao ?? '')?.[1];
@@ -221,13 +239,19 @@ export function criarHttpDaCarteira(deps: DependenciasDaCarteira): HttpDaCarteir
 
     if (criando) {
       if (temCorpo && !corpoVazio(texto)) return recusar(pedido, 'requisicao-invalida', { mensagem: 'Criar uma carteira não leva corpo.' });
-      if (!criarPorIp.tentar(ip)) return limite(pedido, 3600);
-      const nova = carteiras.criar();
-      if (!nova) return recusar(pedido, 'limite', { status: 503, mensagem: carteiras.encerrado ? MENSAGEM_ENCERRANDO : 'Não cabem mais carteiras agora. Tente mais tarde.' });
-      return responder(201, estadoDaCarteiraParaVersao({ codigo: nova.codigo, ...carteiras.ler(nova.id)! }, versao));
+      // com a sessão da conta (L61) criar devolve a carteira dela, sem criar outra (e sem gastar o balde de criação)
+      if (idDaConta === undefined) {
+        if (!criarPorIp.tentar(ip)) return limite(pedido, 3600);
+        const nova = carteiras.criar();
+        if (!nova) return recusar(pedido, 'limite', { status: 503, mensagem: carteiras.encerrado ? MENSAGEM_ENCERRANDO : 'Não cabem mais carteiras agora. Tente mais tarde.' });
+        return responder(201, estadoDaCarteiraParaVersao({ codigo: nova.codigo, ...carteiras.ler(nova.id)! }, versao));
+      }
     }
 
-    if (lendo) return responder(200, estadoDaCarteiraParaVersao(carteiras.ler(id!)!, versao));
+    if (lendo || criando) {
+      await carteiras.reler(id!); // com o saldo no Banco (L59), o espelho é relido: outro jogo pode ter gastado
+      return responder(200, estadoDaCarteiraParaVersao(carteiras.ler(id!)!, versao));
+    }
 
     let corpo: unknown;
     try {
@@ -240,7 +264,7 @@ export function criarHttpDaCarteira(deps: DependenciasDaCarteira): HttpDaCarteir
     if (caminho === '/carteira/balao/comprar') {
       const valido = validarPedidoDeItemDoBalao(corpo);
       if (!valido.ok) return recusar(pedido, 'requisicao-invalida', { mensagem: 'O corpo precisa ser { "item": "...", "preco": 123 } (preco é opcional).' });
-      return resposta(pedido, carteiras.comprarItemDoBalao(id!, valido.valor.item, undefined, valido.valor.preco), VERSAO_DO_BALAO);
+      return resposta(pedido, await carteiras.comprarItemDoBalaoNoBanco(id!, valido.valor.item, undefined, valido.valor.preco), VERSAO_DO_BALAO);
     }
     if (caminho === '/carteira/balao/equipar') {
       const valido = validarPedidoDeAparencia(corpo);
@@ -255,16 +279,33 @@ export function criarHttpDaCarteira(deps: DependenciasDaCarteira): HttpDaCarteir
     if (caminho === '/carteira/usar' && valido.valor.preco !== undefined) {
       return recusar(pedido, 'requisicao-invalida', { mensagem: 'Trocar de skin não leva preço: o corpo é só { "skin": "..." }.' });
     }
-    // compra e troca são síncronas dentro do armazém: nada entre conferir o saldo e descontá-lo
-    const r =
-      caminho === '/carteira/comprar' ? carteiras.comprar(id!, valido.valor.skin, undefined, valido.valor.preco) : carteiras.usar(id!, valido.valor.skin);
+    // sem o Banco, compra e troca são síncronas dentro do armazém: nada entre conferir o saldo e descontá-lo; com ele (L59), a compra espera o `debitar`
+    const r = caminho === '/carteira/comprar' ? await carteiras.comprarSkin(id!, valido.valor.skin, undefined, valido.valor.preco) : carteiras.usar(id!, valido.valor.skin);
     return resposta(pedido, r, versao);
+  }
+
+  /** A conta da sessão não tem carteira para entregar agora (`garantirDaConta` recusou). */
+  function recusarDaConta(pedido: PedidoDaCarteira, erro: 'sem-banco' | 'congelado' | 'encerrado' | 'cheio' | 'excluida'): RespostaDaCarteira {
+    switch (erro) {
+      case 'congelado':
+        return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_CONGELADA, extra: { 'Retry-After': 60 } });
+      case 'encerrado':
+        return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_ENCERRANDO });
+      case 'cheio':
+        return recusar(pedido, 'limite', { status: 503, mensagem: 'Não cabem mais carteiras agora. Tente mais tarde.' });
+      case 'sem-banco':
+        return recusar(pedido, 'carteira-invalida', { mensagem: 'Esta conta ainda não tem carteira na sinuca.' });
+      case 'excluida':
+        return recusar(pedido, 'carteira-invalida', { mensagem: 'Esta conta foi excluída.' });
+    }
   }
 
   /** A resposta do armazém: o estado como o cliente que fala `versao` o entende, ou o erro com o código do protocolo. */
   function resposta(pedido: PedidoDaCarteira, r: ResultadoDeLoja, versao: number): RespostaDaCarteira {
     if (r.ok) return responder(200, estadoDaCarteiraParaVersao(r.estado, versao));
     if (r.erro === 'encerrado') return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_ENCERRANDO });
+    if (r.erro === 'congelado') return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_CONGELADA, extra: { 'Retry-After': 60 } });
+    if (r.erro === 'fora-do-ar') return recusar(pedido, 'limite', { status: 503, mensagem: MENSAGEM_BANCO_FORA, extra: { 'Retry-After': 30 } });
     return recusar(pedido, r.erro);
   }
 

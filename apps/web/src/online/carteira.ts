@@ -17,8 +17,9 @@ import {
   type MissoesDoDia,
   type SkinTaco,
 } from '@sinuca/protocolo';
-import { gravarJson, lerJson, type ArmazenamentoMinimo } from '../armazenamento';
+import { apagarJson, gravarJson, lerJson, type ArmazenamentoMinimo } from '../armazenamento';
 import { linkDaCarteira } from './levar-carteira';
+import { MENSAGEM_SESSAO_ACABOU } from './mensagens-da-conta';
 import { textoDeMoedas } from './moedas';
 
 /** Onde o navegador guarda o código secreto da carteira (e a versão do formato). */
@@ -58,14 +59,17 @@ export interface RespostaHttp {
 
 export type PedirHttp = (url: string, init: PedidoHttp) => Promise<RespostaHttp>;
 
-/** O `fetch` do navegador, no formato acima: sem cookies, sem cache (o saldo muda), no mesmo endereço da página. */
+/** O `fetch` do navegador, no formato acima: sem cache (o saldo muda), no mesmo endereço da página; o cookie da conta (L62) vai só ao mesmo endereço. */
 export const pedirPeloNavegador: PedirHttp = (url, init) =>
-  fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: init.sinal, cache: 'no-store', credentials: 'omit' });
+  fetch(url, { method: init.method, headers: init.headers, body: init.body, signal: init.sinal, cache: 'no-store', credentials: 'same-origin' });
 
 // ---------------------------------------------------------------- resultados
 
-/** `fora-do-ar`: a rede caiu, o servidor não respondeu a tempo ou respondeu algo que não é do protocolo. */
-export type FalhaDaCarteira = CodigoErroCarteira | 'fora-do-ar';
+/**
+ * `fora-do-ar`: a rede caiu, o servidor não respondeu a tempo ou respondeu algo que não é do protocolo. `sessao-acabou` (L62): o código deste
+ * navegador era de uma conta e o cookie venceu; a carteira NÃO é recomeçada, quem escolhe é a pessoa.
+ */
+export type FalhaDaCarteira = CodigoErroCarteira | 'fora-do-ar' | 'sessao-acabou';
 
 export type ResultadoDaCarteira =
   | { readonly ok: true; readonly estado: EstadoCarteira }
@@ -105,6 +109,8 @@ export function textoDoErroDaCarteira(erro: FalhaDaCarteira, faltam?: number, de
       return 'Muitos pedidos agora. Tente de novo daqui a pouco.';
     case 'requisicao-invalida':
       return 'O servidor não aceitou o pedido. Recarregue a página e tente de novo.';
+    case 'sessao-acabou':
+      return MENSAGEM_SESSAO_ACABOU;
     case 'fora-do-ar':
       return 'A loja está fora do ar agora. O jogo segue sem ela.';
   }
@@ -122,6 +128,10 @@ export interface DependenciasDaCarteira {
   readonly esperaMaximaMs?: number;
   /** Prefixo dos caminhos (`''` = o mesmo endereço da página, que o Vite repassa à sala). */
   readonly base?: string;
+  /** Este navegador já esteve numa conta (L62)? Então um código que o servidor não conhece pode ser de uma conta com a sessão vencida. */
+  readonly sessaoPerdida?: () => boolean;
+  /** A carteira topou com a sessão vencida (L62): a tela pergunta se a pessoa entra de novo ou joga como convidado. */
+  readonly aoPerderASessao?: () => void;
 }
 
 /**
@@ -137,6 +147,8 @@ export class CarteiraDoAparelho {
   #emVoo: Promise<ResultadoDaCarteira> | null = null;
   /** Sobe a cada troca de carteira (L43): uma resposta que chega de um pedido feito com o código de antes não vale mais. */
   #geracao = 0;
+  /** Com a sessão da conta (L62) a carteira é a da conta: sem código, sem `Authorization`, sem carteira nova no lugar. */
+  #modoConta = false;
   readonly #ouvintes = new Set<(estado: EstadoCarteira | null) => void>();
 
   constructor(private readonly deps: DependenciasDaCarteira) {
@@ -157,6 +169,42 @@ export class CarteiraDoAparelho {
   /** O código está no `localStorage` (sobrevive a fechar a página)? Falso com o armazenamento bloqueado. */
   guardada(): boolean {
     return this.#guardada;
+  }
+
+  /** A carteira lida é a de uma conta (L62)? */
+  modoConta(): boolean {
+    return this.#modoConta;
+  }
+
+  /**
+   * Liga ou desliga a carteira da conta (L62). Trocar de modo esquece o estado (era de outra carteira), invalida o que ainda voa e avisa;
+   * o código do convidado, se houver, continua guardado como estava.
+   */
+  definirModoConta(ligado: boolean): void {
+    if (ligado === this.#modoConta) return;
+    this.#modoConta = ligado;
+    this.#geracao++;
+    this.#emVoo = null;
+    this.#estado = null;
+    this.#aviso = null;
+    this.#avisar();
+  }
+
+  /**
+   * Esquece o código deste navegador e cria uma carteira nova e vazia (L62): é o que "Sair" e "Jogar como convidado" fazem. O código velho
+   * não serve para nada (a carteira da conta só abre com a sessão). Sem aviso de "carteira nova": a pessoa pediu.
+   */
+  async comecarDoZero(): Promise<ResultadoDaCarteira> {
+    this.#geracao++;
+    this.#emVoo = null;
+    this.#modoConta = false;
+    this.#codigo = null;
+    this.#guardada = false;
+    this.#estado = null;
+    this.#aviso = null;
+    apagarJson(CHAVE_DA_CARTEIRA, this.deps.armazenamento);
+    this.#avisar();
+    return this.#criar();
   }
 
   /** O recado pendente (a carteira foi trocada por uma nova), até alguém o dispensar. */
@@ -222,10 +270,7 @@ export class CarteiraDoAparelho {
     const pedido = preco !== undefined && Number.isInteger(preco) && preco > 0 ? { item, preco } : { item };
     const r = await this.#pedirComCarteira('/carteira/balao/comprar', pedido);
     if (!r.ok) {
-      if (r.erro === 'carteira-invalida') {
-        await this.#recomecar();
-        return falha('carteira-invalida');
-      }
+      if (r.erro === 'carteira-invalida') return this.#aposInvalida();
       const faltam = r.erro === 'saldo-insuficiente' && this.#estado !== null ? precoDoItemDoBalao(item) - this.#estado.saldo : undefined;
       return falha(r.erro, faltam, 'balao');
     }
@@ -241,10 +286,7 @@ export class CarteiraDoAparelho {
     if (!valida.ok) return falha('aparencia-invalida', undefined, 'balao');
     const r = await this.#pedirComCarteira('/carteira/balao/equipar', { aparencia: valida.valor });
     if (!r.ok) {
-      if (r.erro === 'carteira-invalida') {
-        await this.#recomecar();
-        return falha('carteira-invalida');
-      }
+      if (r.erro === 'carteira-invalida') return this.#aposInvalida();
       return falha(r.erro, undefined, 'balao');
     }
     return this.#adotar(r.corpo);
@@ -304,26 +346,23 @@ export class CarteiraDoAparelho {
 
   async #sincronizar(): Promise<ResultadoDaCarteira> {
     this.#lerGuardado();
-    if (this.#codigo === null) return this.#criar();
+    if (this.#codigo === null && !this.#modoConta) return this.#criar();
     const r = await this.#pedir('GET', '/carteira', null);
-    if (!r.ok) return r.erro === 'carteira-invalida' ? this.#recomecar() : falha(r.erro);
+    if (!r.ok) return r.erro === 'carteira-invalida' ? this.#invalida() : falha(r.erro);
     return this.#adotar(r.corpo);
   }
 
   async #pedirSkin(caminho: '/carteira/comprar' | '/carteira/usar', skin: SkinTaco, preco?: number): Promise<ResultadoDaCarteira> {
     if (!ehSkinDeTaco(skin)) return falha('skin-invalida');
     this.#lerGuardado();
-    if (this.#codigo === null) {
+    if (this.#codigo === null && !this.#modoConta) {
       const pronta = await this.garantir();
       if (!pronta.ok) return pronta;
     }
     const pedido = caminho === '/carteira/comprar' && preco !== undefined && Number.isInteger(preco) && preco > 0 ? { skin, preco } : { skin };
     const r = await this.#pedir('POST', caminho, pedido);
     if (!r.ok) {
-      if (r.erro === 'carteira-invalida') {
-        await this.#recomecar();
-        return falha('carteira-invalida');
-      }
+      if (r.erro === 'carteira-invalida') return this.#aposInvalida();
       if (r.erro === 'preco-mudou') {
         // Relê o saldo e a vitrine: a tela já mostra o preço novo quando o aviso aparece.
         await this.garantir();
@@ -338,11 +377,30 @@ export class CarteiraDoAparelho {
   /** Um POST autenticado da carteira (cria a carteira antes se o aparelho ainda não tem uma). */
   async #pedirComCarteira(caminho: string, corpo: object): Promise<Resposta> {
     this.#lerGuardado();
-    if (this.#codigo === null) {
+    if (this.#codigo === null && !this.#modoConta) {
       const pronta = await this.garantir();
       if (!pronta.ok) return { ok: false, erro: pronta.erro };
     }
     return this.#pedir('POST', caminho, corpo);
+  }
+
+  /**
+   * O servidor não conhece a carteira. Com a conta ligada não há o que recomeçar; num navegador que já teve conta, a sessão venceu e
+   * quem decide é a pessoa (`sessao-acabou`); só o convidado comum ganha uma carteira nova.
+   */
+  async #invalida(): Promise<ResultadoDaCarteira> {
+    if (this.#modoConta) return falha('carteira-invalida');
+    if (this.deps.sessaoPerdida?.() === true) {
+      this.deps.aoPerderASessao?.();
+      return falha('sessao-acabou');
+    }
+    return this.#recomecar();
+  }
+
+  /** Depois de um pedido que a sala recusou por carteira desconhecida: o que dizer a quem pediu. */
+  async #aposInvalida(): Promise<ResultadoDaCarteira> {
+    const r = await this.#invalida();
+    return r.ok ? falha('carteira-invalida') : r;
   }
 
   /** O servidor não conhece o código: esquece-o e cria uma carteira nova, com o aviso se deu certo. */
@@ -392,7 +450,7 @@ export class CarteiraDoAparelho {
     // Pedido com o código DESTE aparelho: se a carteira for trocada enquanto ele voa, a resposta é da carteira de antes e não vale.
     const geracao = this.#geracao;
     const headers: Record<string, string> = { Accept: 'application/json', [CABECALHO_DO_PROTOCOLO]: String(PROTOCOLO_VERSAO) };
-    if (caminho !== '/carteira' || metodo === 'GET') headers.Authorization = `Bearer ${codigoDeFora ?? this.#codigo}`;
+    if (!this.#modoConta && (caminho !== '/carteira' || metodo === 'GET')) headers.Authorization = `Bearer ${codigoDeFora ?? this.#codigo}`;
     if (corpo !== null) headers['Content-Type'] = 'application/json';
     const aborto = new AbortController();
     const limite = this.deps.esperaMaximaMs ?? ESPERA_MAXIMA_DA_CARTEIRA_MS;

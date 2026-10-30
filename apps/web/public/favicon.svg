@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <radialGradient id="bola" cx="38%" cy="32%" r="70%">
+      <stop offset="0" stop-color="#4a4a52"/>
+      <stop offset="0.45" stop-color="#16161a"/>
+      <stop offset="1" stop-color="#000"/>
+    </radialGradient>
+  </defs>
+  <circle cx="32" cy="32" r="30" fill="url(#bola)"/>
+  <circle cx="32" cy="30" r="14" fill="#fff"/>
+  <text x="32" y="36.5" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-weight="700" font-size="18" fill="#111">8</text>
+  <ellipse cx="21" cy="16" rx="7" ry="4" fill="#fff" opacity="0.28" transform="rotate(-30 21 16)"/>
+</svg>

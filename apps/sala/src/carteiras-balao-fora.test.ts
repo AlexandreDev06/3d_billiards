@@ -190,7 +190,7 @@ describe('o caminho de volta no Durable Object: a versão anterior lê o que a n
     expect(devolta.ler(criada.id)).toBeDefined();
   });
 
-  it('o banco do formato anterior abre na versão nova sem regravar nenhuma carteira: só a tabela do balão é criada', () => {
+  it('o banco do formato anterior abre na versão nova sem regravar nenhuma carteira: só as tabelas do balão e da conta são criadas (vazias)', () => {
     const b = banco();
     const velha = abrirDOAnterior(b);
     const a = velha.criar()!;
@@ -208,8 +208,8 @@ describe('o caminho de volta no Durable Object: a versão anterior lê o que a n
     expect(linhas(b)).toEqual(antes);
     expect(baloes(b)).toEqual({});
     expect(descartadasDe(b)).toBe(0);
-    // a única coisa nova no banco é a tabela do balão (vazia); nenhum INSERT, UPDATE nem DELETE, nem na primeira vez nem na segunda
-    expect(tabelas()).toEqual([...tabelasDeAntes, 'carteiras_balao'].sort());
+    // as únicas coisas novas no banco são as tabelas do balão e da conta (L61: `carteiras_da_conta`; L61b: `contas_excluidas` e `marcas_pendentes`), vazias e ignoradas pela versão anterior; nenhum INSERT, UPDATE nem DELETE, nem na primeira vez nem na segunda
+    expect(tabelas()).toEqual([...tabelasDeAntes, 'carteiras_balao', 'carteiras_da_conta', 'contas_excluidas', 'marcas_pendentes'].sort());
     expect(escritasDe(primeira.comandos)).toEqual([]);
     const segunda = banco(b.db);
     abrirDO(segunda);

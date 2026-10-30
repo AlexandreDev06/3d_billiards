@@ -34,7 +34,7 @@ import {
 import { PRESET_MATA_MATA } from '@sinuca/regras';
 import { ArmazemDeCarteiras } from './carteiras';
 import { SEM_LIMITE } from './para-testes';
-import { ClienteWs } from './para-testes-ws';
+import { ClienteWs, httpBruto } from './para-testes-ws';
 import { depoisDe, escolherTacada, http, subirWrangler, type WranglerLocal } from './para-testes-worker';
 
 const SEGREDO = 'segredo-so-de-teste-do-l41-0123456789';
@@ -122,6 +122,12 @@ describe('a sala no Worker da Cloudflare (wrangler dev --local, workerd de verda
     expect(pagina.cabecalhos.get('x-content-type-options')).toBe('nosniff');
     expect(pagina.bruto).toContain('/assets/app-1.js');
 
+    // L52: no endereço de teste (127.0.0.1) não há anúncio: nenhum nonce, nenhuma origem do Google, script-src fechado
+    const politicaLocal = pagina.cabecalhos.get('content-security-policy') ?? '';
+    expect(politicaLocal).toContain("script-src 'self';");
+    expect(politicaLocal).not.toMatch(/google|doubleclick|googlesyndication|adtrafficquality|nonce|strict-dynamic|frame-src/);
+    expect(pagina.bruto).not.toContain('nonce=');
+
     const js = await http(w.base, 'GET', '/assets/app-1.js');
     expect(js.status).toBe(200);
     expect(js.cabecalhos.get('cache-control')).toContain('immutable');
@@ -146,6 +152,11 @@ describe('a sala no Worker da Cloudflare (wrangler dev --local, workerd de verda
     expect((await http(w.base, 'POST', '/admin/uso', { codigo: SEGREDO })).status).toBe(405);
     expect((await http(w.base, 'GET', '/admin/outra-coisa', { codigo: SEGREDO })).status).toBe(404);
     expect((await uso()).carteiras).toBe(0);
+
+    // L61b: com SALDO_NO_BANCO desligada (o padrão do wrangler.jsonc) não há conta na sinuca: o convidado não vira conta com saldo no Banco antes da migração
+    for (const [metodo, caminho] of [['GET', '/conta/eu'], ['POST', '/conta/criar'], ['POST', '/conta/sair'], ['POST', '/conta/excluir']] as const) {
+      expect((await http(w.base, metodo, caminho)).status, caminho).toBe(404);
+    }
   }, 60_000);
 
   describe('a importação do carteiras.json da sala Node', () => {
@@ -232,6 +243,43 @@ describe('a sala no Worker da Cloudflare (wrangler dev --local, workerd de verda
     }, 180_000);
   });
 
+
+  it('L52: no host sinuca.becogames.app a página leva nonce em cada script e a política do AdSense; no workers.dev e no local, não', async () => {
+    const pedir = async (host: string, extra = ''): Promise<{ cabecalhos: string; corpo: string }> => {
+      const bruto = await httpBruto(w.porta, `GET / HTTP/1.1\r\nHost: ${host}\r\n${extra}Connection: close\r\n\r\n`);
+      const corte = bruto.indexOf('\r\n\r\n');
+      return { cabecalhos: bruto.slice(0, corte), corpo: bruto.slice(corte + 4) };
+    };
+    const politicaDe = (cabecalhos: string): string => /content-security-policy: ([^\r\n]*)/i.exec(cabecalhos)?.[1] ?? '';
+
+    const a = await pedir('sinuca.becogames.app');
+    const politica = politicaDe(a.cabecalhos);
+    const nonce = /script-src 'nonce-([^']+)' 'strict-dynamic' 'self'/.exec(politica)?.[1];
+    expect(nonce, politica).toBeDefined();
+    expect(a.corpo).toContain(`nonce="${nonce}"`);
+    expect(a.corpo).toContain('/assets/app-1.js');
+    expect(politica).toContain('frame-src https://googleads.g.doubleclick.net');
+    expect(politica).toContain("object-src 'none'");
+    expect(politica).toContain("base-uri 'none'");
+    expect(politica).toContain("frame-ancestors 'none'");
+    expect(politica).toContain('ws://sinuca.becogames.app wss://sinuca.becogames.app');
+    expect(politica).not.toContain('unsafe-eval');
+    expect(a.cabecalhos).toMatch(/cache-control: no-cache/i);
+    expect(a.cabecalhos).not.toMatch(/^etag:/im);
+
+    // outra resposta, outro nonce; e um pedido condicional não vira 304 (o corpo velho ficaria com a política nova)
+    const b = await pedir('sinuca.becogames.app', 'If-None-Match: "qualquer"\r\nIf-Modified-Since: Wed, 21 Oct 2099 07:28:00 GMT\r\n');
+    expect(b.cabecalhos).toMatch(/^HTTP\/1.1 200/);
+    expect(/'nonce-([^']+)'/.exec(politicaDe(b.cabecalhos))?.[1]).not.toBe(nonce);
+
+    // o mesmo servidor, outro host: política fechada, sem nonce
+    for (const host of ['sinuca-sala.exemplo.workers.dev', `127.0.0.1:${w.porta}`, 'localhost']) {
+      const o = await pedir(host);
+      expect(politicaDe(o.cabecalhos), host).not.toMatch(/google|doubleclick|googlesyndication|nonce|strict-dynamic|frame-src/);
+      expect(politicaDe(o.cabecalhos), host).toContain("script-src 'self';");
+      expect(o.corpo, host).not.toContain('nonce=');
+    }
+  });
   it('hibernação: sem sala aberta o objeto dorme com o WebSocket ligado, e ao acordar a conexão segue funcionando', async () => {
     const antes = await uso();
     const c = await conectar('Dorminhoco');

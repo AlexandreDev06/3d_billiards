@@ -1,0 +1,41 @@
+// O Banco da Beco Games (contas e moedas comuns a todos os jogos): um Worker e um Durable Object (SQLite). Mapa, variáveis e segredos em
+// apps/conta/CLAUDE.md. Aqui não há segredo: eles vão por `wrangler secret put` (nunca neste arquivo, nunca no repositório):
+//   npx wrangler secret put PEPPER_DA_SENHA     // segredo do servidor somado ao hash da senha; trocar invalida todas as senhas
+//   npx wrangler secret put RESEND_API_KEY      // chave de envio do Resend (só a recuperação de senha manda e-mail)
+// Em desenvolvimento local os dois vão em apps/conta/.dev.vars (já no .gitignore).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "becogames-conta",
+  // O src/worker/ completo (BancoDO, entrypoint Banco) chega no L55; até lá a entrada só responde /saude.
+  "main": "src/worker/entrada.ts",
+  // A mesma data da sala; pode subir com o wrangler. Sem nodejs_compat: o núcleo só usa Web Crypto.
+  "compatibility_date": "2026-10-26",
+  // Nada de telemetria do Wrangler neste projeto
+  "send_metrics": false,
+
+  "durable_objects": {
+    "bindings": [{ "name": "BANCO", "class_name": "BancoDO" }]
+  },
+  // O plano gratuito só aceita Durable Object com SQLite (new_sqlite_classes). Classe nova, renomeada ou apagada = migração nova com
+  // tag nova; nunca editar a v1 depois do primeiro deploy.
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["BancoDO"] }],
+
+  // Só /saude responde pela internet; o resto do Banco é chamado pelos outros Workers por service binding.
+  "workers_dev": true,
+
+  "vars": {
+    // A conta criada do zero começa com este saldo
+    "SALDO_INICIAL": "100",
+    "MAX_CONTAS": "50000",
+    // O cookie vale em todos os subdomínios da Beco Games
+    "DOMINIO_DO_COOKIE": ".becogames.app",
+    "COOKIE_SEGURO": "1",
+    // Origin extras aceitas além de becogames.app e *.becogames.app (só desenvolvimento; vazio em produção)
+    "ORIGENS_DE_DEV": "",
+    // Dica de região para o Durable Object (só vale na criação): sam = América do Sul
+    "LOCAL_DO": "sam"
+  },
+
+  // Uma linha JSON por evento, sem e-mail, senha, token nem código; da conta, só os 8 primeiros caracteres do id.
+  "observability": { "enabled": true, "logs": { "enabled": true, "invocation_logs": false } }
+}

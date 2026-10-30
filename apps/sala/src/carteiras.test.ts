@@ -801,7 +801,7 @@ describe('arquivo estragado', () => {
   it.each([
     ['texto que não é JSON', '{ isto não é json'],
     ['JSON que não é um objeto', '[1,2,3]'],
-    ['versão desconhecida', JSON.stringify({ versao: 3, carteiras: {} })],
+    ['versão desconhecida', JSON.stringify({ versao: 4, carteiras: {} })],
     ['sem o mapa de carteiras', JSON.stringify({ versao: 1 })],
     ['arquivo vazio', ''],
   ])('%s: guarda a cópia do estragado, loga, começa vazio e segue funcionando', async (_nome, conteudo) => {

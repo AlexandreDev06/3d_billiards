@@ -79,6 +79,12 @@ Throw, squirt, tabela Mathavan e caçapas reais (quinas); todas as opções de "
   - [x] Personalização do balão (2026-10-28; pedido do usuário; tudo na loja): chapéus, bigodes (sem barba), estilos de olho (normal, kawaii, bravo e cansado) e cores de olho. Contrato em `.outros/prompts/contrato-aparencia.md`.
     - Em paralelo: P8 Pincel (os itens e os ícones, `balao.glb` v3 e `chapeus.glb`) e L47 Sala (catálogo, compra, equipar, migração das carteiras, aparência na sala e cópia de segurança).
     - Depois: o Juiz no L47 (dinheiro e migração); o L48 Feltro (a loja, o editor com prévia em 3D e o balão vestido no jogo); a cópia das carteiras antes de publicar.
+  - [x] Conta Beco Games (2026-10-29; publicada em 2026-10-30; pedido do usuário): e-mail, senha e nome, moedas comuns a todos os jogos, convidado como hoje. Spec `docs/superpowers/specs/2026-10-29-conta-beco-games-design.md`, plano `docs/superpowers/plans/2026-10-29-conta-beco-games.md`.
+    - [x] Parte 1, o Banco (`apps/conta`): L53, L54 e L55 da Sala (andaime, moedas, contas, sessões, recuperação, HTTP, Worker e objeto), o Juiz (precisa de ajuste) e o L55b (ajustes, passou); L56 do Feltro (as telas no portal).
+    - [x] Parte 2, a sinuca com o espelho e a caixa de saída para o Banco, atrás de `SALDO_NO_BANCO`: o L57 (caixa, passou) e o L59 (a compra pelo Banco, as pendências e a prova no workerd), com o Juiz no L57 e no L59.
+    - [x] Parte 3, a migração (código, revisão do Juiz e L60b; a publicação fica na sequência final): o L60 (as rotas `levar-saldos-ao-banco` e `espelhar-saldos`, os roteiros e o ensaio), com o Juiz obrigatório e a janela de 0 salas.
+    - [x] Parte 4, o login na sinuca (mais os ajustes L61b e L61c): o L61 da Sala (a identidade pelo cookie, `/conta/*` e `daConta`) e o L62 do Feltro (as telas no jogo).
+    - [x] O redesenho do portal (L58 e L58b Feltro, pedido do usuário em 2026-10-29): seguir a skill `design-taste-frontend` por inteiro, com uma imagem só do jogo.
 
 Plano original desta fase:
 

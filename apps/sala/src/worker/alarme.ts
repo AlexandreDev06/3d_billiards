@@ -11,6 +11,10 @@
  * Só há alarm com sala aberta. Sem sala nada o segura, e um alarm de sobra acordaria um objeto que dorme (e o acordar lê as
  * carteiras todas, até 10 000 linhas).
  *
+ * Caixa de saída do saldo (L57, `SALDO_NO_BANCO=1`): com operações esperando o Banco o objeto também precisa acordar para drená-las.
+ * O próximo alarm é o menor entre o tique da sala (se há sala) e a próxima tentativa da caixa (`proximaDaCaixa`), e cada disparo
+ * começa mandando a caixa ao Banco. Com a caixa vazia (ou a chave desligada) nada disto muda.
+ *
  * Custo (docs oficiais: cada disparo é uma requisição ao objeto e cada `setAlarm` é uma linha escrita): no máximo
  * 86 400 / 45 = 1 920 requisições e 1 920 linhas por dia, e só nas horas em que há sala aberta.
  */
@@ -27,6 +31,12 @@ export interface DependenciasDoAlarme {
   /** `ctx.storage.deleteAlarm`. */
   readonly desarmar: () => Promise<void>;
   readonly log: Logger;
+  /** Quando a caixa de saída do Banco quer ser acordada (ms desde 1970), ou `null` se está vazia ou desligada. */
+  readonly proximaDaCaixa?: () => number | null;
+  /** Uma passada da caixa de saída pelo Banco. */
+  readonly drenarCaixa?: () => Promise<void>;
+  /** A varredura das contas excluídas pelo portal (L61); ela mesma só roda se passou uma hora desde a última. */
+  readonly varrer?: () => Promise<unknown>;
 }
 
 export class AlarmeDaSala {
@@ -45,13 +55,21 @@ export class AlarmeDaSala {
     return this.disparosTotal;
   }
 
+  /** O instante do próximo alarm que faz falta: o menor entre o tique da sala (se há sala) e a próxima tentativa da caixa; `null` se nada pede alarm. */
+  private quandoPrecisa(): number | null {
+    const sala = this.deps.salasAbertas() > 0 ? this.deps.relogio() + this.deps.intervaloMs : null;
+    const caixa = this.deps.proximaDaCaixa?.() ?? null;
+    if (sala === null || caixa === null) return sala ?? caixa;
+    return Math.min(sala, caixa);
+  }
+
   /**
-   * Chamado quando uma sala pode ter aparecido (a cada mensagem): arma o alarm se há sala e ainda não há alarm. Não faz nada
-   * se já está armado ou se não há sala. A resposta só diz se a gravação do alarm falhou (o próximo chamado tenta de novo).
+   * Chamado quando uma sala pode ter aparecido (a cada mensagem) ou a caixa mudou: arma o alarm se algo o pede e ainda não há um alarm
+   * igual ou mais cedo. Nunca adia um alarm armado. A resposta só diz se a gravação do alarm falhou (o próximo chamado tenta de novo).
    */
   async aoHaverSala(): Promise<void> {
-    if (this.armadoPara !== null || this.deps.salasAbertas() === 0) return;
-    const quando = this.deps.relogio() + this.deps.intervaloMs;
+    const quando = this.quandoPrecisa();
+    if (quando === null || (this.armadoPara !== null && this.armadoPara <= quando)) return;
     this.armadoPara = quando;
     try {
       await this.deps.armar(quando);
@@ -68,8 +86,18 @@ export class AlarmeDaSala {
   async aoDisparar(): Promise<void> {
     this.disparosTotal++;
     this.armadoPara = null;
-    if (this.deps.salasAbertas() === 0) return;
-    const quando = this.deps.relogio() + this.deps.intervaloMs;
+    try {
+      await this.deps.drenarCaixa?.();
+    } catch (e) {
+      this.deps.log('erro-interno', { tipo: 'alarme-caixa', erro: e instanceof Error ? e.message : 'desconhecido' });
+    }
+    try {
+      await this.deps.varrer?.();
+    } catch (e) {
+      this.deps.log('erro-interno', { tipo: 'alarme-varredura', erro: e instanceof Error ? e.message : 'desconhecido' });
+    }
+    const quando = this.quandoPrecisa();
+    if (quando === null) return;
     this.armadoPara = quando;
     try {
       await this.deps.armar(quando);
@@ -79,9 +107,9 @@ export class AlarmeDaSala {
     }
   }
 
-  /** A última sala fechou: o alarm de sobra sai (idempotente, e não faz nada se não há alarm armado por aqui). */
+  /** A última sala fechou: o alarm de sobra sai (idempotente, e não faz nada se não há alarm armado por aqui). A caixa de saída com o que enviar o mantém. */
   async aoFicarSemSala(): Promise<void> {
-    if (this.armadoPara === null || this.deps.salasAbertas() > 0) return;
+    if (this.armadoPara === null || this.deps.salasAbertas() > 0 || this.deps.proximaDaCaixa?.() != null) return;
     this.armadoPara = null;
     try {
       await this.deps.desarmar();

@@ -18,14 +18,31 @@
  *                                    agora. Nunca troca uma carteira que já existe e pode rodar com salas abertas; não se combina
  *                                    com `sobrescrever` nem com `aceitar-descartadas`
  *   GET  /admin/uso                  contagens do objeto desde que acordou (para conferir o plano gratuito)
+ *   POST /admin/levar-saldos-ao-banco (L60) manda o espelho de todas as carteiras ao Banco (lotes de 500), relê e confere; responde
+ *                                    `{ ok, carteiras, criadas, iguais, conflitos, somaSinuca, somaBanco }` e só é `ok` sem conflito e com
+ *                                    as somas iguais. Funciona com `SALDO_NO_BANCO` desligada (é o passo antes de ligá-la). 409
+ *                                    `salas-abertas` se houver sala, 409 `caixa-cheia` se a caixa do Banco não está vazia
+ *   POST /admin/espelhar-saldos      (L60) o caminho de volta: drena a caixa (409 `caixa-cheia` se não esvaziar) e grava em cada
+ *                                    espelho o saldo do Banco, numa persistência só; `{ ok, carteiras, mudadas, semConta, somaAntes,
+ *                                    somaDepois }`. 409 `salas-abertas` se houver sala. Nenhuma das duas loga `id`, código ou saldo
+ *                                    de alguém: só contagens e somas (migracao-de-saldos.ts)
+ *
+ *   POST /admin/congelar-carteiras   (L60b) liga por 15 minutos o congelamento das carteiras (persistido: sobrevive à publicação). Só com 0
+ *                                    salas (409 `salas-abertas`). Enquanto vale, criar carteira, comprar, usar, balão, presente, missão,
+ *                                    partida e aposta são recusados (HTTP 503 `limite`, "A sala está em manutenção por alguns minutos.";
+ *                                    `criar-sala` dá `servidor-cheio` com a mesma frase). Vence sozinho. `{ ok, ate, minutos }`
+ *   POST /admin/descongelar-carteiras (L60b) desliga o congelamento antes do fim. `{ ok, estava }`
+ *   POST /admin/reenviar-mortas      (L60b) põe de volta no fim da caixa do Banco as operações de `saida_morta` (as que lançaram cinco
+ *                                    vezes com o Banco vivo). `{ ok, reenviadas }`
  *
  * Sem o segredo configurado (ou curto demais) as rotas não existem (404). A conferência compara resumos SHA-256 byte a byte, sem
  * parar no primeiro byte diferente. Cada IP tem um balde só para estas rotas. A resposta e o log só levam contagens: nunca o
  * conteúdo do arquivo, um código, um `id` nem o segredo (a única exceção é o corpo da exportação, que é o arquivo e só sai para
  * quem tem o segredo, com `Cache-Control: no-store`; o log da exportação diz só quantas carteiras saíram).
  */
-import type { CarteirasBase, ResultadoDaImportacao, ResultadoDaRestauracao } from '../carteiras-base';
+import { DURACAO_DO_CONGELAMENTO_MS, type CarteirasBase, type ResultadoDaImportacao, type ResultadoDaRestauracao } from '../carteiras-base';
 import { SEGURANCA } from '../cabecalhos';
+import type { MigracaoDeSaldos } from '../migracao-de-saldos';
 import { BaldesPorChave } from '../limite-taxa';
 import type { Logger } from '../log';
 import { lerCorpoDoPedido } from './corpo-do-pedido';
@@ -35,6 +52,8 @@ export const MAX_BYTES_DA_IMPORTACAO = 16 * 1024 * 1024;
 const TEMPO_DO_CORPO_MS = 60_000;
 export const TAMANHO_MINIMO_DO_SEGREDO = 16;
 const BEARER = /^Bearer (\S{1,512})$/;
+const ROTAS_DA_MIGRACAO: ReadonlySet<string> = new Set(['/admin/levar-saldos-ao-banco', '/admin/espelhar-saldos']);
+const ROTAS_POST_SEM_CORPO: ReadonlySet<string> = new Set(['/admin/congelar-carteiras', '/admin/descongelar-carteiras', '/admin/reenviar-mortas']);
 const ROTAS_GET: ReadonlySet<string> = new Set(['/admin/uso', '/admin/exportar-carteiras', '/admin/carteiras-descartadas']);
 
 const STATUS_DA_RECUSA: Readonly<Record<Extract<ResultadoDaImportacao, { ok: false }>['motivo'], number>> = {
@@ -64,6 +83,8 @@ export interface DependenciasDoAdmin {
   readonly uso: () => Record<string, unknown>;
   /** Quantas salas estão abertas agora; `?sobrescrever=1` só vale com zero. */
   readonly salasAbertas: () => number;
+  /** A migração do saldo ao Banco e a volta (L60); ausente = as duas rotas respondem 503 `banco-indisponivel`. */
+  readonly migracao?: Pick<MigracaoDeSaldos, 'levar' | 'espelhar'>;
 }
 
 const resposta = (status: number, corpo: object, extra: Record<string, string> = {}): Response =>
@@ -96,7 +117,7 @@ export class AdminDoWorker {
     const { segredo } = this.deps;
     if (segredo === undefined || segredo.length < TAMANHO_MINIMO_DO_SEGREDO) return resposta(404, { erro: 'desligado' });
     const rota = url.pathname;
-    const metodos = rota === '/admin/importar-carteiras' ? 'POST' : ROTAS_GET.has(rota) ? 'GET' : null;
+    const metodos = rota === '/admin/importar-carteiras' || ROTAS_DA_MIGRACAO.has(rota) || ROTAS_POST_SEM_CORPO.has(rota) ? 'POST' : ROTAS_GET.has(rota) ? 'GET' : null;
     if (metodos === null) return resposta(404, { erro: 'rota-desconhecida' });
     if (request.method !== metodos) return resposta(405, { erro: 'metodo-nao-permitido' }, { Allow: metodos });
     if (!this.porIp.tentar(ip)) return resposta(429, { erro: 'limite' }, { 'Retry-After': '10' });
@@ -108,7 +129,55 @@ export class AdminDoWorker {
     if (rota === '/admin/uso') return resposta(200, this.deps.uso());
     if (rota === '/admin/exportar-carteiras') return this.exportar();
     if (rota === '/admin/carteiras-descartadas') return this.descartadas();
+    if (ROTAS_DA_MIGRACAO.has(rota)) return this.migrar(rota);
+    if (rota === '/admin/congelar-carteiras') return this.congelar();
+    if (rota === '/admin/descongelar-carteiras') return this.descongelar();
+    if (rota === '/admin/reenviar-mortas') return this.reenviarMortas();
     return this.importar(request, url);
+  }
+
+  /** Liga o congelamento (L60b), só sem sala: a migração do saldo não pode ter gente apostando. */
+  private congelar(): Response {
+    const { carteiras, log, salasAbertas } = this.deps;
+    const salas = salasAbertas();
+    if (salas > 0) {
+      log('admin-congelar', { ok: false, motivo: 'salas-abertas', salas });
+      return resposta(409, { ok: false, erro: 'salas-abertas', salas });
+    }
+    const ate = carteiras.congelar();
+    if (ate === null) {
+      log('admin-congelar', { ok: false, motivo: 'gravacao-falhou' });
+      return resposta(503, { ok: false, erro: 'gravacao-falhou' });
+    }
+    log('admin-congelar', { ok: true, minutos: DURACAO_DO_CONGELAMENTO_MS / 60_000 });
+    return resposta(200, { ok: true, ate, minutos: DURACAO_DO_CONGELAMENTO_MS / 60_000 });
+  }
+
+  private descongelar(): Response {
+    const { carteiras, log } = this.deps;
+    const estava = carteiras.descongelar();
+    if (estava === null) {
+      log('admin-descongelar', { ok: false, motivo: 'gravacao-falhou' });
+      return resposta(503, { ok: false, erro: 'gravacao-falhou' });
+    }
+    log('admin-descongelar', { ok: true, estava });
+    return resposta(200, { ok: true, estava });
+  }
+
+  /** As operações de `saida_morta` voltam ao fim da caixa; sem o saldo no Banco não há caixa e a resposta é `reenviadas: 0`. */
+  private reenviarMortas(): Response {
+    const { carteiras, log } = this.deps;
+    const reenviadas = carteiras.reenviarMortas();
+    log('admin-reenviar-mortas', { reenviadas });
+    return resposta(200, { ok: true, reenviadas });
+  }
+
+  /** As duas rotas da migração do saldo (L60); a conta, as recusas e o log são de `MigracaoDeSaldos`. */
+  private async migrar(rota: string): Promise<Response> {
+    const { migracao } = this.deps;
+    if (migracao === undefined) return resposta(503, { ok: false, erro: 'banco-indisponivel' });
+    const r = await (rota === '/admin/levar-saldos-ao-banco' ? migracao.levar() : migracao.espelhar());
+    return resposta(r.status, r.corpo);
   }
 
   /** As carteiras que o objeto guardou de lado, como estavam; o log leva só a contagem. */

@@ -25,8 +25,8 @@
     "binding": "ASSETS",
     // Só estas rotas invocam o Worker (cada uma conta como requisição do plano gratuito, 100 000 por dia). Todo o resto (JS, texturas,
     // .glb do boteco, sons) sai do static assets, que é grátis e sem limite. `/` e `/index.html` passam pelo Worker para a política de
-    // conteúdo do HTML levar o host.
-    "run_worker_first": ["/", "/index.html", "/sala", "/carteira", "/carteira/*", "/saude", "/admin/*"]
+    // conteúdo do HTML levar o host. `/conta/*` (L61) é o login da Beco Games, repassado ao Banco pelo service binding `CONTA`.
+    "run_worker_first": ["/", "/index.html", "/sala", "/carteira", "/carteira/*", "/conta/*", "/saude", "/admin/*"]
   },
 
   // Variáveis (texto). As mesmas da sala Node; os valores abaixo são os padrões. Opcionais, para ligar sem mexer no código:
@@ -40,9 +40,17 @@
   // O deploy sem "routes" não mexe no domínio. O workers.dev continua no ar para quem tem a carteira guardada nele.
   "workers_dev": true,
 
+  // O Banco da Beco Games (L57): o service binding (RPC) para o entrypoint `Banco` do Worker `becogames-conta` (apps/conta). O saldo só passa por ele
+  // com SALDO_NO_BANCO=1; desligado, a sala nem encosta nele para o saldo. As contas (L61) o usam sempre, mas só quando o pedido traz o cookie
+  // becogames_sessao ou é /conta/*: sem cookie nem /conta, nenhum pedido chama o Banco. Sem o Worker `becogames-conta` publicado, o `wrangler deploy` recusa o binding:
+  // publicar o Banco primeiro (ordem em docs/superpowers/plans/2026-10-29-conta-beco-games.md).
+  "services": [{ "binding": "CONTA", "service": "becogames-conta", "entrypoint": "Banco" }],
+
   "vars": {
     // Dica de região para o Durable Object (só vale quando ele é criado, na primeira requisição): sam = América do Sul. Vazio = sem dica.
-    "LOCAL_DO": "sam"
+    "LOCAL_DO": "sam",
+    // "1" = o Banco é o dono do saldo e a sala guarda o espelho e a caixa de saída (apps/sala/CLAUDE.md, "O saldo no Banco"). "0" = como sempre foi.
+    "SALDO_NO_BANCO": "0"
   },
   // O segredo da administração (importar carteiras, ver o uso) é o secret SEGREDO_ADMIN: `npx wrangler secret put SEGREDO_ADMIN`.
 

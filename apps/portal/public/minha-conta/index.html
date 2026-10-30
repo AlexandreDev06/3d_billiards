@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+  <meta name="google-adsense-account" content="ca-pub-8270923634039876">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minha conta | Beco Games</title>
+<meta name="description" content="Sua conta do Beco Games: nome, e-mail e moedas.">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="canonical" href="https://becogames.app/minha-conta">
+<link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<link rel="preload" href="/fontes/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/estilo.css">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="pt_BR">
+<meta property="og:site_name" content="Beco Games">
+<meta property="og:title" content="Minha conta | Beco Games">
+<meta property="og:description" content="Sua conta do Beco Games: nome, e-mail e moedas.">
+<meta property="og:url" content="https://becogames.app/minha-conta">
+<meta property="og:image" content="https://becogames.app/img/sinuca.jpg">
+<meta name="twitter:card" content="summary_large_image">
+</head>
+<body data-pagina="minha-conta">
+<a class="pular" href="#conteudo">Pular para o conteúdo</a>
+<div class="faixa" id="faixa-cookies" role="region" aria-label="Aviso de cookies">
+  <p>Usamos o armazenamento do navegador para lembrar suas escolhas, e o Google e parceiros de anúncios usam cookies para exibir anúncios. Saiba mais na <a href="/privacidade">política de privacidade</a>.</p>
+  <button type="button">Entendi</button>
+</div>
+<header class="topo">
+  <div class="topo-in">
+    <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+    <nav class="nav-desk" aria-label="Principal"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a></nav>
+    <div class="topo-acoes">
+      <a class="entrar" href="/entrar">Entrar</a>
+      <a class="botao contorno pequeno" href="https://sinuca.becogames.app">Jogar agora</a>
+      <details class="nav-cel"><summary>Menu</summary><nav aria-label="Principal (celular)"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a><a class="jogar" href="https://sinuca.becogames.app">Jogar agora</a></nav></details>
+    </div>
+  </div>
+</header>
+<main id="conteudo" class="texto conta cap-feltro">
+<h1>Minha conta</h1>
+<p id="carregando">Carregando…</p>
+<noscript><p>Esta página precisa de JavaScript para funcionar.</p></noscript>
+<div id="painel" hidden>
+  <dl class="dados cartao">
+    <div><dt>E-mail</dt><dd id="v-email"></dd></div>
+    <div><dt>Moedas</dt><dd id="v-saldo"></dd></div>
+  </dl>
+  <form class="cartao" id="form-nome" method="post">
+    <div class="campo">
+      <label for="nome">Nome na mesa</label>
+      <input id="nome" name="nome" type="text" autocomplete="nickname" required maxlength="20">
+    </div>
+    <p class="erro" id="erro-nome" role="alert"></p>
+    <p class="aviso" id="aviso-nome" role="status"></p>
+    <button class="botao" type="submit">Salvar o nome</button>
+  </form>
+  <div class="cartao">
+    <button class="botao suave" type="button" id="sair">Sair</button>
+    <p class="erro" id="erro-sair" role="alert"></p>
+  </div>
+  <div class="cartao perigo-zona">
+    <h2>Excluir minha conta</h2>
+    <p>Apaga seu e-mail, seu nome e seu saldo. Não dá para desfazer.</p>
+    <button class="botao perigo" type="button" id="excluir-1">Excluir minha conta</button>
+    <form id="form-excluir" method="post" hidden>
+      <input id="usuario-excluir" type="text" name="usuario" autocomplete="username" tabindex="-1" aria-hidden="true" readonly hidden>
+      <div class="campo">
+        <label for="senha-excluir">Para confirmar, digite a sua senha</label>
+        <input id="senha-excluir" name="senha" type="password" autocomplete="current-password" required maxlength="128">
+      </div>
+      <p class="erro" id="erro-excluir" role="alert"></p>
+      <button class="botao perigo" type="submit">Excluir para sempre</button>
+      <button class="botao suave" type="button" id="excluir-cancelar">Cancelar</button>
+    </form>
+  </div>
+</div>
+</main>
+<footer class="rodape">
+  <div class="rodape-in">
+    <div class="rodape-topo">
+      <div class="rodape-marca">
+        <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+        <p>Jogos de navegador para jogar com os amigos.</p>
+        <a class="email" href="mailto:contato@becogames.app">contato@becogames.app</a>
+      </div>
+      <nav aria-label="Jogos"><p>Jogos</p><a href="https://sinuca.becogames.app">Sinuca</a><a href="/#em-breve">Em breve</a></nav>
+      <nav aria-label="Ajuda"><p>Ajuda</p><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a></nav>
+      <nav aria-label="Legal"><p>Legal</p><a href="/privacidade">Privacidade</a><a href="/termos">Termos de uso</a></nav>
+    </div>
+    <div class="rodape-meta">
+      <span>&copy; 2026 Beco Games</span>
+      <span>Fontes Instrument Serif e Inter, licença OFL</span>
+      <a class="subir" href="#conteudo">Voltar ao topo</a>
+    </div>
+  </div>
+</footer>
+<script src="/faixa.js"></script>
+<script src="/conta.js"></script>
+</body>
+</html>

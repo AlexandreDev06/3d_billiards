@@ -2,6 +2,8 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "becogames-portal",
+  // O Worker só repassa /api/conta/* ao Banco (becogames-conta); o resto são assets
+  "main": "src/entrada.ts",
   "compatibility_date": "2026-10-26",
   "send_metrics": false,
   // O www vira a raiz por uma Regra de Redirecionamento da zona (feita pela API, 2026-10-29), não aqui
@@ -9,7 +11,10 @@
   "workers_dev": false,
   "assets": {
     "directory": "./public",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"],
     "html_handling": "drop-trailing-slash",
     "not_found_handling": "404-page"
-  }
+  },
+  "services": [{ "binding": "CONTA", "service": "becogames-conta", "entrypoint": "Banco" }]
 }

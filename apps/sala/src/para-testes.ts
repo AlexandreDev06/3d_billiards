@@ -60,6 +60,11 @@ export class ConexaoFalsa implements Conexao {
   fechada: { codigo: number; motivo: string } | null = null;
   /** A versão do protocolo que o cliente declarou em `criar-sala`/`entrar` (a sala guarda, L47). */
   versao?: number;
+  /** O `id` da conta que a sessão provou (L61); ausente = vale o código da carteira. */
+  idDaConta?: string;
+  /** O token da sessão que provou `idDaConta` e quando foi conferido (L61b). */
+  sessao?: string;
+  sessaoConferidaEm?: number;
   /** Pesos de cada infração que a sala mandou o transporte contar. */
   readonly punicoes: number[] = [];
 

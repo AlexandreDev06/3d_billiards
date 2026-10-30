@@ -8,8 +8,10 @@ import { PROTOCOLO_VERSAO, decodificarMensagemDaSala, type MensagemDaSala, type 
 import { PRESET_BOTECO } from '@sinuca/regras';
 import { CONFIG_NUCLEO_PADRAO } from '../config-nucleo';
 import { Registro } from '../registro';
+import { CABECALHO_DA_SESSAO } from '../sessao-da-conta';
 import type { ConfigDoWorker } from './config-do-env';
-import { SoquetesDaSala, type SoqueteDoObjeto } from './soquetes';
+import { paraOObjeto } from './corpo-do-pedido';
+import { SoquetesDaSala, anexoDoUpgrade, type SoqueteDoObjeto } from './soquetes';
 
 const FECHANDO = 2;
 
@@ -68,7 +70,7 @@ function montar(extra: Partial<ConfigDoWorker> = {}) {
   const logs: string[] = [];
   const log = (evento: string, campos: Record<string, unknown> = {}) => void logs.push(`${evento} ${JSON.stringify(campos)}`);
   const config: ConfigDoWorker = { ...CONFIG_NUCLEO_PADRAO, bytesPorMensagem: 2000, mensagensPorIp: { capacidade: 1500, porSegundo: 12 }, alarmeMs: 45_000, ...extra };
-  const registro = new Registro({ config, relogio: () => agora, log });
+  const registro = new Registro({ config, relogio: () => agora, log, aoMudarConta: (conn) => soquetes.regravarAnexo(conn) });
   const amb = {
     logs,
     agora: () => agora,
@@ -90,7 +92,7 @@ function montar(extra: Partial<ConfigDoWorker> = {}) {
   const enviar = (ws: SoqueteFalso, mensagem: object): void => soquetes.aoReceber(ws, JSON.stringify(mensagem));
   const ping = (ws: SoqueteFalso, t = 1): void => enviar(ws, { tipo: 'ping', t });
   const saidas = (): string[] => amb.logs.filter((l) => l.startsWith('saiu '));
-  return { amb, soquetes, abrir, enviar, ping, saidas };
+  return { amb, registro, soquetes, abrir, enviar, ping, saidas };
 }
 
 /** Ana cria uma sala 1x1 e Beto entra, cada um no seu soquete. */
@@ -249,6 +251,73 @@ describe('o soquete que volta da hibernação entra no controle de silêncio', (
     m.amb.semTick(30_000);
     m.ping(c);
     expect(c.anexo).toEqual({ ip: '198.51.100.3', sinalEm: m.amb.agora() });
+  });
+
+  it('o id da conta que a sessão provou (L61) vai no anexo, volta na adoção depois da hibernação e é regravado a cada mensagem', () => {
+    const m = montar();
+    const id = 'c'.repeat(64);
+    const ws = new SoqueteFalso({ ip: '198.51.100.9', sinalEm: m.amb.agora(), idDaConta: id });
+    const ligacao = m.soquetes.adotar(ws);
+    expect(ligacao.conn.idDaConta).toBe(id);
+    m.amb.semTick(1000);
+    m.ping(ws);
+    expect(ws.anexo).toEqual({ ip: '198.51.100.9', sinalEm: m.amb.agora(), idDaConta: id });
+  });
+
+  it('a sessão (token e última conferência) também vive no anexo, volta na adoção e é regravada a cada mensagem (L61b)', () => {
+    const m = montar();
+    const id = 'c'.repeat(64);
+    const sessao = 'S'.repeat(43);
+    const conferida = m.amb.agora() - 5000;
+    const ws = new SoqueteFalso({ ip: '198.51.100.9', sinalEm: m.amb.agora(), idDaConta: id, sessao, sessaoConferidaEm: conferida });
+    const ligacao = m.soquetes.adotar(ws);
+    expect(ligacao.conn).toMatchObject({ idDaConta: id, sessao, sessaoConferidaEm: conferida });
+    m.ping(ws);
+    expect(ws.anexo).toEqual({ ip: '198.51.100.9', sinalEm: m.amb.agora(), idDaConta: id, sessao, sessaoConferidaEm: conferida });
+    // token sem id da conta não é adotado
+    const solto = new SoqueteFalso({ ip: '198.51.100.8', sinalEm: m.amb.agora(), sessao });
+    expect(m.soquetes.adotar(solto).conn.sessao).toBeUndefined();
+  });
+
+  it('o anexo do upgrade leva o token da sessão que a borda pôs, só com o id da conta (L61c)', () => {
+    const id = 'c'.repeat(64);
+    const token = 'S'.repeat(43);
+    const pedido = new Request('https://sala.exemplo/sala', { headers: { 'x-sinuca-conta': 'f'.repeat(64), 'x-sinuca-sessao': 'forjado' } });
+    const daBorda = paraOObjeto(pedido, id, token);
+    expect(daBorda.headers.get(CABECALHO_DA_SESSAO)).toBe(token);
+    expect(anexoDoUpgrade(daBorda.headers, '198.51.100.9', 42)).toEqual({ ip: '198.51.100.9', sinalEm: 42, idDaConta: id, sessao: token, sessaoConferidaEm: 42 });
+    // a borda apaga o cabeçalho que vier de fora; sem conta provada não há token nem id
+    expect(paraOObjeto(pedido, undefined, token).headers.get(CABECALHO_DA_SESSAO)).toBeNull();
+    expect(anexoDoUpgrade(paraOObjeto(pedido, undefined, token).headers, '198.51.100.9', 42)).toEqual({ ip: '198.51.100.9', sinalEm: 42 });
+    // o HTTP da carteira não leva o token
+    expect(paraOObjeto(pedido, id).headers.get(CABECALHO_DA_SESSAO)).toBeNull();
+    // token torto no cabeçalho não entra no anexo
+    const torto = new Headers({ 'x-sinuca-conta': id, 'x-sinuca-sessao': 'curto' });
+    expect(anexoDoUpgrade(torto, 'ip', 1)).toEqual({ ip: 'ip', sinalEm: 1, idDaConta: id });
+  });
+
+  it('esquecerConta tira o id e o token do anexo hibernado sem mexer no último sinal; adotar depois não traz a conta de volta (L61b)', () => {
+    const m = montar();
+    const id = 'c'.repeat(64);
+    const sinal = m.amb.agora();
+    const ws = new SoqueteFalso({ ip: '198.51.100.9', sinalEm: sinal, idDaConta: id, sessao: 'S'.repeat(43), sessaoConferidaEm: sinal });
+    const ligacao = m.soquetes.adotar(ws);
+    m.amb.semTick(20_000);
+    expect(m.registro.esquecerConta(id)).toBe(1);
+    expect(ligacao.conn.idDaConta).toBeUndefined();
+    expect(ws.anexo).toEqual({ ip: '198.51.100.9', sinalEm: sinal });
+    // o objeto hiberna e acorda: o anexo é o que sobra
+    const acordado = montar();
+    expect(acordado.soquetes.adotar(new SoqueteFalso(ws.anexo)).conn).toMatchObject({ ip: '198.51.100.9' });
+    expect(acordado.soquetes.adotar(new SoqueteFalso(ws.anexo)).conn.idDaConta).toBeUndefined();
+  });
+
+  it('anexo sem id da conta (convidado, ou de antes do L61) não ganha um', () => {
+    const m = montar();
+    const c = m.abrir('198.51.100.4');
+    expect(m.soquetes.adotar(c).conn.idDaConta).toBeUndefined();
+    m.ping(c);
+    expect(Object.keys(c.anexo as object)).not.toContain('idDaConta');
   });
 
   it('adotar duas vezes o mesmo soquete devolve a mesma ligação', () => {

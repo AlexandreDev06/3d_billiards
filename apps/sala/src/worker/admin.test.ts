@@ -371,3 +371,97 @@ describe('as carteiras descartadas (L47b): ler pela administração e trazer de 
     expect(carteiras.total).toBe(0);
   });
 });
+
+describe('as rotas da migração do saldo (L60)', () => {
+  function comMigracao(migracao: { levar: () => Promise<{ status: number; corpo: Record<string, unknown> }>; espelhar: () => Promise<{ status: number; corpo: Record<string, unknown> }> } | undefined) {
+    const logs: string[] = [];
+    const carteiras = new CarteirasEmMemoria({ maxCarteiras: 50, relogio: () => 1_000_000, log: () => {} });
+    const admin = new AdminDoWorker({ segredo: SEGREDO, carteiras, relogio: () => 1_000_000, log: (e) => logs.push(e), uso: () => ({}), salasAbertas: () => 0, ...(migracao ? { migracao } : {}) });
+    const chamar = (metodo: string, caminho: string, segredo: string | null = SEGREDO) => {
+      const url = new URL(caminho, URL_BASE);
+      return admin.tratar(new Request(url, { method: metodo, headers: segredo === null ? {} : { Authorization: `Bearer ${segredo}` } }), url, '1.2.3.4');
+    };
+    return { chamar, logs };
+  }
+  const fake = () => {
+    const chamadas: string[] = [];
+    return {
+      chamadas,
+      levar: async () => (chamadas.push('levar'), { status: 200, corpo: { ok: true, carteiras: 3 } }),
+      espelhar: async () => (chamadas.push('espelhar'), { status: 409, corpo: { ok: false, erro: 'caixa-cheia' } }),
+    };
+  };
+
+  it('só POST e só com o segredo; a resposta e o status são os da migração', async () => {
+    const f = fake();
+    const { chamar } = comMigracao(f);
+    expect((await chamar('GET', '/admin/levar-saldos-ao-banco')).status).toBe(405);
+    expect((await chamar('GET', '/admin/espelhar-saldos')).status).toBe(405);
+    expect((await chamar('POST', '/admin/levar-saldos-ao-banco', null)).status).toBe(401);
+    expect((await chamar('POST', '/admin/espelhar-saldos', 'errado-errado-errado')).status).toBe(401);
+    expect(f.chamadas).toEqual([]);
+    const levou = await chamar('POST', '/admin/levar-saldos-ao-banco');
+    expect(levou.status).toBe(200);
+    expect(await levou.json()).toEqual({ ok: true, carteiras: 3 });
+    expect(levou.headers.get('cache-control')).toBe('no-store');
+    const espelhou = await chamar('POST', '/admin/espelhar-saldos');
+    expect(espelhou.status).toBe(409);
+    expect(await espelhou.json()).toEqual({ ok: false, erro: 'caixa-cheia' });
+    expect(f.chamadas).toEqual(['levar', 'espelhar']);
+  });
+
+  it('sem a migração ligada (sem o binding do Banco): 503 banco-indisponivel', async () => {
+    const { chamar } = comMigracao(undefined);
+    const r = await chamar('POST', '/admin/levar-saldos-ao-banco');
+    expect(r.status).toBe(503);
+    expect(await r.json()).toEqual({ ok: false, erro: 'banco-indisponivel' });
+  });
+});
+
+describe('o congelamento das carteiras e as mortas (L60b)', () => {
+  it('congelar só com 0 salas; liga 15 minutos e vence sozinho; descongelar desliga; só POST e só com o segredo', async () => {
+    const { chamar, carteiras, salasAbertas, passar, logs } = montar();
+    expect((await chamar('GET', '/admin/congelar-carteiras')).status).toBe(405);
+    expect((await chamar('POST', '/admin/congelar-carteiras', { segredo: 'errado-errado-errado-errado' })).status).toBe(401);
+    salasAbertas(1);
+    const recusa = await chamar('POST', '/admin/congelar-carteiras');
+    expect(recusa.status).toBe(409);
+    expect(await recusa.json()).toEqual({ ok: false, erro: 'salas-abertas', salas: 1 });
+    expect(carteiras.congelada).toBe(false);
+
+    salasAbertas(0);
+    const r = await chamar('POST', '/admin/congelar-carteiras');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, ate: 1_000_000 + 15 * 60_000, minutos: 15 });
+    expect(carteiras.congelada).toBe(true);
+    passar(15 * 60_000);
+    expect(carteiras.congelada).toBe(false);
+
+    carteiras.congelar();
+    expect(await (await chamar('POST', '/admin/descongelar-carteiras')).json()).toEqual({ ok: true, estava: true });
+    expect(carteiras.congelada).toBe(false);
+    expect(await (await chamar('POST', '/admin/descongelar-carteiras')).json()).toEqual({ ok: true, estava: false });
+    expect(logs.filter((l) => l.startsWith('admin-congelar '))).toHaveLength(2);
+  });
+
+  it('congelar falha (503 gravacao-falhou) quando o objeto não consegue gravar', async () => {
+    const sqlite = banco();
+    const carteiras = new CarteirasNoDO({ sql: sqlite.sql, transacao: sqlite.transacao, maxCarteiras: 5, relogio: () => 1_000_000, log: () => {} });
+    const admin = new AdminDoWorker({ segredo: SEGREDO, carteiras, relogio: () => 1_000_000, log: () => {}, uso: () => ({}), salasAbertas: () => 0 });
+    sqlite.falharQuando = /carteiras_meta/;
+    const url = new URL('/admin/congelar-carteiras', URL_BASE);
+    const r = await admin.tratar(new Request(url, { method: 'POST', headers: { Authorization: `Bearer ${SEGREDO}` } }), url, '1.1.1.1');
+    expect(r.status).toBe(503);
+    expect(await r.json()).toEqual({ ok: false, erro: 'gravacao-falhou' });
+    expect(carteiras.congelada).toBe(false);
+  });
+
+  it('reenviar-mortas responde quantas voltaram à caixa (0 sem o saldo no Banco)', async () => {
+    const { chamar } = montar();
+    expect((await chamar('GET', '/admin/reenviar-mortas')).status).toBe(405);
+    expect((await chamar('POST', '/admin/reenviar-mortas', { segredo: null })).status).toBe(401);
+    const r = await chamar('POST', '/admin/reenviar-mortas');
+    expect(r.status).toBe(200);
+    expect(await r.json()).toEqual({ ok: true, reenviadas: 0 });
+  });
+});

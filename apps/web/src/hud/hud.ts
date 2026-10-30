@@ -69,6 +69,8 @@ export interface Hud {
 export interface OpcoesHud {
   /** O botão da tela de fim de partida (online volta à sala de espera; no hot-seat, à tela de escolha). */
   readonly aoVoltar: () => void;
+  /** O espaço de anúncio da tela de fim (L52); ausente = sem anúncio. */
+  readonly espacoDeAnuncioNoFim?: () => HTMLElement | null;
   readonly audio: ControleDeAudio;
   readonly sala: OpcoesHudSala;
   /** O que o HUD pede à sessão para os emojis (o `topo` o HUD mesmo põe). */
@@ -122,7 +124,7 @@ export function criarHud(pai: HTMLElement, opcoes: OpcoesHud): Hud {
   const forca = criarHudForca(raiz, CONFIG_WEB.tacada.linha.marcas, CONFIG_WEB.tacada.linha.fracaoMinima);
   const placarDaSala = criarPlacarDaSala(esquerda);
   const placar = criarPlacar(esquerda);
-  const telas = criarTelas(pai, opcoes.aoVoltar, topo);
+  const telas = criarTelas(pai, opcoes.aoVoltar, topo, opcoes.espacoDeAnuncioNoFim);
   const anuncio = criarAnuncio(raiz);
   const aviso = criarAvisoDiscreto(raiz);
   const avisoMira = criarAvisoDaMira(topo);

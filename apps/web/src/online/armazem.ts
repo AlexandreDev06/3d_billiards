@@ -55,6 +55,8 @@ export class ArmazemDeSessao {
     private readonly agora: () => number = Date.now,
   ) {}
 
+  #contaAtiva = false;
+
   /** O que esta aba pode usar para voltar à sala: o que ela mesma guardou, ou o de aba que já fechou. */
   ler(codigo: string): RegistroDaSala | null {
     const guardado = lerJson(chaveDaSala(codigo), this.local);
@@ -86,7 +88,16 @@ export class ArmazemDeSessao {
     return typeof valor === 'string' ? valor : '';
   }
 
+  /**
+   * Com uma conta (L62) o nome da mesa é o da conta: `sinuca.apelido` continua sendo só o do convidado, então nada o sobrescreve
+   * enquanto a conta estiver ativa.
+   */
+  definirContaAtiva(ativa: boolean): void {
+    this.#contaAtiva = ativa;
+  }
+
   lembrarApelido(nome: string): void {
+    if (this.#contaAtiva) return;
     gravarJson(CHAVE_APELIDO, nome, this.local);
   }
 }

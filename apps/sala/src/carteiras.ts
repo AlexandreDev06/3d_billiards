@@ -10,6 +10,8 @@ import { constants, copyFileSync, existsSync, readFileSync, readdirSync, renameS
 import { mkdir, open, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CarteirasBase, VERSAO_DO_ARQUIVO_DO_BALAO, aplicarBaloes, objetoSimples, type Guardada, type OpcoesDasCarteiras } from './carteiras-base';
+import { entradasDoArquivo, mortasDoArquivo } from './caixa-do-banco';
+import { comprasDoArquivo } from './compras-pendentes';
 import { pegarTrava, ErroDeTrava, type Trava } from './trava';
 
 export type {
@@ -53,6 +55,16 @@ export class ArmazemDeCarteiras extends CarteirasBase {
   private avisouPastaSemFsync = false;
   /** O arquivo do balão existe na pasta: mesmo sem balão nenhum na memória ele é regravado (a importação, por exemplo, pode ter esvaziado). */
   private baloesNoDisco = false;
+  /** A pendência `chave` está no disco: espera a gravação (a compra só chama o Banco depois). */
+  protected override async garantirGravada(): Promise<boolean> {
+    if (this.arquivo === null) return true;
+    await this.descarregar();
+    return this.gravadaAte >= this.versao;
+  }
+
+  /** O temporizador que acorda a caixa de saída do saldo (L57) na hora da próxima tentativa. */
+  private temporizadorDaCaixa: NodeJS.Timeout | null = null;
+  private temporizadorDaCaixaPara = 0;
 
   /**
    * Abre as carteiras da pasta e pega a trava exclusiva dela: se outro processo (ou outro armazém deste) a segura, lança
@@ -69,6 +81,7 @@ export class ArmazemDeCarteiras extends CarteirasBase {
       this.trava?.soltar();
       throw e;
     }
+    this.cutucarACaixa();
   }
 
   /**
@@ -116,11 +129,36 @@ export class ArmazemDeCarteiras extends CarteirasBase {
    * Pode ser chamado mais de uma vez.
    */
   fechar(): Promise<void> {
-    this.fechando ??= this.descarregar().finally(() => {
-      this.travaSolta = true;
-      this.trava?.soltar();
-    });
+    // `fechando` já vale `encerrado` aqui: a passada da caixa em voo termina o que está esperando o Banco e não começa outra; o arquivo leva o resto
+    this.fechando ??= this.esperarACaixa()
+      .then(() => this.descarregar())
+      .finally(() => {
+        this.cancelarTemporizadorDaCaixa();
+        this.travaSolta = true;
+        this.trava?.soltar();
+      });
     return this.fechando;
+  }
+
+  private cancelarTemporizadorDaCaixa(): void {
+    if (!this.temporizadorDaCaixa) return;
+    clearTimeout(this.temporizadorDaCaixa);
+    this.temporizadorDaCaixa = null;
+  }
+
+  /** Arma (ou adianta) o temporizador da próxima tentativa da caixa; sem nada na caixa, desarma. */
+  protected override aoAgendarCaixa(): void {
+    super.aoAgendarCaixa();
+    const quando = this.proximaTentativaDaCaixa;
+    if (quando === null || this.encerrado) return this.cancelarTemporizadorDaCaixa();
+    if (this.temporizadorDaCaixa && this.temporizadorDaCaixaPara <= quando) return;
+    this.cancelarTemporizadorDaCaixa();
+    this.temporizadorDaCaixaPara = quando;
+    this.temporizadorDaCaixa = setTimeout(() => {
+      this.temporizadorDaCaixa = null;
+      void this.drenarCaixa();
+    }, Math.max(0, quando - this.opcoes.relogio()));
+    this.temporizadorDaCaixa.unref();
   }
 
   private cancelarTemporizador(): void {
@@ -149,7 +187,7 @@ export class ArmazemDeCarteiras extends CarteirasBase {
     if (this.travaSolta) return Promise.resolve(false);
     if (this.emCurso) return this.emCurso;
     const alvo = this.versao;
-    const principal = JSON.stringify(this.paraOArquivo());
+    const principal = JSON.stringify(this.paraOArquivo(true));
     const baloes = this.baloesParaGuardar();
     const balao = Object.keys(baloes).length === 0 && !this.baloesNoDisco ? null : JSON.stringify({ versao: VERSAO_DO_ARQUIVO_DO_BALAO, baloes });
     this.emCurso = this.escrever(principal, balao)
@@ -260,8 +298,13 @@ export class ArmazemDeCarteiras extends CarteirasBase {
       if ((e as NodeJS.ErrnoException).code === 'ENOENT') return;
       throw new Error(`carteiras: não consegui ler ${this.arquivo}: ${e instanceof Error ? e.message : 'erro desconhecido'}`, { cause: e });
     }
-    const lidas = this.interpretar(bruto) ?? { carteiras: new Map<string, Guardada>(), descartadas: 1, migradas: 0 };
+    const lidas = this.interpretar(bruto) ?? { carteiras: new Map<string, Guardada>(), descartadas: 1, migradas: 0, saida: undefined, compras: undefined, mortas: undefined, apostas: undefined, excluidas: undefined, marcasPendentes: undefined };
     for (const [id, c] of lidas.carteiras) this.carteiras.set(id, c);
+    this.carregarContas(lidas.excluidas, lidas.marcasPendentes);
+    this.carregarASaida(lidas.saida);
+    this.carregarAsMortas(lidas.mortas);
+    this.carregarAsCompras(lidas.compras);
+    this.carregarAsApostas(lidas.apostas);
     if (lidas.descartadas === 0) {
       if (lidas.migradas > 0) this.migrou(lidas.migradas);
       return;
@@ -272,6 +315,41 @@ export class ArmazemDeCarteiras extends CarteirasBase {
       this.versao++;
       this.agendar(0);
     }
+  }
+
+  /**
+   * A caixa de saída do saldo (L57) que o arquivo trazia. Com `SALDO_NO_BANCO` desligado ela não se envia: o log diz quantas operações
+   * ficaram para trás (o caminho de volta é o `espelhar-saldos`, não este). Entrada que não presta é contada e ignorada.
+   */
+  private carregarASaida(saida: unknown): void {
+    const { entradas, invalidas } = entradasDoArquivo(saida);
+    this.linhasInvalidasNoArmazenamento += invalidas;
+    if (invalidas > 0) this.opcoes.log('saida-invalida', { entradas: invalidas });
+    if (this.caixa) this.caixa.carregar(entradas);
+    else if (entradas.length > 0) this.opcoes.log('saida-ignorada', { operacoes: entradas.length });
+  }
+
+  /** As operações mortas (L60b) que o arquivo trazia: ficam fora da fila até `reenviarMortas`. */
+  private carregarAsMortas(mortas: unknown): void {
+    const { mortas: lidas, invalidas } = mortasDoArquivo(mortas);
+    if (invalidas > 0) this.opcoes.log('saida-morta-invalida', { entradas: invalidas });
+    if (this.caixa) this.caixa.carregarMortas(lidas, Math.max(0, ...lidas.map((m) => m.ordem)));
+    else if (lidas.length > 0) this.opcoes.log('saida-morta-ignorada', { operacoes: lidas.length });
+  }
+
+  /** As apostas abertas (L60b) que o arquivo trazia: ao acordar, cada uma ganha um `devolver` na caixa (`cutucarACaixa`). */
+  private carregarAsApostas(apostas: unknown): void {
+    if (!this.caixa || !Array.isArray(apostas)) return;
+    this.carregarApostasAbertas(apostas.filter((c): c is string => typeof c === 'string' && c.length > 0 && c.length <= 120));
+  }
+
+  /** As compras pendentes (L59) que o arquivo trazia. Com a chave desligada elas não se conferem: o log diz quantas ficaram para trás (o débito pode ter acontecido no Banco). */
+  private carregarAsCompras(compras: unknown): void {
+    const { compras: lidas, invalidas } = comprasDoArquivo(compras);
+    this.linhasInvalidasNoArmazenamento += invalidas;
+    if (invalidas > 0) this.opcoes.log('compras-pendentes-invalidas', { entradas: invalidas });
+    if (this.compras) this.compras.carregar(lidas);
+    else if (lidas.length > 0) this.opcoes.log('compras-pendentes-ignoradas', { compras: lidas.length });
   }
 
   /**

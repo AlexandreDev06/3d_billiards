@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROTOCOLO_VERSAO, PROTOCOLO_VERSAO_MINIMA, type MensagemDoCliente } from '@sinuca/protocolo';
 import { PRESET_BOTECO, PRESET_MATA_MATA } from '@sinuca/regras';
+import { CarteirasEmMemoria } from './carteiras-base';
 import { ClienteDeTeste, ConexaoFalsa, criarAmbiente } from './para-testes';
 
 const criar = (nome = 'Ana', mudanca: object = {}): MensagemDoCliente => ({
@@ -239,5 +240,22 @@ describe('registro — limites', () => {
     expect(amb.registro.totalConexoes).toBe(1);
     amb.registro.desconectar(new ConexaoFalsa('nunca-entrou'));
     expect(amb.registro.totalConexoes).toBe(1);
+  });
+});
+
+describe('registro — carteiras congeladas (L60b)', () => {
+  it('criar sala é recusada com a mensagem da manutenção enquanto as carteiras estão congeladas; vencido, volta', () => {
+    const carteiras = new CarteirasEmMemoria({ maxCarteiras: 5, relogio: () => 1_000_000, log: () => {} });
+    const amb = criarAmbiente({}, { carteiras });
+    carteiras.congelar();
+    const c = new ConexaoFalsa('c');
+    amb.registro.receber(c, criar('Ana'));
+    expect(c.ultima('erro')).toMatchObject({ codigo: 'servidor-cheio', mensagem: 'A sala está em manutenção por alguns minutos.' });
+    expect(amb.registro.totalSalas).toBe(0);
+    carteiras.descongelar();
+    const d = new ConexaoFalsa('d');
+    amb.registro.receber(d, criar('Ana'));
+    expect(d.todas('erro')).toHaveLength(0);
+    expect(amb.registro.totalSalas).toBe(1);
   });
 });

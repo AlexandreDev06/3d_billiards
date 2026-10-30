@@ -4791,3 +4791,93 @@ body.modo-treino .hud .aviso-provisorio {
 .treino-ficha-botao:focus-visible {
   border-color: var(--acento);
 }
+
+/* ---------- Anúncios (L52): nunca sobre o jogo; a faixa de baixo tira a altura dela do HUD e do canvas ---------- */
+
+.hud {
+  bottom: var(--anuncio-faixa, 0px);
+}
+
+.emojis-area {
+  bottom: calc(16px + var(--anuncio-faixa, 0px));
+}
+
+.anuncio-faixa {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 3;
+  box-sizing: border-box;
+  overflow: hidden;
+  background: #15171c;
+  visibility: hidden;
+}
+
+.anuncio-faixa.cheio {
+  visibility: visible;
+}
+
+.anuncio-faixa[hidden] {
+  display: none;
+}
+
+.anuncio-faixa .anuncio-espaco {
+  margin: 0 auto;
+  max-width: 970px;
+}
+
+/* O espaço fica sem altura (mas com largura, para o Google medir) até chegar um anúncio; sem anúncio, não deixa buraco. */
+.anuncio-espaco {
+  position: relative;
+  box-sizing: border-box;
+  width: 100%;
+  height: 0;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.5);
+  font: 10px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.anuncio-faixa .anuncio-espaco {
+  height: 100%;
+}
+
+.anuncio-espaco.cheio {
+  height: auto;
+}
+
+.anuncio-faixa .anuncio-espaco.cheio {
+  height: 100%;
+}
+
+.anuncio-rotulo {
+  display: block;
+  padding: 2px 0 1px;
+  text-align: center;
+}
+
+.anuncio-espaco ins {
+  min-height: 0;
+}
+
+.anuncio-prova {
+  min-height: 50px;
+  height: calc(100% - 15px);
+  margin: 0 auto;
+  max-width: 728px;
+  display: grid;
+  place-items: center;
+  background: #8a8d93;
+  color: #fff;
+  font-size: 14px;
+}
+
+.anuncio-prova::after {
+  content: 'Publicidade';
+}
+
+.anuncio-prova[hidden] {
+  display: none;
+}

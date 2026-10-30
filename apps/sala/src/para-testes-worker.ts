@@ -4,6 +4,7 @@
  * HTTP, a escolha de tacada e o laço de uma partida. Nada de conta Cloudflare: é `--local`, o workerd da própria máquina.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
+import { rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -30,9 +31,13 @@ export interface OpcoesDoWrangler {
   /** Os static assets (a cópia do build, com o `_headers`). */
   readonly assets: string;
   readonly vars?: Readonly<Record<string, string>>;
+  /** Os arquivos de configuração (`-c`, relativos a `apps/sala`): o primeiro é o Worker que atende a porta, os outros (L59: `../conta/wrangler.jsonc`) são os Workers ligados por service binding. Sem isto vale o `wrangler.jsonc` da sala sozinho. */
+  readonly configs?: readonly string[];
+  /** A porta do Worker (L61: o Banco só aceita o `Origin` da porta que ele conhece, então o teste a fixa antes da subida e a repete numa segunda subida). Sem isto, uma porta livre. */
+  readonly porta?: number;
 }
 
-const portaLivre = (): Promise<number> =>
+export const portaLivre = (): Promise<number> =>
   new Promise((resolve, reject) => {
     const s = createServer();
     s.once('error', reject);
@@ -43,11 +48,12 @@ const portaLivre = (): Promise<number> =>
   });
 
 export async function subirWrangler(opcoes: OpcoesDoWrangler): Promise<WranglerLocal> {
-  const [porta, inspetor] = [await portaLivre(), await portaLivre()];
+  const [porta, inspetor] = [opcoes.porta ?? (await portaLivre()), await portaLivre()];
   const vars = Object.entries(opcoes.vars ?? {}).flatMap(([k, v]) => ['--var', `${k}:${v}`]);
+  const configs = (opcoes.configs ?? []).flatMap((c) => ['-c', c]);
   const filho: ChildProcess = spawn(
     process.execPath,
-    [WRANGLER, 'dev', '--local', '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--assets', opcoes.assets, '--persist-to', opcoes.persistir, ...vars],
+    [WRANGLER, 'dev', '--local', ...configs, '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--assets', opcoes.assets, '--persist-to', opcoes.persistir, ...vars],
     {
       cwd: PASTA_DA_SALA,
       env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(tmpdir(), 'sala-wrangler-logs'), NO_COLOR: '1', FORCE_COLOR: '0', CI: 'true' },
@@ -153,3 +159,27 @@ export function escolherTacada(v: VisaoDoCliente, turno: number) {
 
 /** Espera a primeira mensagem de `c`, recebida depois da posição `marca` da lista, que `serve`. */
 export const depoisDe = (c: ClienteWs, marca: number, serve: (m: MensagemDaSala) => boolean) => c.esperar((m) => c.recebidas.indexOf(m) >= marca && serve(m));
+
+/**
+ * O `apps/conta/.dev.vars` de teste (o pepper do Banco): é UM arquivo para todos os testes que sobem os dois Workers, então eles se
+ * revezam. Cria com `wx` (nunca sobrescreve) e, se já existe (outro teste rodando, ou um seu de verdade), espera até `esperaMs`; devolve
+ * o que o apaga e apaga também o `.wrangler` da conta. `extras` entram no mesmo arquivo (L61: `ORIGENS_DE_DEV` e `COOKIE_SEGURO=0` para a conta responder a `http://127.0.0.1`). Chame o que ele devolve por ÚLTIMO no `afterAll`.
+ */
+export async function reservarDevVarsDaConta(pastaDaConta: string, pepper: string, esperaMs = 360_000, extras: Readonly<Record<string, string>> = {}): Promise<() => void> {
+  const arquivo = join(pastaDaConta, '.dev.vars');
+  const limite = Date.now() + esperaMs;
+  for (;;) {
+    try {
+      writeFileSync(arquivo, `PEPPER_DA_SENHA=${pepper}\n${Object.entries(extras).map(([k, v]) => `${k}=${v}\n`).join('')}`, { mode: 0o600, flag: 'wx' });
+      break;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
+      if (Date.now() > limite) throw new Error('já existe um apps/conta/.dev.vars há mais de 6 min: apague ou mova antes de rodar este teste', { cause: e });
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+  }
+  return () => {
+    rmSync(join(pastaDaConta, '.wrangler'), { recursive: true, force: true });
+    rmSync(arquivo, { force: true });
+  };
+}

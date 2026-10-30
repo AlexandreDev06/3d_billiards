@@ -31,6 +31,7 @@ Cada pasta tem o seu `CLAUDE.md` com o mapa dos arquivos, as fronteiras e o que 
 | `packages/personagens` | camada genérica dos personagens (.glb, látex, poses e gestos, contatos); sem nada de sinuca | Frontend | `packages/personagens/CLAUDE.md` |
 | `apps/sala` | sala online: um núcleo e duas entradas (Node + `ws` com ngrok; Worker com Durable Object na Cloudflare); variáveis e deploy | Backend | `apps/sala/CLAUDE.md` |
 | `apps/portal` | portal `becogames.app`: site estático (Worker só de assets) com a página inicial, privacidade, termos, ads.txt e CSP | Frontend | `apps/portal/CLAUDE.md` |
+| `apps/conta` | Banco da Beco Games: contas, sessões e moedas comuns a todos os jogos (Worker `becogames-conta` + Durable Object SQLite); sem `@sinuca/*` e sem `node:*` em produção | Backend | `apps/conta/CLAUDE.md` |
 | `apps/web` | cliente three.js, HUD, áudio, lobby, cliente online; atalhos do jogo | Frontend | `apps/web/CLAUDE.md` |
 
 Quem criar, mover ou renomear estrutura atualiza o `CLAUDE.md` da pasta mexida e `docs/decisoes.md` na mesma tarefa.
@@ -47,7 +48,7 @@ pnpm dev          Vite em http://localhost:5173 (proxy de `/sala`: suba a sala c
 pnpm build        typecheck + build do apps/web
 pnpm test         Vitest (packages/*/src e apps/*/src, arquivos *.test.ts)
 pnpm typecheck    tsc em cada pacote
-pnpm lint         ESLint; em packages/fisica bloqueia import de three/@sinuca/* e Math.random; em packages/regras, só `import type` de @sinuca/fisica; em packages/protocolo, só `import type` de fisica e regras; em apps/sala, só `import type` de fisica (não re-simula); em packages/personagens, nenhum `@sinuca/*` e, fora de `src/three/`, nem `three`
+pnpm lint         ESLint; em packages/fisica bloqueia import de three/@sinuca/* e Math.random; em packages/regras, só `import type` de @sinuca/fisica; em packages/protocolo, só `import type` de fisica e regras; em apps/sala, só `import type` de fisica (não re-simula) e de `@sinuca/conta` (contrato do Banco; só `banco-local.ts` importa o núcleo); em apps/conta, nenhum `@sinuca/*` nem `node:*` fora dos testes; em packages/personagens, nenhum `@sinuca/*` e, fora de `src/three/`, nem `three`
 pnpm online       build do apps/web + sala: cliente e WebSocket /sala em http://127.0.0.1:8001 (mesma porta)
 pnpm --filter @sinuca/sala dev   só a sala (tsx watch), para o Vite fazer proxy de /sala
 ```
@@ -67,7 +68,7 @@ Git local desde 2026-10-26 (commit-base `b8ce47c`, sem remote). Use-o para se or
 - **Fronteiras:** cada pasta tem um dono (`docs/decisoes.md`). Mudança de contrato (tipos exportados por `packages/*`) passa pelo Principal.
 - **Commits:** NUNCA commite automaticamente. `git commit`/`git push` só quando o usuário pedir explicitamente ("commita", "sobe isso"); implementar ou aprovar plano não autoriza. Quando autorizado: `<tipo>(<escopo>): <descrição curta em inglês>`, só a primeira linha (tipos: feat, fix, refactor, chore, test, docs).
 - **Deploy e segredos:** `wrangler deploy` e conta Cloudflare só com pedido do usuário. Nunca commitar `.env*`, `.dev.vars` ou tokens; nunca colar segredo em nota do Maestri.
-- **Assets:** só CC0, Pixabay ou CC-BY com crédito em `docs/creditos.md`.
+- **Assets:** só CC0, Pixabay ou CC-BY (fontes também SIL OFL 1.1, liberada pelo usuário em 2026-10-29), com crédito em `docs/creditos.md`.
 - **Código:** identificadores do domínio em português sem acento (`bola`, `tacada`, `cacapa`, `castigo`); TSDoc só na API pública dos pacotes; sem comentário que repete o código.
 
 ## Time multiagente (subagentes)

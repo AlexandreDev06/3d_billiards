@@ -49,6 +49,12 @@ export interface DependenciasDaLigacao {
   readonly log?: Logger;
   /** A CHAVE do balde do IP (`ipDoCliente`); nunca vai a log. */
   readonly ip: string;
+  /** O `id` da conta que a sessão provou ao abrir a conexão (L61); ausente = jogador com ou sem código de convidado. */
+  readonly idDaConta?: string;
+  /** O token da sessão que provou `idDaConta` (L61b), só para reler a sessão antes de mexer em moeda; segredo, nunca vai a log. */
+  readonly sessao?: string;
+  /** Quando a sessão foi conferida com o Banco pela última vez (ms do relógio da sala); sem isto vale o instante em que a ligação nasce. */
+  readonly sessaoConferidaEm?: number;
   readonly soquete: SoqueteDaSala;
   /** Quando o cliente deu o último sinal, se esta ligação continua uma de antes (o Worker refaz a ligação depois de hibernar). */
   readonly sinalEm?: number;
@@ -70,6 +76,8 @@ export class LigacaoDaSala {
     this.conn = {
       id: 'ws',
       ip: deps.ip,
+      ...(deps.idDaConta === undefined ? {} : { idDaConta: deps.idDaConta }),
+      ...(deps.idDaConta === undefined || deps.sessao === undefined ? {} : { sessao: deps.sessao, sessaoConferidaEm: deps.sessaoConferidaEm ?? relogio() }),
       punir: (peso) => void this.punir(peso),
       enviar: (mensagem) => {
         if (!soquete.aberto()) return;
@@ -85,6 +93,7 @@ export class LigacaoDaSala {
       },
       fechar: (codigo, motivo) => soquete.fechar(codigo, motivo),
     };
+    deps.registro.conexaoAberta(this.conn);
   }
 
   /** Conta uma infração de `peso` fichas; esgotada a tolerância, derruba a conexão. */

@@ -30,6 +30,8 @@ const PASSADA_MINIMA_MS = 70;
 const MINIATURA_DA_BARRA = { largura: 168, altura: 24 } as const;
 
 export interface OpcoesMenu {
+  /** O espaço de anúncio da tela inicial (o mesmo elemento a cada chamada; `null` = sem anúncio). Fica embaixo, longe das placas. */
+  espacoDeAnuncio?: () => HTMLElement | null;
   /** O que as regras sabem jogar: um formato de uma modalidade só vem habilitado se `novaPartida` o aceita. */
   readonly disponivel: (modalidade: Modalidade, modo: ModoSala) => boolean;
   readonly apelidoInicial: string;
@@ -52,6 +54,8 @@ export interface OpcoesMenu {
   readonly aoTreino?: () => void;
   /** "Perfil" (L43): só aparece com `recursos.perfil`. */
   readonly aoPerfil?: () => void;
+  /** "Entrar" na barra de cima (L62), mostrado só para o convidado; sem isto o botão não existe. */
+  readonly aoEntrarNaConta?: () => void;
   /** Toca um som curto do menu (passar o mouse, clicar); sem isto o menu é mudo. */
   readonly tocarSom?: (som: SomDoMenu) => void;
   /** O recado pendente da carteira (a do aparelho foi trocada por uma nova); `mostrarInicio` o mostra uma vez. */
@@ -90,6 +94,11 @@ export interface Menu {
   textoDaBarra(): string | null;
   /** Qual tela está aberta, `null` com o menu fechado (gancho de teste). */
   readonly tela: TelaDoMenu | null;
+  /**
+   * O nome da conta (L62) ou `null` para o convidado. Com conta o apelido da mesa é o nome dela: a caixa do apelido mostra esse nome e não
+   * deixa mudar (o nome muda no perfil); o apelido que o convidado digitou fica guardado e volta ao sair.
+   */
+  definirNomeDaConta(nome: string | null): void;
   /** O apelido como está na caixa agora (o que o jogador digitou, ou o que o navegador lembrava): o perfil o mostra. Vazio = sem apelido. */
   apelidoAtual(): string;
   /** Formulário de criar sala: apelido e as regras da sala (modalidade, formato, tempo, linha, giz e força). */
@@ -179,6 +188,13 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
     barraApelido.item.title = 'Perfil e estatísticas';
     barraApelido.item.addEventListener('click', () => opcoes.aoPerfil?.());
   }
+  // L62: "Entrar" para o convidado (o nome da conta já aparece no item do apelido, que vira "Conta").
+  const barraEntrar = barraItem('entrar abre-perfil', ICONES_DO_MENU.jogador, 'Conta', true);
+  barraEntrar.valor.textContent = 'Entrar';
+  barraEntrar.item.dataset.foco = 'barra-entrar';
+  barraEntrar.item.title = 'Entrar ou criar a sua conta Beco Games';
+  barraEntrar.item.hidden = opcoes.aoEntrarNaConta === undefined;
+  barraEntrar.item.addEventListener('click', () => opcoes.aoEntrarNaConta?.());
   const barraSaldo = barraItem('saldo', ICONES_DO_MENU.moeda, 'Saldo');
   const barraTaco = barraItem('taco', '', 'Taco');
   const miniaturaDoTaco = el('span', 'menu-barra-miniatura-caixa');
@@ -193,7 +209,7 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
     opcoes.aoConfiguracoes();
   };
   engrenagem.addEventListener('click', aoClicarEngrenagem);
-  barra.append(barraApelido.item, barraSaldo.item, barraTaco.item, engrenagem);
+  barra.append(barraApelido.item, barraEntrar.item, barraSaldo.item, barraTaco.item, engrenagem);
   raiz.append(palco, barra);
   pai.append(raiz);
 
@@ -224,7 +240,10 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
   raiz.addEventListener('pointerover', aoPassarOMouse);
   raiz.addEventListener('click', aoClicarEmBotao, true);
 
-  let apelido = opcoes.apelidoInicial;
+  /** O apelido que o convidado digitou; com conta vale `nomeDaConta`, e este fica guardado. */
+  let apelidoDoConvidado = opcoes.apelidoInicial;
+  let nomeDaConta: string | null = null;
+  const apelidoDeAgora = (): string => nomeDaConta ?? apelidoDoConvidado;
   const catalogo = montarCatalogo(CATALOGO, opcoes.disponivel);
   /** O que cada tela escolheu da última vez (criar sala e mesmo PC lembram cada uma a sua; o navegador também). */
   const escolhidas: Record<OndeSeLembra, RegrasDaSala> = { sala: opcoes.regrasLembradas('sala'), local: opcoes.regrasLembradas('local') };
@@ -257,7 +276,9 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
   /** A barra de cima com o que o apelido e a carteira dizem agora; a miniatura do taco só é refeita quando a skin ou a semente muda. */
   let chaveDoTacoDesenhado = '';
   const desenharBarra = (): void => {
-    const b = barraDoMenu(opcoes.carteira(), apelido);
+    const b = barraDoMenu(opcoes.carteira(), apelidoDeAgora());
+    barraEntrar.item.hidden = opcoes.aoEntrarNaConta === undefined || nomeDaConta !== null;
+    barraApelido.item.querySelector('.menu-barra-rotulo')!.textContent = nomeDaConta === null ? 'Jogador' : 'Conta';
     barraApelido.valor.textContent = b.apelido;
     barraApelido.item.classList.toggle('vazio', !b.temApelido);
     if (perfilNaBarra) barraApelido.item.setAttribute('aria-label', `Perfil e estatísticas${b.temApelido ? ` de ${b.apelido}` : ''}`);
@@ -342,9 +363,14 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
     entrada.placeholder = 'Como te chamam na mesa';
     entrada.name = 'apelido';
     entrada.autocomplete = 'off';
-    entrada.value = apelido;
+    entrada.value = apelidoDeAgora();
+    if (nomeDaConta !== null) {
+      entrada.readOnly = true;
+      entrada.title = 'O nome da mesa é o da sua conta. Mude no perfil.';
+    }
     entrada.addEventListener('input', () => {
-      apelido = entrada.value;
+      if (nomeDaConta !== null) return;
+      apelidoDoConvidado = entrada.value;
       desenharBarra();
     });
     return entrada;
@@ -575,7 +601,8 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
       privacidade.target = '_blank';
       privacidade.rel = 'noopener noreferrer';
 
-      mostrar('inicio', cabecalho('Escolha como jogar', true), aviso(texto ?? opcoes.avisoDaCarteira() ?? undefined), inicio, privacidade);
+      const anuncio = opcoes.espacoDeAnuncio?.() ?? null;
+      mostrar('inicio', cabecalho('Escolha como jogar', true), aviso(texto ?? opcoes.avisoDaCarteira() ?? undefined), inicio, privacidade, ...(anuncio === null ? [] : [anuncio]));
       caixa.classList.add('inicio');
       painelDeMissoes = missoes;
       fimDoDiaMostrado = 0;
@@ -591,7 +618,18 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
       if (visivel) desenharBarra();
     },
     textoDaBarra: () => (visivel ? barra.innerText || barra.textContent : null),
-    apelidoAtual: () => apelido,
+    definirNomeDaConta(nome) {
+      if (nome === nomeDaConta) return;
+      nomeDaConta = nome;
+      const campo = caixa.querySelector<HTMLInputElement>('input[name="apelido"]');
+      if (campo !== null) {
+        campo.value = apelidoDeAgora();
+        campo.readOnly = nome !== null;
+        campo.title = nome === null ? '' : 'O nome da mesa é o da sua conta. Mude no perfil.';
+      }
+      if (visivel) desenharBarra();
+    },
+    apelidoAtual: apelidoDeAgora,
     get tela() {
       return visivel ? telaAtual : null;
     },

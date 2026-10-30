@@ -52,7 +52,7 @@ export interface Telas {
 }
 
 /** `paiDoClique`: onde fica o aviso "Clique para jogar" (por padrão, em `pai`). */
-export function criarTelas(pai: HTMLElement, aoVoltar: () => void, paiDoClique: HTMLElement = pai): Telas {
+export function criarTelas(pai: HTMLElement, aoVoltar: () => void, paiDoClique: HTMLElement = pai, espacoDeAnuncio?: () => HTMLElement | null): Telas {
   const clique = document.createElement('div');
   clique.className = 'tela-clique';
   clique.textContent = 'Clique para jogar';
@@ -220,6 +220,9 @@ export function criarTelas(pai: HTMLElement, aoVoltar: () => void, paiDoClique: 
       saiEl.textContent = sai === '' ? '' : `Sai: ${sai}`;
       saiEl.hidden = sai === '';
       fim.hidden = false;
+      // O anúncio entra depois do foco no botão e abaixo dele: não tira o foco nem atrasa o "Voltar".
+      const anuncio = espacoDeAnuncio?.() ?? null;
+      if (anuncio !== null && anuncio.parentElement !== caixa) caixa.append(anuncio);
       sincronizar();
       if (esperaPor === '') botao.focus();
     },

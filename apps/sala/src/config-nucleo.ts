@@ -73,6 +73,11 @@ export interface ConfigDoNucleo {
   readonly tetoDaVezApostadaMs: number;
   /** O presente de teste (L34c); `null` = desligado, o padrão: ninguém ganha nada. */
   readonly presenteDeTeste: PresenteDeTeste | null;
+  /**
+   * `SALDO_NO_BANCO=1` (L57): o Banco da Beco Games é o dono do saldo e a sinuca guarda o espelho e a caixa de saída. Desligado (o padrão),
+   * não há caixa nem chamada ao Banco: tudo como sempre foi. Ligado exige o binding `CONTA` (Worker) ou o `BancoLocal` (sala Node).
+   */
+  readonly saldoNoBanco: boolean;
   /** As missões diárias (L31) andam e pagam. Desligada, a carteira ainda mostra o quadro do dia, mas nada conta nem paga. */
   readonly missoesDiarias: boolean;
   /** Na espera, quem caiu libera o lugar depois disto (o anfitrião nunca). */
@@ -134,6 +139,7 @@ export const CONFIG_NUCLEO_PADRAO: ConfigDoNucleo = {
   toleranciaVezMs: 60_000,
   tetoDaVezApostadaMs: 120_000,
   presenteDeTeste: null,
+  saldoNoBanco: false,
   missoesDiarias: true,
   lugarEsperaMs: 30_000,
   salaVaziaEsperaMs: 60_000,
@@ -171,7 +177,8 @@ export function ligado(env: Record<string, string | undefined>, chave: string, p
   throw new Error(`${chave}: use 0 ou 1 (veio "${bruto}")`);
 }
 
-const FORMATO_DO_ROTULO = /^[a-z0-9][a-z0-9._-]{0,39}$/;
+/** Até 39 caracteres: a chave do presente no Banco é `sinuca:presente:<rótulo>:<id>` e tem de caber em 120 (`MAX_DO_ROTULO_DO_PRESENTE`). */
+const FORMATO_DO_ROTULO = /^[a-z0-9][a-z0-9._-]{0,38}$/;
 
 /**
  * `PRESENTE_DE_TESTE` (o valor) liga o presente e exige `PRESENTE_DE_TESTE_ROTULO` (a marca): sem rótulo a sala não sobe, para não
@@ -183,14 +190,14 @@ export function presente(env: Record<string, string | undefined>): PresenteDeTes
   if (valor === 0) return null;
   const rotulo = env.PRESENTE_DE_TESTE_ROTULO;
   if (rotulo === undefined) throw new Error('PRESENTE_DE_TESTE_ROTULO: obrigatório quando PRESENTE_DE_TESTE está ligado (ex.: PRESENTE_DE_TESTE_ROTULO=skins-cs)');
-  if (!FORMATO_DO_ROTULO.test(rotulo)) throw new Error(`PRESENTE_DE_TESTE_ROTULO: use de 1 a 40 caracteres, minúsculas, dígitos, ponto, hífen e sublinhado, começando por letra ou dígito (veio "${rotulo}")`);
+  if (!FORMATO_DO_ROTULO.test(rotulo)) throw new Error(`PRESENTE_DE_TESTE_ROTULO: use de 1 a 39 caracteres, minúsculas, dígitos, ponto, hífen e sublinhado, começando por letra ou dígito (veio "${rotulo}")`);
   return { valor, rotulo };
 }
 
 /**
  * Variáveis do núcleo: MAX_SALAS, MAX_SALAS_POR_IP, MAX_CONEXOES, MAX_CARTEIRAS, TOLERANCIA_VEZ_S, TETO_DA_VEZ_APOSTADA_S, MISSOES_DIARIAS
  * (`0` desliga), ORIGENS (lista separada por vírgula), PRESENTE_DE_TESTE e PRESENTE_DE_TESTE_ROTULO (L34c, o presente de teste: o valor
- * liga, o rótulo marca). O resto é padrão. A sala Node lê o `process.env`; o Worker, os `vars` e `secrets` do Wrangler.
+ * liga, o rótulo marca) e SALDO_NO_BANCO (L57, `1` liga o espelho e a caixa de saída do Banco). O resto é padrão. A sala Node lê o `process.env`; o Worker, os `vars` e `secrets` do Wrangler.
  */
 export function configNucleoDoAmbiente(env: Record<string, string | undefined>): ConfigDoNucleo {
   const p = CONFIG_NUCLEO_PADRAO;
@@ -204,6 +211,7 @@ export function configNucleoDoAmbiente(env: Record<string, string | undefined>):
     toleranciaVezMs: inteiro(env, 'TOLERANCIA_VEZ_S', p.toleranciaVezMs / 1000, 1, 86_400) * 1000,
     tetoDaVezApostadaMs: inteiro(env, 'TETO_DA_VEZ_APOSTADA_S', p.tetoDaVezApostadaMs / 1000, 1, 86_400) * 1000,
     presenteDeTeste: presente(env),
+    saldoNoBanco: ligado(env, 'SALDO_NO_BANCO', p.saldoNoBanco),
     missoesDiarias: ligado(env, 'MISSOES_DIARIAS', p.missoesDiarias),
   };
 }

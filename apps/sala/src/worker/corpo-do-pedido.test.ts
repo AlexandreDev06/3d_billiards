@@ -66,6 +66,21 @@ describe('pedidoDoRequest e respostaDoResultado', () => {
     expect(await p.lerCorpo(100, 1000)).toEqual({ tipo: 'texto', texto: '{}' });
   });
 
+  it('o id da conta (L61) vem do cabeçalho interno, só se tem a forma de um id', () => {
+    const id = 'ab'.repeat(32);
+    const com = (valor: string) => new Request('https://sala.exemplo/carteira', { headers: { 'x-sinuca-conta': valor } });
+    expect(pedidoDoRequest(com(id), '1.2.3.4').idDaConta).toBe(id);
+    for (const ruim of ['', 'abc', id.toUpperCase(), `${id}0`]) expect(pedidoDoRequest(com(ruim), '1.2.3.4').idDaConta, ruim).toBeUndefined();
+    expect(pedidoDoRequest(new Request('https://sala.exemplo/carteira'), '1.2.3.4').idDaConta).toBeUndefined();
+  });
+
+  it('no /conta/* (tratado na borda, com o pedido cru) o cabeçalho interno x-sinuca-conta não é lido (L61b)', () => {
+    const id = 'ab'.repeat(32);
+    const r = new Request('https://sala.exemplo/conta/eu', { headers: { 'x-sinuca-conta': id } });
+    expect(pedidoDoRequest(r, '1.2.3.4', false).idDaConta).toBeUndefined();
+    expect(pedidoDoRequest(r, '1.2.3.4').idDaConta).toBe(id);
+  });
+
   it('a resposta neutra vira Response com status, corpo e cabeçalhos', async () => {
     const resposta = respostaDoResultado({ status: 429, corpo: '{"erro":"limite"}', cabecalhos: { 'Content-Type': 'application/json', 'Retry-After': 60 } });
     expect(resposta.status).toBe(429);

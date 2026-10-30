@@ -96,6 +96,47 @@ export default defineConfig(
               allowTypeImports: true,
               message: 'apps/sala não re-simula: de @sinuca/fisica importa só tipos (import type).',
             },
+            {
+              group: ['@sinuca/conta', '@sinuca/conta/*'],
+              allowTypeImports: true,
+              message: 'apps/sala não conhece o código do Banco: de @sinuca/conta importa só tipos (import type de @sinuca/conta/contrato). Só banco-local.ts (sala Node) importa o núcleo.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-properties': SEM_MATH_RANDOM,
+    },
+  },
+  {
+    // A sala Node roda o núcleo do Banco (Moedas) sobre node:sqlite no lugar do service binding; este arquivo nunca entra no Worker.
+    files: ['apps/sala/src/banco-local.ts'],
+    rules: {
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['three', 'three/*', '@sinuca/web', '@sinuca/web/*'], message: 'apps/sala não conhece o cliente.' },
+            {
+              group: ['@sinuca/fisica', '@sinuca/fisica/*'],
+              allowTypeImports: true,
+              message: 'apps/sala não re-simula: de @sinuca/fisica importa só tipos (import type).',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // O Banco da Beco Games roda no Worker sem Node (sem nodejs_compat) e não conhece a sinuca: o contrato sai de src/contrato.ts.
+    files: ['apps/conta/**/*.ts'],
+    ignores: ['apps/conta/**/*.test.ts', 'apps/conta/src/para-testes.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            { group: ['@sinuca/*'], message: 'apps/conta não conhece a sinuca nem os outros pacotes: o contrato fica em src/contrato.ts.' },
+            { group: ['node:*'], message: 'apps/conta roda no Worker sem Node: só Web Crypto e SQL pelo SqlMinimo.' },
           ],
         },
       ],

@@ -97,10 +97,10 @@ describe('configDoAmbiente', () => {
       expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: bruto, PRESENTE_DE_TESTE_ROTULO: 'skins-cs' }), bruto).toThrow(/PRESENTE_DE_TESTE/);
     }
     expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: '10000' })).toThrow(/PRESENTE_DE_TESTE_ROTULO/);
-    for (const rotulo of ['', ' ', 'Skins-CS', 'com espaço', '-comeca', '_comeca', 'á', 'a'.repeat(41), '__proto__', 'a/b']) {
+    for (const rotulo of ['', ' ', 'Skins-CS', 'com espaço', '-comeca', '_comeca', 'á', 'a'.repeat(40), '__proto__', 'a/b']) {
       expect(() => configDoAmbiente({ PRESENTE_DE_TESTE: '10000', PRESENTE_DE_TESTE_ROTULO: rotulo }), rotulo).toThrow(/PRESENTE_DE_TESTE_ROTULO/);
     }
-    for (const rotulo of ['skins-cs', 'v1.2_b', '0', 'a'.repeat(40)]) {
+    for (const rotulo of ['skins-cs', 'v1.2_b', '0', 'a'.repeat(39)]) {
       expect(configDoAmbiente({ PRESENTE_DE_TESTE: '5', PRESENTE_DE_TESTE_ROTULO: rotulo }).presenteDeTeste, rotulo).toEqual({ valor: 5, rotulo });
     }
   });
@@ -122,5 +122,14 @@ describe('configDoAmbiente', () => {
     expect(carteira.falhasPorIp).toEqual({ capacidade: 10, porSegundo: 10 / 600 });
     expect(carteira.atrasoGravacaoMs).toBe(250);
     expect(carteira.tempoDoCorpoMs).toBe(5000);
+  });
+});
+
+describe('SALDO_NO_BANCO (L57)', () => {
+  it('desligado por padrão; 1 liga, 0 desliga, outro valor diz qual variável', () => {
+    expect(configDoAmbiente({}).saldoNoBanco).toBe(false);
+    expect(configDoAmbiente({ SALDO_NO_BANCO: '1' }).saldoNoBanco).toBe(true);
+    expect(configDoAmbiente({ SALDO_NO_BANCO: '0' }).saldoNoBanco).toBe(false);
+    expect(() => configDoAmbiente({ SALDO_NO_BANCO: 'sim' })).toThrow(/SALDO_NO_BANCO/);
   });
 });

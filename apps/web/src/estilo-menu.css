@@ -1885,3 +1885,105 @@ body[data-qualidade='baixa'] .menu-barra-item.abre-perfil {
     height: 280px;
   }
 }
+
+/* ---------------------------------------------------------------- L62: a conta (diálogos de criar, entrar, esqueci e o bloco do perfil) */
+
+.conta-dialogo .carteira-pergunta-caixa {
+  width: 460px;
+}
+
+.conta-dialogo [hidden] {
+  display: none;
+}
+
+.conta-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.conta-campo-rotulo,
+.perfil-conta-rotulo {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--m-texto-fraco);
+}
+
+.conta-campo-entrada,
+.perfil-conta-campo {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  padding: 9px 11px;
+  font-size: 15px;
+}
+
+.conta-acoes {
+  flex-wrap: wrap;
+}
+
+.conta-erro {
+  margin: 0;
+}
+
+.perfil-conta {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 214, 160, 0.18);
+}
+
+.perfil-conta-convidado,
+.perfil-conta-logada,
+.perfil-conta-excluir {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.perfil-conta-linha {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.perfil-conta-linha .perfil-conta-campo {
+  flex: 1 1 200px;
+  width: auto;
+}
+
+.perfil-conta-email {
+  margin: 0;
+  color: var(--m-giz-suave);
+  overflow-wrap: anywhere;
+}
+
+.perfil-conta-msg {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid rgba(92, 200, 255, 0.5);
+  border-radius: 8px;
+  background: rgba(92, 200, 255, 0.1);
+}
+
+.perfil-conta-msg.erro {
+  border-color: var(--m-neon-quente);
+  background: rgba(255, 122, 89, 0.16);
+  color: #ffd4c6;
+  font-weight: 700;
+}
+
+.menu-botao.perigo {
+  border-color: var(--m-neon-quente);
+  color: #ffd4c6;
+}
+
+.perfil-conta [hidden],
+.menu-barra-item[hidden] {
+  display: none;
+}

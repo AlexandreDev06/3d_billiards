@@ -42,6 +42,10 @@ export interface GanchoSinuca {
   consequencias(): Consequencias | null;
   /** Velocidade de reprodução da gravação (1 = tempo real; 8 acelera os testes, 0,05 deixa captar a queda). */
   velocidadeAnimacao(fator: number): void;
+  /** L52: troca os anúncios por um retângulo cinza "Publicidade" (sem pedir nada ao Google); reabra o menu/fim para ver. */
+  anunciosDeProva(ligado: boolean): void;
+  /** L52: abre a tela de fim de partida como se a partida tivesse acabado (captura do anúncio do fim). */
+  mostrarFimDeProva(): void;
   /** Troca as regras (ensaio de cenário) e começa uma partida nova com elas; `null` volta às do pacote. */
   usarRegras(motor: MotorDeRegras | null): void;
   /** Gravação da última tacada (eventos, duração, quadros); `null` antes da primeira. */
@@ -437,6 +441,19 @@ export interface GanchoSinuca {
   };
   /** Abre ou fecha o perfil, como o botão "Perfil" e o apelido da barra de cima. */
   abrirPerfil(aberto: boolean): void;
+  /**
+   * A conta da Beco Games (L62), SEM e-mail e sem senha: `tipo` (`convidado`/`conta`), o `nome` da conta (`null` no convidado), se a carteira
+   * está no modo conta, se o navegador lembra de ter tido conta e o diálogo aberto (o texto dele, sem senha).
+   */
+  conta(): {
+    readonly tipo: 'convidado' | 'conta';
+    readonly nome: string | null;
+    readonly modoConta: boolean;
+    readonly teveConta: boolean;
+    readonly dialogo: { readonly aberto: boolean; readonly texto: string };
+  };
+  /** Abre o diálogo de conta pedido, como os botões "Entrar" da barra e "Criar conta" do perfil. */
+  abrirConta(qual: 'criar' | 'entrar' | 'esqueci' | 'sessao-acabou' | null): void;
   /**
    * O editor "Meu balão" (L48): se está aberto, o que ele mostra em texto, o rascunho que a prévia veste, o diagnóstico da prévia 3D
    * (o que o balão faz e veste; `null` enquanto ela não existe) e o estado do arquivo dos chapéus. Nunca leva o código da carteira.

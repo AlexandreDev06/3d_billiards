@@ -5,69 +5,138 @@
   <meta name="google-adsense-account" content="ca-pub-8270923634039876">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Beco Games: jogos de navegador para jogar com os amigos</title>
-<meta name="description" content="Jogos de navegador para jogar com os amigos, de graça. Comece pela Sinuca 3D par ou ímpar, jogo de boteco, sem linha de mira.">
-<meta name="theme-color" content="#12301f">
+<meta name="description" content="Jogos de navegador para jogar com os amigos. Comece pela Sinuca 3D par ou ímpar, jogo de boteco, sem linha de mira.">
+<meta name="theme-color" content="#0a0a0a">
 <link rel="canonical" href="https://becogames.app/">
 <link rel="icon" type="image/svg+xml" href="/img/favicon.svg">
+<link rel="preload" href="/fontes/instrument-serif.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fontes/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" as="image" type="image/webp" imagesrcset="/img/mesa-800.webp 800w, /img/mesa-1600.webp 1600w" imagesizes="(min-width: 1260px) 624px, (min-width: 821px) 50vw, 100vw" fetchpriority="high">
 <link rel="stylesheet" href="/estilo.css">
 <meta property="og:type" content="website">
 <meta property="og:locale" content="pt_BR">
 <meta property="og:site_name" content="Beco Games">
 <meta property="og:title" content="Beco Games: jogos de navegador para jogar com os amigos">
-<meta property="og:description" content="Jogos de navegador para jogar com os amigos, de graça. Comece pela Sinuca 3D par ou ímpar, jogo de boteco, sem linha de mira.">
+<meta property="og:description" content="Jogos de navegador para jogar com os amigos. Comece pela Sinuca 3D par ou ímpar, jogo de boteco, sem linha de mira.">
 <meta property="og:url" content="https://becogames.app/">
 <meta property="og:image" content="https://becogames.app/img/sinuca.jpg">
 <meta name="twitter:card" content="summary_large_image">
 </head>
-<body>
+<body class="home">
 <a class="pular" href="#conteudo">Pular para o conteúdo</a>
-<header class="topo">
-  <a class="marca" href="/">Beco Games</a>
-  <nav aria-label="Principal"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a><a href="/privacidade">Privacidade</a></nav>
-</header>
-<main id="conteudo">
-<section class="palco">
-  <h1>Beco Games</h1>
-  <p>Jogos de navegador para jogar com os amigos, de graça. Sem instalar nada e sem cadastro.</p>
-</section>
-
-<section class="jogo" id="jogos" aria-labelledby="t-sinuca">
-  <img src="/img/sinuca.jpg" width="1280" height="720" alt="Mesa de sinuca em 3D num boteco, vista de trás do taco, com a branca na frente do triângulo de bolas">
-  <div>
-    <h2 id="t-sinuca">Sinuca</h2>
-    <p>Par ou ímpar de boteco em 3D, direto no navegador. Chame os amigos por um link e jogue.</p>
-    <a class="botao" href="https://sinuca.becogames.app">Jogar</a>
-    <p class="links-jogo"><a href="/como-jogar">Como jogar</a> <a href="/regras">Regras</a></p>
-  </div>
-</section>
-
-<section class="sobre" aria-labelledby="t-sobre">
-  <h2 id="t-sobre">Sinuca de boteco, sem frescura</h2>
-  <div>
-    <p>É a sinuca que se joga em mesa de bar: o par ou ímpar. Cada jogador fica com um grupo de bolas, e a bola 8 só entra por último. Também tem o mata-mata, em que cada um joga por si e ganha quem matar mais bolas.</p>
-    <ul>
-      <li>Sem linha de mira: você mira no olho, como na vida real.</li>
-      <li>A tacada é feita com o mouse: segure, puxe para trás e solte. Dá para aplicar efeito e passar giz.</li>
-      <li>Online com os amigos, em uma sala criada por link, ou no mesmo computador, um de cada vez.</li>
-      <li>Moedas virtuais numa carteira guardada no seu navegador, com loja de tacos e de enfeites para o seu balão.</li>
-    </ul>
-  </div>
-</section>
-
-<section class="breve" aria-labelledby="t-breve">
-  <h2 id="t-breve">Mais jogos no beco</h2>
-  <p>Estamos preparando outros jogos para jogar com a turma. Sem data marcada: quando ficarem prontos, aparecem aqui.</p>
-</section>
-</main>
-<footer class="rodape">
-  <nav aria-label="Rodapé"><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a><a href="/privacidade">Privacidade</a><a href="/termos">Termos</a><a href="mailto:contato@becogames.app">Contato</a></nav>
-  <p class="grande">Beco Games</p>
-  <small>&copy; 2026 Beco Games. Jogos de navegador para jogar com os amigos.</small>
-</footer>
-<div class="faixa" id="faixa-cookies" role="region" aria-label="Aviso de cookies" hidden>
-  <p>Usamos o armazenamento do navegador para lembrar suas escolhas e, no futuro, parceiros de anúncios podem usar cookies. Saiba mais na <a href="/privacidade">política de privacidade</a>.</p>
+<div class="faixa" id="faixa-cookies" role="region" aria-label="Aviso de cookies">
+  <p>Usamos o armazenamento do navegador para lembrar suas escolhas, e o Google e parceiros de anúncios usam cookies para exibir anúncios. Saiba mais na <a href="/privacidade">política de privacidade</a>.</p>
   <button type="button">Entendi</button>
 </div>
+<header class="topo">
+  <div class="topo-in">
+    <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+    <nav class="nav-desk" aria-label="Principal"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a></nav>
+    <div class="topo-acoes">
+      <a class="entrar" href="/entrar">Entrar</a>
+      <a class="botao contorno pequeno" href="https://sinuca.becogames.app">Jogar agora</a>
+      <details class="nav-cel"><summary>Menu</summary><nav aria-label="Principal (celular)"><a href="/#jogos">Jogos</a><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/#em-breve">Em breve</a><a href="/#duvidas">Dúvidas</a><a class="jogar" href="https://sinuca.becogames.app">Jogar agora</a></nav></details>
+    </div>
+  </div>
+</header>
+<main id="conteudo">
+
+<section class="hero" aria-labelledby="t-hero">
+  <div class="hero-in">
+    <div class="hero-texto">
+      <a class="selo-novo" href="/criar-conta"><b>Novo:</b> conta Beco Games</a>
+      <h1 id="t-hero">Sinuca de<br>boteco</h1>
+      <p>Par ou ímpar em 3D, direto no navegador. Sem linha de mira e sem cadastro: mande o link e jogue com a turma.</p>
+      <p class="acoes"><a class="botao" href="https://sinuca.becogames.app">Jogar Sinuca</a><a class="link-forte" href="/como-jogar">Como jogar</a></p>
+      <ul class="selos" aria-label="Destaques">
+        <li>Sem linha de mira</li>
+        <li>Online com link</li>
+        <li>No navegador</li>
+      </ul>
+    </div>
+    <div class="hero-img">
+      <picture>
+        <source type="image/webp" srcset="/img/mesa-800.webp 800w, /img/mesa-1600.webp 1600w" sizes="(min-width: 1260px) 624px, (min-width: 821px) 50vw, 100vw">
+        <img src="/img/mesa-1600.jpg" srcset="/img/mesa-800.jpg 800w, /img/mesa-1600.jpg 1600w" sizes="(min-width: 1260px) 624px, (min-width: 821px) 50vw, 100vw" width="1600" height="1023" fetchpriority="high" decoding="async" alt="A Sinuca no boteco: mesa de feltro verde sob a luminária, o letreiro de néon, o quadro de giz com os preços e o piso de ladrilho. No canto, o painel de efeito da bola branca">
+      </picture>
+    </div>
+  </div>
+</section>
+
+<section class="secao alt" id="jogos" aria-labelledby="t-jogos">
+  <div class="miolo">
+    <h2 id="t-jogos">Sinuca, do jeito que se joga no bar</h2>
+    <p class="sub">Quatro coisas que fazem a mesa parecer de verdade.</p>
+    <div class="grade">
+      <article class="cartao-dif c-feltro">
+        <svg class="icone" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <h3>Sem linha de mira, como no bar.</h3>
+        <p>Você mira no olho. Puxe o mouse para trás, solte e dê efeito e giz.</p>
+      </article>
+      <article class="cartao-dif c-neon">
+        <svg class="icone" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="9.2" r="2"/><circle cx="12" cy="15" r="2.6"/></svg>
+        <h3>Par ou ímpar e mata-mata.</h3>
+        <p>Cada jogador fica com um grupo de bolas. No mata-mata, cada um joga por si.</p>
+      </article>
+      <article class="cartao-dif c-giz">
+        <svg class="icone" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1 0l3-3a5 5 0 0 0-7.1-7.1l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.1 0l-3 3A5 5 0 0 0 11 21.1l1.7-1.7"/></svg>
+        <h3>Chame a turma por um link.</h3>
+        <p>Crie uma sala, copie o link e mande no grupo. Ou jogue no mesmo computador.</p>
+      </article>
+      <article class="cartao-dif c-madeira">
+        <svg class="icone" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 0 1-11.6 7.1L3 21l1.9-5.4A8 8 0 1 1 21 12z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>
+        <h3>Taco e balão do seu jeito.</h3>
+        <p>Ganhe moedas, escolha tacos na loja e enfeite o balão do seu jogador.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="secao breve" id="em-breve" aria-labelledby="t-breve">
+  <div class="miolo breve-in">
+    <div class="breve-texto">
+      <h2 id="t-breve">Mais jogos no beco.</h2>
+      <p>Estamos preparando outros jogos para jogar com a turma. Sem data marcada: quando ficarem prontos, aparecem aqui.</p>
+    </div>
+    <figure class="bolas">
+      <img src="/img/bolas-640.webp" srcset="/img/bolas-640.webp 640w, /img/bolas-1280.webp 1280w" sizes="(min-width: 821px) 400px, 100vw" width="1280" height="853" loading="lazy" decoding="async" alt="Bolas de sinuca coloridas, lisas e listradas, no feltro verde">
+      <figcaption>Foto: cogdogblog, <a href="https://commons.wikimedia.org/wiki/File:Break!_(15955696631).jpg">Wikimedia Commons</a>, CC-BY 2.0.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<section class="secao alt perguntas" id="duvidas" aria-labelledby="t-faq">
+  <div class="miolo">
+    <h2 id="t-faq">Perguntas rápidas</h2>
+    <div class="lista">
+    <details class="pergunta"><summary>É grátis?</summary><p>É. Jogar não custa nada e não pede cadastro. As moedas do jogo são virtuais e não valem dinheiro. O site se mantém com anúncios do Google, como explica a <a href="/privacidade">política de privacidade</a>.</p></details>
+    <details class="pergunta"><summary>Precisa baixar alguma coisa?</summary><p>Não. O jogo roda no navegador do computador (Chrome, Edge ou Firefox atualizados): é só abrir o endereço.</p></details>
+    <details class="pergunta"><summary>Funciona no celular?</summary><p>Ainda não. A Sinuca foi feita para computador, com mouse: a tacada é dada puxando o mouse para trás e soltando, o que o toque na tela não faz bem.</p></details>
+    <details class="pergunta"><summary>Como jogo com os amigos?</summary><p>Crie uma sala online e copie o link: quem abrir entra na mesma sala. Se estiverem no mesmo computador, use o modo de dois jogadores, um de cada vez. As regras estão na página <a href="/regras">Regras</a>.</p></details>
+    </div>
+  </div>
+</section>
+
+</main>
+<footer class="rodape">
+  <div class="rodape-in">
+    <div class="rodape-topo">
+      <div class="rodape-marca">
+        <a class="marca" href="/" aria-label="Beco Games, início"><img src="/img/logo.svg" width="36" height="36" alt=""><span>Beco Games</span></a>
+        <p>Jogos de navegador para jogar com os amigos.</p>
+        <a class="email" href="mailto:contato@becogames.app">contato@becogames.app</a>
+      </div>
+      <nav aria-label="Jogos"><p>Jogos</p><a href="https://sinuca.becogames.app">Sinuca</a><a href="/#em-breve">Em breve</a></nav>
+      <nav aria-label="Ajuda"><p>Ajuda</p><a href="/como-jogar">Como jogar</a><a href="/regras">Regras</a><a href="/sobre">Sobre</a></nav>
+      <nav aria-label="Legal"><p>Legal</p><a href="/privacidade">Privacidade</a><a href="/termos">Termos de uso</a></nav>
+    </div>
+    <div class="rodape-meta">
+      <span>&copy; 2026 Beco Games</span>
+      <span>Fontes Instrument Serif e Inter, licença OFL</span>
+      <a class="subir" href="#conteudo">Voltar ao topo</a>
+    </div>
+  </div>
+</footer>
 <script src="/faixa.js"></script>
 </body>
 </html>

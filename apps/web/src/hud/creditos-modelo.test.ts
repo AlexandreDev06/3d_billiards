@@ -76,7 +76,7 @@ describe('docs/creditos.md de verdade', () => {
     for (const c of terceiros) {
       expect(c.autor).not.toBe('');
       expect(c.fonte, c.autor).not.toBeNull();
-      expect(c.licenca, c.autor).toMatch(/CC0|CC-BY/);
+      expect(c.licenca, c.autor).toMatch(/CC0|CC-BY|SIL OFL 1\.1/);
     }
   });
 

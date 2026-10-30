@@ -82,6 +82,8 @@ import { EmissorDeDiagnostico, memoriaDoJsMb, mensagemDeDiagnostico, type Resumo
 import { devAtivo } from './dev/ativo';
 import { criarPainelDev, type PainelDev } from './dev/painel';
 import { EstadoDoPainel, avisoDosSalvos, controleDoPainel, esquecerValores, fisicaDoPainel, lerValoresSalvos, salvarValores, tacadaDoPainel, valoresPadrao } from './dev/parametros';
+import { criarAnuncios } from './anuncios/anuncios';
+import { criarFaixa } from './anuncios/faixa';
 import { instalarGancho } from './gancho';
 import { AnunciadorDoCastigo } from './hud/anuncio-modelo';
 import { criarPainelDeConfiguracoes } from './hud/configuracoes';
@@ -112,6 +114,9 @@ import { ArmazemDeSessao, idDaAba } from './online/armazem';
 import { avisoDeFisicaAlterada, configDeFisica, modoDoPainelDeFisica } from './online/fisica-da-sala-modelo';
 import { apostaNaTela, type ApostaNaTela } from './online/aposta-modelo';
 import { CarteiraDoAparelho, pedirPeloNavegador } from './online/carteira';
+import { ContaDoAparelho, pedirContaPeloNavegador } from './online/conta';
+import { AVISO_LINK_COM_CONTA, MENSAGEM_VOCE_SAIU } from './online/mensagens-da-conta';
+import { criarDialogosDaConta } from './hud/conta-dialogos';
 import { mudarParaOEnderecoNovo } from './online/endereco-do-jogo';
 import { AVISO_LINK_EM_SALA, baseDoLink, lerFragmentoDaCarteira, receberCarteiraDoLink } from './online/levar-carteira';
 import { avisosDeMissao, missoesNaAjuda, missoesNaTela, type AvisoDeMissao } from './online/missoes-modelo';
@@ -172,6 +177,8 @@ function iniciar(): () => void {
   if (leituraDaAbertura.tipo !== 'nenhum') limparEnderecoDaCarteira(leituraDaAbertura.resto);
   /** Enquanto o link da abertura não foi resolvido, a leitura do lobby não cria uma carteira à toa (a do link pode ser a deste aparelho). */
   let aguardandoOLink = leituraDaAbertura.tipo !== 'nenhum';
+  /** L62: `conta.eu()` vem antes da carteira; até ele responder o lobby não lê as missões. */
+  let aguardandoAConta = true;
   const { mesa, bolao: medidasBolao } = CONFIG_FISICA_PADRAO;
   let ensaio: MotorDeRegras | null = null;
   const regrasAtuais: MotorDeRegras = {
@@ -195,6 +202,11 @@ function iniciar(): () => void {
     );
   let jogo = comecarJogo(JOGADORES_HOT_SEAT);
   const busca = window.location.search;
+  // L52: anúncios só no host de produção; a faixa de baixo tira a altura dela da cena (canvas, câmera, projeções) e do HUD.
+  const anuncios = criarAnuncios({ hostname: window.location.hostname, busca });
+  let faixaDeAnuncio: ReturnType<typeof criarFaixa> | null = null;
+  /** A altura da janela que sobra para a cena (sem a faixa de anúncio). */
+  const alturaDaCena = (): number => Math.max(1, window.innerHeight - (faixaDeAnuncio?.altura() ?? 0));
   let modo: Modo = pularMenu(busca) ? 'local' : 'menu';
   let sessao: SessaoOnline | null = null;
   /** O modo treino (L42): a sessão (tacadas, fotos para refazer, o que a mão faz); `null` fora dele. O `jogo` é o do treino enquanto isto existe. */
@@ -215,6 +227,19 @@ function iniciar(): () => void {
       const id = window.setTimeout(fn, ms);
       return () => window.clearTimeout(id);
     },
+    // L62: um código que o servidor não conhece, num navegador que já teve conta, é de uma conta com a sessão vencida
+    sessaoPerdida: (): boolean => conta.teveConta(),
+    aoPerderASessao: () => dialogosDaConta.abrirSessaoAcabou(),
+  });
+  /** A conta da Beco Games (L62): o cookie da sessão é `HttpOnly`, então o jogo só pergunta quem é (`eu()`); a senha nunca é guardada. */
+  const conta = new ContaDoAparelho({
+    armazenamento: armazenamentoLocal(),
+    pedir: pedirContaPeloNavegador,
+    agendar: (fn, ms) => {
+      const id = window.setTimeout(fn, ms);
+      return () => window.clearTimeout(id);
+    },
+    codigoDoConvidado: (): string | undefined => carteira.codigo(),
   });
   /** Dá para mirar e tacar agora: no hot-seat sempre; online só na minha vez; no menu, nunca. */
   const podeJogar = (): boolean => (modo === 'local' && (treino === null || (treino.modo === 'mirar' && jogo.fase !== 'fim'))) || (modo === 'online' && sessao !== null && sessao.partida.minhaVez);
@@ -361,7 +386,7 @@ function iniciar(): () => void {
         baloes.definirNivel(nivel);
       },
     },
-    janela: () => ({ largura: window.innerWidth, altura: window.innerHeight, pixelRatio: window.devicePixelRatio }),
+    janela: () => ({ largura: window.innerWidth, altura: alturaDaCena(), pixelRatio: window.devicePixelRatio }),
   });
   /** Leva o nível ao desenho; na queda automática avisa o jogador sem atrapalhar. */
   function aplicarNivel(nivel: NivelDeQualidade, motivo: MotivoDaMudanca, fps?: number): void {
@@ -381,7 +406,7 @@ function iniciar(): () => void {
   }
   controlador.iniciar();
 
-  const camera = new THREE.PerspectiveCamera(CONFIG_WEB.camera.campoDeVisaoGraus, window.innerWidth / window.innerHeight, 0.01, 50);
+  const camera = new THREE.PerspectiveCamera(CONFIG_WEB.camera.campoDeVisaoGraus, window.innerWidth / alturaDaCena(), 0.01, 50);
   const semi = semiMesa(mesa);
   const rig = new CameraRig(camera, CONFIG_WEB.camera, semi.x, semi.z);
   rig.definirLarguraDaTela(window.innerWidth);
@@ -605,6 +630,7 @@ function iniciar(): () => void {
   // Créditos dos sons: saem de docs/creditos.md (a mesma tabela que o repositório mantém).
   const painelCreditos = criarPainelDeCreditos(document.body, { creditos: lerCreditos(creditosMd), aoAbrir: () => entrada.soltarMouse() });
   const hud = criarHud(document.body, {
+    espacoDeAnuncioNoFim: () => anuncios.espaco('fim'),
     aoConfiguracoes: () => painelConfig.alternar(),
     aoCreditos: () => painelCreditos.alternar(),
     aoVoltar: () => (sessao ? sessao.partida.voltarAoLobby() : voltarDoFimLocal()),
@@ -652,7 +678,7 @@ function iniciar(): () => void {
     aneis: aneisDaFalta,
     projetar: (x, y, z, raio, saida) => {
       camera.updateMatrixWorld();
-      return projetarParaTela(camera, x, y, z, raio, window.innerWidth, window.innerHeight, saida);
+      return projetarParaTela(camera, x, y, z, raio, window.innerWidth, alturaDaCena(), saida);
     },
     placar: hud.placar,
     voos: hud.voos,
@@ -742,7 +768,7 @@ function iniciar(): () => void {
         preferencia: controlador.preferencia,
         razaoDePixels: aplicador.razaoDePixels,
         largura: window.innerWidth,
-        altura: window.innerHeight,
+        altura: alturaDaCena(),
       };
     },
   });
@@ -1132,7 +1158,7 @@ function iniciar(): () => void {
   let ultimaLeituraDeMissoes = Number.NEGATIVE_INFINITY;
   /** Voltou ao lobby ou o dia virou com ele aberto: põe a carteira em dia; o painel se redesenha quando ela mudar. */
   function lerMissoesDoLobby(): void {
-    if (aguardandoOLink) return;
+    if (aguardandoOLink || aguardandoAConta) return;
     const agora = performance.now();
     if (agora - ultimaLeituraDeMissoes < CONFIG_WEB.hud.missoes.leituraMinimaS * 1000) return;
     ultimaLeituraDeMissoes = agora;
@@ -1158,6 +1184,7 @@ function iniciar(): () => void {
   }
 
   const menu = criarMenu(document.body, {
+    espacoDeAnuncio: () => anuncios.espaco('menu'),
     disponivel,
     apelidoInicial: armazem.apelido(),
     regrasLembradas,
@@ -1203,6 +1230,7 @@ function iniciar(): () => void {
     aoEntrar: ({ nome, codigo }) => abrirSala({ tipo: 'entrar', nome, codigo }),
     aoTreino: iniciarTreino,
     aoPerfil: () => perfil.abrir(),
+    aoEntrarNaConta: () => dialogosDaConta.abrirEntrar(),
     aoAbrirLoja: () => loja.abrir(),
     carteira: () => carteira.estado(),
     aoAbrirCreditos: () => painelCreditos.alternar(),
@@ -1245,6 +1273,24 @@ function iniciar(): () => void {
   const perfil = criarPerfil(document.body, carteira, {
     apelido: () => menu.apelidoAtual(),
     base: () => baseDoLink(window.location),
+    conta,
+    podeMudarDeConta: () => sessao === null,
+    aoCriarConta: () => dialogosDaConta.abrirCriar(),
+    aoEntrarNaConta: () => dialogosDaConta.abrirEntrar(),
+    aoSair: async () => {
+      const r = await conta.sair();
+      if (!r.ok) return r;
+      perfil.fechar();
+      menu.mostrarInicio(MENSAGEM_VOCE_SAIU);
+      return null;
+    },
+    aoExcluir: async (senha) => {
+      const r = await conta.excluir(senha);
+      if (!r.ok) return r;
+      perfil.fechar();
+      menu.mostrarInicio('Sua conta foi excluída.');
+      return null;
+    },
     aoAbrirMeuBalao: () => {
       perfil.fechar();
       meuBalao.abrir();
@@ -1260,10 +1306,34 @@ function iniciar(): () => void {
     aoVerNaLoja: (item) => loja.abrir(item),
     aoVoltar: () => perfil.abrir(),
   });
+  const dialogosDaConta = criarDialogosDaConta(document.body, conta, carteira, {
+    podeMudar: () => sessao === null,
+    aoJogarComoConvidado: () => void carteira.comecarDoZero(),
+  });
+  // L62: a conta manda no nome da mesa e na carteira. Entrou ou criou: a carteira passa a ser a da conta (sessão no cookie). Virou convidado
+  // (sair, excluir, sessão vencida no meio do uso): carteira nova e vazia; o código velho não abre mais nada.
+  conta.aoMudar((estado) => {
+    if (estado.tipo === 'conta') {
+      const entrou = !carteira.modoConta();
+      armazem.definirContaAtiva(true);
+      menu.definirNomeDaConta(estado.nome);
+      carteira.definirModoConta(true);
+      if (entrou) void carteira.garantir();
+    } else {
+      armazem.definirContaAtiva(false);
+      menu.definirNomeDaConta(null);
+      if (carteira.modoConta()) void carteira.comecarDoZero();
+    }
+    menu.atualizarBarra();
+  });
   const perguntaDeCarteira = criarPerguntaDeCarteira(document.body);
   /** Um link com `#carteira=`: confere na sala, pergunta e só troca se a pessoa confirmar. Em sala aberta não troca (o lugar e a aposta são da carteira de agora). */
   function receberCarteira(hash: string): Promise<unknown> {
     const leitura = lerFragmentoDaCarteira(hash);
+    if (carteira.modoConta() && leitura.tipo !== 'nenhum') {
+      limparEnderecoDaCarteira(leitura.resto);
+      return perguntaDeCarteira.avisar(AVISO_LINK_COM_CONTA);
+    }
     if (sessao !== null && leitura.tipo !== 'nenhum') {
       limparEnderecoDaCarteira(leitura.resto);
       return perguntaDeCarteira.avisar(AVISO_LINK_EM_SALA);
@@ -1284,12 +1354,20 @@ function iniciar(): () => void {
       carteira.dispensarAviso();
     }
   });
-  if (aguardandoOLink) {
-    void receberCarteira(hashDaAbertura).finally(() => {
-      aguardandoOLink = false;
+  // L62: quem sou eu vem antes da carteira (com conta a carteira é a dela); sem resposta o jogo segue como convidado.
+  void conta.eu().then(async (r) => {
+    aguardandoAConta = false;
+    if (aguardandoOLink) {
+      await receberCarteira(hashDaAbertura).finally(() => {
+        aguardandoOLink = false;
+      });
       lerMissoesDoLobby();
-    });
-  } else void carteira.garantir();
+      return;
+    }
+    const lida = await carteira.garantir();
+    // convidado de verdade com a carteira em dia: o código ainda vale, então não há sessão vencida a lembrar
+    if (r.ok && lida.ok && conta.estado().tipo === 'convidado') conta.esquecerSinal();
+  });
 
   function irParaMenu(): void {
     // Do treino sai-se com a mesa arrumada como está; o botão Treino do menu continua dali.
@@ -1889,6 +1967,11 @@ function iniciar(): () => void {
         partida: () => jogo.partida,
         mesa: () => jogo.mesa,
         consequencias: () => jogo.ultimasConsequencias,
+        mostrarFimDeProva: () => mostrarFim('Fim de prova do anúncio'),
+        anunciosDeProva(ligado) {
+          anuncios.definirProvaVisual(ligado);
+          faixaDeAnuncio?.atualizar();
+        },
         velocidadeAnimacao(fator) {
           player.velocidade = fator;
         },
@@ -2187,6 +2270,23 @@ function iniciar(): () => void {
           if (aberto) perfil.abrir();
           else perfil.fechar();
         },
+        conta: () => {
+          const e = conta.estado();
+          return {
+            tipo: e.tipo,
+            nome: e.tipo === 'conta' ? e.nome : null,
+            modoConta: carteira.modoConta(),
+            teveConta: conta.teveConta(),
+            dialogo: { aberto: dialogosDaConta.aberto, texto: dialogosDaConta.texto() },
+          };
+        },
+        abrirConta(qual) {
+          if (qual === null) dialogosDaConta.fechar();
+          else if (qual === 'criar') dialogosDaConta.abrirCriar();
+          else if (qual === 'entrar') dialogosDaConta.abrirEntrar();
+          else if (qual === 'esqueci') dialogosDaConta.abrirEsqueci();
+          else dialogosDaConta.abrirSessaoAcabou();
+        },
         missoes: () => ({
           quadro: quadroDeMissoes(),
           painel: menu.textoDasMissoes(),
@@ -2314,12 +2414,14 @@ function iniciar(): () => void {
   });
 
   const aoRedimensionar = (): void => {
-    camera.aspect = window.innerWidth / window.innerHeight;
+    faixaDeAnuncio?.atualizar();
+    camera.aspect = window.innerWidth / alturaDaCena();
     camera.updateProjectionMatrix();
     aplicador.redimensionar();
     rig.definirLarguraDaTela(window.innerWidth);
   };
   window.addEventListener('resize', aoRedimensionar);
+  faixaDeAnuncio = criarFaixa(anuncios, aoRedimensionar);
 
   /** O contador da vez: hot-seat conta aqui; online o prazo vem da sala (todos veem o mesmo). */
   /** O balão passa a ser de `jogador`: some o que era do anterior e o novo entra quando a mão dele aparecer. */
@@ -2440,8 +2542,8 @@ function iniciar(): () => void {
       const corpo = CONFIG_WEB.baloes.corpo;
       if (projetorDaCamera.projetar(e.x, e.y + corpo.altura * escalaDoBalao, e.z, topoNaTela) && projetorDaCamera.projetar(e.x, e.y - corpo.altura * escalaDoBalao, e.z, peNaTela)) {
         balaoNaTela.x = (topoNaTela.x * 0.5 + 0.5) * window.innerWidth;
-        balaoNaTela.y = (0.5 - topoNaTela.y * 0.5) * window.innerHeight;
-        balaoNaTela.altura = Math.abs(topoNaTela.y - peNaTela.y) * 0.5 * window.innerHeight;
+        balaoNaTela.y = (0.5 - topoNaTela.y * 0.5) * alturaDaCena();
+        balaoNaTela.altura = Math.abs(topoNaTela.y - peNaTela.y) * 0.5 * alturaDaCena();
         camadaDeEmojisDoBalao.atualizar(emojisDoBalao, agoraMs, balaoNaTela);
         return;
       }
@@ -2479,7 +2581,7 @@ function iniciar(): () => void {
     projetorDaCamera.atualizar();
     if (!projetorDaCamera.projetar(e.x, e.y + corpo.altura * escalaDoBalao, e.z, topoNaTela) || !projetorDaCamera.projetar(e.x, e.y - corpo.altura * escalaDoBalao, e.z, peNaTela)) return null;
     const px = (v: number): number => (v * 0.5 + 0.5) * window.innerWidth;
-    const py = (v: number): number => (0.5 - v * 0.5) * window.innerHeight;
+    const py = (v: number): number => (0.5 - v * 0.5) * alturaDaCena();
     return { x: px((topoNaTela.x + peNaTela.x) / 2), y: py((topoNaTela.y + peNaTela.y) / 2), altura: Math.abs(py(topoNaTela.y) - py(peNaTela.y)) };
   }
 
@@ -2851,6 +2953,7 @@ function iniciar(): () => void {
   return () => {
     renderer.setAnimationLoop(null);
     removerGancho();
+    faixaDeAnuncio?.dispose();
     painelDev?.dispose();
     window.removeEventListener('keydown', aoTeclaDoTreino);
     arraste.dispose();
