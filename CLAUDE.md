@@ -55,7 +55,7 @@ pnpm --filter @sinuca/sala dev   só a sala (tsx watch), para o Vite fazer proxy
 
 ## Repositório
 
-Git local desde 2026-10-26 (commit-base `b8ce47c`, sem remote). Use-o para se organizar: `git status` e `git diff --stat` mostram o que mudou desde a linha de base do lote (o índice, `git add -A` ao aprovar); `git log` e `git show <commit>:<arquivo>` dão o histórico e o estado anterior. A árvore é compartilhada e outros subagentes têm mudanças não commitadas: nunca `git reset --hard`, `checkout .`, `clean` nem `stash`; para desfazer algo seu, reverta só os seus arquivos. Commit e push seguem só a pedido do usuário (regra abaixo).
+Git desde 2026-10-26 (commit-base `b8ce47c`; remote `origin` no GitHub, branch `main`). Use-o para se organizar: `git status` e `git diff --stat` mostram o que mudou desde a linha de base do lote (o índice, `git add -A` ao aprovar); `git log` e `git show <commit>:<arquivo>` dão o histórico e o estado anterior. A árvore é compartilhada e outros subagentes têm mudanças não commitadas: nunca `git reset --hard`, `checkout .`, `clean` nem `stash`; para desfazer algo seu, reverta só os seus arquivos. Commit e push: regra abaixo.
 
 ## Regras invioláveis (valem em TODO prompt)
 
@@ -66,8 +66,9 @@ Git local desde 2026-10-26 (commit-base `b8ce47c`, sem remote). Use-o para se or
 - **Online:** a gravação transmitida é a verdade; nunca depender de dois clientes simularem igual.
 - **Sem linha de mira**, exceto a linha de previsão de teste do painel dev (pedido do usuário, `docs/decisoes.md`).
 - **Fronteiras:** cada pasta tem um dono (`docs/decisoes.md`). Mudança de contrato (tipos exportados por `packages/*`) passa pelo Principal.
-- **Commits:** NUNCA commite automaticamente. `git commit`/`git push` só quando o usuário pedir explicitamente ("commita", "sobe isso"); implementar ou aprovar plano não autoriza. Quando autorizado: `<tipo>(<escopo>): <descrição curta em inglês>`, só a primeira linha (tipos: feat, fix, refactor, chore, test, docs).
-- **Deploy e segredos:** `wrangler deploy` e conta Cloudflare só com pedido do usuário. Nunca commitar `.env*`, `.dev.vars` ou tokens; nunca colar segredo em nota do Maestri.
+- **Commits (autorização permanente do usuário em 2026-10-30):** o Principal commita e dá `git push origin main` sem perguntar, depois de aprovar um lote (ou de publicá-lo), só com o que está no índice, conferido antes que não entra `.env*`, `.dev.vars`, `.wrangler/`, `.outros/no-ar/` nem cópia de carteira. Formato: `<tipo>(<escopo>): <descrição curta em inglês>`, só a primeira linha (tipos: feat, fix, refactor, chore, test, docs). Subagente nunca commita nem dá push.
+- **Deploy (autorização permanente do usuário em 2026-10-30):** o Principal publica sem perguntar a sinuca, o portal e o Banco (`wrangler deploy` a partir de uma cópia do índice em `.outros/no-ar/`), sempre com 0 salas em `/admin/uso` e as carteiras copiadas antes. Continuam só a pedido do usuário: wipe ou migração de carteiras, `wrangler secret`, trocar variáveis de jogo (como o presente de teste) e mexer na conta Cloudflare (domínios, DNS, regras). Subagente nunca publica.
+- **Segredos:** nunca commitar `.env*`, `.dev.vars` ou tokens; nunca imprimir nem colar segredo (nem em nota do Maestri).
 - **Assets:** só CC0, Pixabay ou CC-BY (fontes também SIL OFL 1.1, liberada pelo usuário em 2026-10-29), com crédito em `docs/creditos.md`.
 - **Código:** identificadores do domínio em português sem acento (`bola`, `tacada`, `cacapa`, `castigo`); TSDoc só na API pública dos pacotes; sem comentário que repete o código.
 
