@@ -251,3 +251,13 @@ p { text-wrap: pretty; }
   .texto td:first-child { white-space: nowrap; }
   .hero-texto .acoes .botao { flex: 1 1 100%; text-align: center; }
 }
+
+/* Sessão (L58e): o "Entrar" vira o nome de quem está logado */
+.entrar.logado { display: inline-flex; align-items: center; gap: 7px; max-width: 180px; color: var(--texto); }
+.entrar.logado svg { flex: none; }
+.entrar.logado span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 640px) { .entrar.logado { max-width: 120px; } }
+/* Minha conta: respiro interno do bloco de dados */
+.conta .dados.cartao { padding: 8px 22px; }
+.conta .dados div { padding: 14px 0; }
+@media (max-width: 640px) { .conta .dados.cartao { padding: 6px 18px; } }

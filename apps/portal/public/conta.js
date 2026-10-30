@@ -66,12 +66,29 @@
     return el(id).value;
   }
 
+  function sessao(nome) {
+    if (w.BecoSessao) w.BecoSessao.definir(nome);
+  }
+
+  /** Quem já está logado não vê o formulário: vai para a conta. */
+  function jaLogado() {
+    chamar('eu', 'GET').then(function (r) {
+      if (r.status === 200 && r.corpo.conta) {
+        sessao(r.corpo.conta.nome);
+        w.location.replace('/minha-conta');
+      } else if (r.status === 401) {
+        sessao(null);
+      }
+    });
+  }
+
   function irPara(caminho) {
     w.location.assign(caminho);
   }
 
   var paginas = {
     entrar: function () {
+      jaLogado();
       ligar(el('form'), el('erro'), function () {
         return chamar('entrar', 'POST', { email: valor('email'), senha: valor('senha') }).then(function (r) {
           if (r.status === 200) return irPara('/minha-conta');
@@ -81,6 +98,7 @@
     },
 
     'criar-conta': function () {
+      jaLogado();
       ligar(el('form'), el('erro'), function () {
         return chamar('criar', 'POST', { email: valor('email'), nome: valor('nome'), senha: valor('senha') }).then(function (r) {
           if (r.status === 201) return irPara('/minha-conta');
@@ -134,11 +152,15 @@
       }
 
       chamar('eu', 'GET').then(function (r) {
-        if (r.status === 401) return w.location.replace('/entrar');
+        if (r.status === 401) {
+          sessao(null);
+          return w.location.replace('/entrar');
+        }
         if (r.status !== 200 || !r.corpo.conta) {
           el('carregando').textContent = erroDe(r);
           return;
         }
+        sessao(r.corpo.conta.nome);
         pintar(r.corpo.conta);
         el('carregando').hidden = true;
         el('painel').hidden = false;
@@ -148,6 +170,7 @@
         mostrar(el('aviso-nome'), '');
         return chamar('nome', 'POST', { nome: valor('nome') }).then(function (r) {
           if (r.status === 200) {
+            sessao(r.corpo.conta.nome);
             pintar(r.corpo.conta);
             mostrar(el('aviso-nome'), 'Nome salvo.');
           } else if (r.status === 401) {
@@ -163,7 +186,10 @@
         botao.disabled = true;
         mostrar(el('erro-sair'), '');
         chamar('sair', 'POST', {}).then(function (r) {
-          if (r.status === 200) return irPara('/entrar');
+          if (r.status === 200) {
+            sessao(null);
+            return irPara('/entrar');
+          }
           botao.disabled = false;
           mostrar(el('erro-sair'), erroDe(r));
         });
@@ -184,7 +210,10 @@
       });
       ligar(formExcluir, el('erro-excluir'), function () {
         return chamar('excluir', 'POST', { senha: valor('senha-excluir') }).then(function (r) {
-          if (r.status === 200) return irPara('/');
+          if (r.status === 200) {
+            sessao(null);
+            return irPara('/');
+          }
           if (r.status === 401 && r.corpo.erro === 'sem-sessao') return w.location.replace('/entrar');
           mostrar(el('erro-excluir'), erroDe(r));
         });
