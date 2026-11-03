@@ -71,4 +71,6 @@ export { MisturaDePoses, type OpcoesDoGesto } from './mistura';
 export type { EsferaDoOsso, MalhaComPele } from './malha';
 export { esferasDosOssos, pelarMalha, pontosDeApoio } from './malha';
 export type { ModeloDoPersonagem, OpcoesDoModelo } from './modelo';
-export { acharCorrentes, construirModelo, esferasNaPose } from './modelo';
+export { acharCorrentes, construirModelo, esferasNaPose, peleNaPose } from './modelo';
+export type { Penetracao } from './penetracao';
+export { penetracaoNoCilindro } from './penetracao';

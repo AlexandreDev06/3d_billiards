@@ -229,6 +229,11 @@ export interface GanchoSinuca {
   forcarCaraDoBalao(cara: CaraDoBalao | null): void;
   /** L46: os olhos do balão só olham isto (a bola branca ou a câmera) em vez do que o jogo escolhe (`null` solta), para capturas. */
   forcarOlharDoBalao(alvo: 'branca' | 'camera' | null): void;
+  /**
+   * L63, para capturas: arma a tacada (sem Pointer Lock) e puxa o taco `fracao` (0 a 1) da puxada cheia, como o mouse parado nessa
+   * força; `null` solta (cancela a mira armada). Devolve o recuo de agora (m). Não dá a tacada: use `tacar`.
+   */
+  puxarTaco(fracao: number | null): number;
   /** Liga ou desliga a elevação que desvia o taco do que ele atravessaria (desligada, o taco fica sempre a 5°): para comparar antes e depois. */
   elevacaoLivre(ligada: boolean): void;
   /** O alerta de espirro (miscue) como está na tela: "Espirrou! Faltou giz" ou "Espirrou! Efeito demais". */

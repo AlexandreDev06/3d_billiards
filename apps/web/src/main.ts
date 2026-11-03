@@ -2019,6 +2019,19 @@ function iniciar(): () => void {
         elevacaoLivre(ligada) {
           elevacaoLivreLigada = ligada;
         },
+        puxarTaco(fracao) {
+          if (fracao === null) {
+            tacada.cancelar();
+            return tacada.recuo;
+          }
+          if (tacada.fase === 'animando') throw new Error('há uma tacada animando');
+          tacada.cancelar();
+          tacada.pressionar();
+          tacada.travou();
+          const cheia = configTacada.recuoMaximo - configTacada.recuoInicial;
+          tacada.mover((Math.min(Math.max(fracao, 0), 1) * cheia) / configTacada.metrosPorPixel, 0);
+          return tacada.recuo;
+        },
         skinDoTaco(id, semente, bolas) {
           if (id !== undefined) {
             skinForcadaDoTaco = id === null ? null : { skin: ehSkinDeTaco(id) ? id : SKIN_PADRAO, semente: ehSemente(semente) ? semente : null, bolas: Number.isInteger(bolas) && (bolas as number) >= 0 ? (bolas as number) : null };
@@ -2053,7 +2066,7 @@ function iniciar(): () => void {
           desenho: { ...maos.diagnostico(), cargaMs: tempoDeCargaDasMaosMs },
           joinha: () => modeloDasMaos.reagir('caiu'),
           reagir: (momento: MomentoDaJogada) => modeloDasMaos.reagir(momento),
-          vida: { ponteAtual: modeloDasMaos.ponteAtual, troca: modeloDasMaos.troca.ativa, pulso: modeloDasMaos.pulso, aperto: modeloDasMaos.aperto, tamborilando: modeloDasMaos.tamborilando, reacao: modeloDasMaos.reacao === null ? null : { ...modeloDasMaos.reacao } },
+          vida: { ponteAtual: modeloDasMaos.ponteAtual, troca: modeloDasMaos.troca.ativa, pulso: modeloDasMaos.pulso, aperto: modeloDasMaos.aperto, fecho: modeloDasMaos.fechoDoPunho, tamborilando: modeloDasMaos.tamborilando, reacao: modeloDasMaos.reacao === null ? null : { ...modeloDasMaos.reacao } },
           fimDasMaos: maosDoFim.diagnostico(),
         }),
         balao: () => ({

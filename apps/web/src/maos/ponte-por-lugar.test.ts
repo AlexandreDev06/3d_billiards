@@ -30,7 +30,7 @@ function bolasEm(outras: readonly (readonly [number, number])[]): BolasDaMesa {
 /** Lê o lugar com a branca em (`cx`, `cz`), mirando `graus`, a mão em (`x`, `z`) sobre `apoio`. */
 function ler(cx: number, cz: number, graus: number, mao: readonly [number, number], apoio: TipoDeApoio, opcoes: { outras?: readonly (readonly [number, number])[]; elevacao?: number; forca?: number } = {}): LugarDaPonte {
   const eixo = eixoDoTaco(cx, R, cz, R, graus * grau, opcoes.elevacao ?? 5 * grau, REPOUSO, 0, 0);
-  return lerLugarDaPonte(mao[0], mao[1], apoio, eixo, REPOUSO, obstaculos, bolasEm(opcoes.outras ?? []), escolha, opcoes.elevacao ?? 5 * grau, opcoes.forca ?? 0, lugarVazioDaPonte());
+  return lerLugarDaPonte(mao[0], mao[1], apoio, eixo, REPOUSO, obstaculos, bolasEm(opcoes.outras ?? []), escolha, opcoes.elevacao ?? 5 * grau, opcoes.forca ?? 0, 0.27, lugarVazioDaPonte());
 }
 
 describe('lerLugarDaPonte: o que há onde a mão pousou', () => {
@@ -91,6 +91,16 @@ describe('escolherPoseDaPonte: qual ponte o jogo põe em cada lugar', () => {
   it('no pano com a força puxada acima do limiar: o laço; abaixo, o V', () => {
     expect(escolherPoseDaPonte(base({ forca: escolha.laco.entra + 0.01 }), escolha, 'v')).toBe('laco');
     expect(escolherPoseDaPonte(base({ forca: escolha.laco.entra - 0.01 }), escolha, 'v')).toBe('v');
+  });
+
+  it('o V que pousaria longe da bola (eixo baixo) cede ao laço, com histerese na distância', () => {
+    const { distanciaEntra, distanciaSai } = escolha.laco;
+    expect(distanciaSai).toBeLessThan(distanciaEntra);
+    expect(escolherPoseDaPonte(base({ distanciaDoV: distanciaEntra + 0.01 }), escolha, 'v')).toBe('laco');
+    expect(escolherPoseDaPonte(base({ distanciaDoV: distanciaEntra - 0.01 }), escolha, 'v')).toBe('v');
+    const entre = (distanciaEntra + distanciaSai) / 2;
+    expect(escolherPoseDaPonte(base({ distanciaDoV: entre }), escolha, 'laco')).toBe('laco');
+    expect(escolherPoseDaPonte(base({ distanciaDoV: distanciaSai - 0.01 }), escolha, 'laco')).toBe('v');
   });
 
   it('o laço tem histerese: entra em `entra` e só volta ao V abaixo de `sai`', () => {

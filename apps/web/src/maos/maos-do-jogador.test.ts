@@ -76,12 +76,14 @@ describe('MaosDoJogador: a mão da ponte', () => {
     const m = maosEm(q);
     expect(m.ponteVisivel).toBe(true);
     expect(m.apoioDaPonte).toBe('pano');
-    expect(m.distanciaDaPonte).toBeCloseTo(cfg.ponte.distancia, 6);
-    // Sobre o eixo: a mão está a `distancia` do contato, para trás.
+    // L63: a mão fica sobre o eixo, então é o primeiro lugar em que o V cabe sem erguer (a 5° o eixo só alcança o fundo do V a ~0,29 m).
+    expect(m.distanciaDaPonte).toBeGreaterThanOrEqual(cfg.ponte.distancia - 1e-6);
+    expect(m.distanciaDaPonte).toBeLessThan(cfg.escolha.laco.distanciaEntra);
+    // Sobre o eixo: a mão está a `distanciaDaPonte` do contato, para trás.
     const eixo = eixoDoTaco(-0.4, R, 0.1, R, 0, q.elevacao, REPOUSO_DO_RECUO, 0, 0);
     const contato = { x: eixo.px + eixo.dx * REPOUSO_DO_RECUO, y: eixo.py + eixo.dy * REPOUSO_DO_RECUO, z: eixo.pz + eixo.dz * REPOUSO_DO_RECUO };
-    expect(m.ponte.x).toBeCloseTo(contato.x - eixo.dx * cfg.ponte.distancia, 6);
-    expect(m.ponte.z).toBeCloseTo(contato.z - eixo.dz * cfg.ponte.distancia, 6);
+    expect(m.ponte.x).toBeCloseTo(contato.x - eixo.dx * m.distanciaDaPonte, 6);
+    expect(m.ponte.z).toBeCloseTo(contato.z - eixo.dz * m.distanciaDaPonte, 6);
   });
 
   it('não sai do lugar quando o taco é puxado ou vai à bola: a mão da ponte está plantada, o taco é que passa por ela', () => {
@@ -108,7 +110,7 @@ describe('MaosDoJogador: a mão da ponte', () => {
         // A base da palma (fundo abaixo do eixo, no quadro da mão) fica acima de tudo o que há embaixo do centro.
         const base = m.ponte.y - m.fundoAtual;
         const apoio = apoioEm(obstaculos, m.ponte.x, m.ponte.z);
-        expect(base, `${nome} ${graus}°: palma dentro de ${apoio.tipo}`).toBeGreaterThanOrEqual(apoio.altura - 1e-6);
+        expect(base, `${nome} ${graus}°: palma dentro de ${apoio.tipo}`).toBeGreaterThanOrEqual(apoio.altura - cfg.ponte.tolerancia - 1e-6);
       }
     }
   });
@@ -424,7 +426,7 @@ describe('MaosDoJogador: os dedos da ponte pousam no que há embaixo', () => {
     for (const d of DEDOS_LONGOS) expect(Math.abs(pontas[d].y), d).toBeLessThan(0.001);
   });
 
-  it.each(POSICOES)('%s: nenhuma ponta afunda mais de 1 mm no que há embaixo dela', (_nome, x, z) => {
+  it.each(POSICOES)('%s: nenhuma ponta afunda mais de 1,5 mm no que há embaixo dela', (_nome, x, z) => {
     for (const angulo of [0, 40, 90, 140, 180, 230, 270, 320]) {
       const q = quadro(x, z, angulo * grausParaRad, 1, REPOUSO_DO_RECUO);
       const m = ponteVisivelEm(q);
@@ -433,7 +435,8 @@ describe('MaosDoJogador: os dedos da ponte pousam no que há embaixo', () => {
       for (const d of DEDOS_LONGOS) {
         const chao = apoioEm(obstaculos, pontas[d].x, pontas[d].z).altura;
         if (chao === -Infinity) continue;
-        expect(pontas[d].y - chao, `${d} a ${angulo}°`).toBeGreaterThan(-0.001);
+        // O dedo não fecha mais para tocar o apoio quando isso o levaria para dentro do taco (L63): 1,5 mm de folga, não 1 mm.
+        expect(pontas[d].y - chao, `${d} a ${angulo}°`).toBeGreaterThan(-0.0015);
       }
     }
   });

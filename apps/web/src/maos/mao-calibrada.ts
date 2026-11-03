@@ -6,6 +6,7 @@ import {
   cilindroDoQuadro,
   cuboDoQuadro,
   esferasNaPose,
+  penetracaoNoCilindro,
   pincarCubo,
   quadroVazio,
   segurarCilindro,
@@ -15,6 +16,7 @@ import {
   type ContatoDeCilindro,
   type ContatoDePinca,
   type ModeloDoPersonagem,
+  type Penetracao,
   type Quadro,
 } from '@sinuca/personagens';
 import type { Vec3 } from './eixo';
@@ -72,6 +74,22 @@ export class MaoCalibrada {
     saida.y = this.escala * (b[3]! * dx + b[4]! * dy + b[5]! * dz);
     saida.z = this.senGiro * lx + this.cosGiro * lz;
     return saida;
+  }
+
+  /**
+   * Quanto a pele (3 números por vértice, no referencial do arquivo: a de `peleNaPose`) entra no taco que esta mão segura: o cone do
+   * contato, com o taco como o desenho o põe, no quadro da mão. Zero = o taco passa pelo V ou pelo anel dos dedos sem tocar a pele.
+   */
+  penetracaoNoTaco(pele: Float64Array, limite = 0): Penetracao {
+    const local = new Float64Array(pele.length);
+    const p: Vec3 = { x: 0, y: 0, z: 0 };
+    for (let i = 0; i < pele.length; i += 3) {
+      this.local(pele[i]!, pele[i + 1]!, pele[i + 2]!, p);
+      local[i] = p.x;
+      local[i + 1] = p.y;
+      local[i + 2] = p.z;
+    }
+    return penetracaoNoCilindro(local, this.contato, limite);
   }
 
   /** As esferas que cobrem a mão numa pose do arquivo, no quadro desta mão. */

@@ -5,6 +5,7 @@ import { Cinematica, lerMeta, multiplicarQuaternios, pelarMalha, quaternioDoEixo
 import { carregarAcessoriosDeBytes, carregarPersonagemDeBytes, carregarPersonagemDeRostoDeBytes, type BaseDeAcessorios, type BaseDoPersonagem, type BaseDoRosto } from '@sinuca/personagens/three';
 import { gerenciadorDeTestes } from '@sinuca/personagens/testes';
 import { MaoCalibrada } from './mao-calibrada';
+import { poseDobrada, type GiroDeOsso } from './pose-dobrada';
 import type { PoseDeMao } from './pose-das-maos';
 
 const PASTA = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../arte/personagens/exportados');
@@ -53,6 +54,31 @@ export function poseComDobras(mao: MaoCalibrada, dobras: readonly number[], pose
     }
   });
   return dobrada;
+}
+
+/** A pose `pose` do arquivo com `dobras` (rad, uma por dedo de `dedos`) a mais em partes iguais nas juntas de cada um. */
+export function poseComDobrasDe(mao: MaoCalibrada, dedos: readonly string[], dobras: readonly number[], pose: string, giro: GiroDeOsso | null = null): PoseDaFicha {
+  return poseDobrada(mao.modelo, pose, dedos, dobras, giro);
+}
+
+/**
+ * A pele de uma mão (malha alta) na `pose` do arquivo com as dobras a mais, já no mundo: a `pose` do jogo (`PoseDeMao`, o quadro do
+ * contato) põe cada vértice onde o desenho o poria. 3 números por vértice. Serve para medir o que a mão atravessa.
+ */
+export function peleNoMundo(mao: MaoCalibrada, base: BaseDoPersonagem, poseDoJogo: PoseDeMao, nomeDaPose: string, dedos: readonly string[] = DEDOS_LONGOS, dobras: readonly number[] = [0, 0, 0, 0], giro: GiroDeOsso | null = null): Float64Array {
+  const malha = base.malha('alta');
+  const pele = pelarMalha(mao.modelo.ficha, malha, poseComDobrasDe(mao, dedos, dobras, nomeDaPose, giro), new Float64Array(malha.posicoes.length));
+  const wx = poseDoJogo.dy * poseDoJogo.uz - poseDoJogo.dz * poseDoJogo.uy;
+  const wy = poseDoJogo.dz * poseDoJogo.ux - poseDoJogo.dx * poseDoJogo.uz;
+  const wz = poseDoJogo.dx * poseDoJogo.uy - poseDoJogo.dy * poseDoJogo.ux;
+  const l = { x: 0, y: 0, z: 0 };
+  for (let v = 0; v < pele.length; v += 3) {
+    mao.local(pele[v]!, pele[v + 1]!, pele[v + 2]!, l);
+    pele[v] = poseDoJogo.x + l.x * poseDoJogo.dx + l.y * poseDoJogo.ux + l.z * wx;
+    pele[v + 1] = poseDoJogo.y + l.x * poseDoJogo.dy + l.y * poseDoJogo.uy + l.z * wy;
+    pele[v + 2] = poseDoJogo.z + l.x * poseDoJogo.dz + l.y * poseDoJogo.uz + l.z * wz;
+  }
+  return pele;
 }
 
 /** A pele da mão da ponte na pose `pose` (padrão `ponte_v`) com `dobras` a mais, no referencial do arquivo (3 números por vértice). */

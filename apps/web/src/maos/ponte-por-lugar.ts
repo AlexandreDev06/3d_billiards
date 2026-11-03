@@ -21,10 +21,12 @@ export interface LugarDaPonte {
   elevacao: number;
   /** A fração da puxada de força, de 0 (taco parado) a 1 (recuo máximo). */
   forca: number;
+  /** A distância (m) da bola em que o V pousaria: longe demais, o eixo só sobe até o fundo do V muito atrás, e o laço (mais raso) serve. */
+  distanciaDoV: number;
 }
 
 export function lugarVazioDaPonte(): LugarDaPonte {
-  return { apoio: 'pano', alturaDoApoio: 0, pertoDeCacapa: false, anguloComATabela: Math.PI / 2, bolaAtras: false, elevacao: 0, forca: 0 };
+  return { apoio: 'pano', alturaDoApoio: 0, pertoDeCacapa: false, anguloComATabela: Math.PI / 2, bolaAtras: false, elevacao: 0, forca: 0, distanciaDoV: 0 };
 }
 
 const contato: Vec3 = { x: 0, y: 0, z: 0 };
@@ -44,6 +46,7 @@ export function lerLugarDaPonte(
   escolha: ConfigMaos['escolha'],
   elevacao: number,
   forca: number,
+  distanciaDoV: number,
   saida: LugarDaPonte,
 ): LugarDaPonte {
   pontoDeContato(eixo, recuo, contato);
@@ -54,6 +57,7 @@ export function lerLugarDaPonte(
   if (saida.alturaDoApoio === -Infinity) saida.alturaDoApoio = 0;
   saida.elevacao = elevacao;
   saida.forca = Math.min(Math.max(forca, 0), 1);
+  saida.distanciaDoV = distanciaDoV;
 
   saida.pertoDeCacapa = false;
   for (const v of obstaculos.vaos) {
@@ -97,7 +101,9 @@ const grau = Math.PI / 180;
  * 1. `canto`: a mão cairia junto de uma caçapa, ou onde não há apoio (o vão): a palma não cabe;
  * 2. `elevada`: no pano, com bola logo atrás da branca e o taco subindo por cima dela;
  * 3. na borracha ou na moldura: `colada` se o taco corre ao longo da tabela, `tabela` se vem de frente;
- * 4. `laco`: no pano, com a força puxada acima de `laco.entra`; fica até a força cair abaixo de `laco.sai` (histerese);
+ * 4. `laco`: no pano, com a força puxada acima de `laco.entra`, ou com o V pousando além de `laco.distanciaEntra` da bola (o eixo baixo,
+ *    como no efeito por baixo, só sobe ao fundo do V longe da bola; o laço, mais raso, pousa perto); fica até a força cair abaixo de
+ *    `laco.sai` e o V voltar para aquém de `laco.distanciaSai` (histerese);
  * 5. `v`: no pano, com a bola longe de tudo.
  *
  * `atual` é a ponte de agora, que só conta para a histerese do laço.
@@ -106,6 +112,7 @@ export function escolherPoseDaPonte(lugar: LugarDaPonte, escolha: ConfigMaos['es
   if (lugar.pertoDeCacapa || lugar.apoio === 'ar') return 'canto';
   if (lugar.apoio === 'borracha' || lugar.apoio === 'moldura') return lugar.anguloComATabela < escolha.colada.anguloMaximoGraus * grau ? 'colada' : 'tabela';
   if (lugar.bolaAtras && lugar.elevacao >= escolha.elevada.elevacaoMinimaGraus * grau) return 'elevada';
-  const limiar = atual === 'laco' ? escolha.laco.sai : escolha.laco.entra;
-  return lugar.forca >= limiar ? 'laco' : 'v';
+  const noLaco = atual === 'laco';
+  if (lugar.forca >= (noLaco ? escolha.laco.sai : escolha.laco.entra)) return 'laco';
+  return lugar.distanciaDoV > (noLaco ? escolha.laco.distanciaSai : escolha.laco.distanciaEntra) ? 'laco' : 'v';
 }

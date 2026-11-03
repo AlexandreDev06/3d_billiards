@@ -1,6 +1,6 @@
 import { Group, Quaternion, SkinnedMesh, Vector3 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { CONFIG_WEB } from '../config';
+import { CONFIG_WEB, type ConfigMaos } from '../config';
 import { MaoCalibrada } from '../maos/mao-calibrada';
 import { PONTES, poseDaPonteNomeada, type NomeDaPonte } from '../maos/pontes';
 import { TrocaDePonte } from '../maos/troca-de-ponte';
@@ -39,6 +39,8 @@ function modelo(visivel = true, escala = 1, mudancas: Partial<{ -readonly [K in 
     calibradaDa: (n) => CALIBRADAS[n],
     pulso: 0,
     aperto: 0,
+    fechoDoPunho: 0,
+    escalaDoPunho: 1,
     tamborilando: false,
     reacao: null,
     tapinha: tapinhaVazio(),
@@ -48,8 +50,8 @@ function modelo(visivel = true, escala = 1, mudancas: Partial<{ -readonly [K in 
 
 const reacao = (gesto: ReacaoEmCurso['gesto'], ambas = false): ReacaoEmCurso => ({ gesto, inicioS: 1, duracaoS: 1.2, picoS: undefined, ambas });
 
-function emCena(nivel: 'alto' | 'medio' | 'baixo' = 'baixo'): MaosEmCena {
-  const maos = new MaosEmCena(0x2f78c8, nivel, cfg);
+function emCena(nivel: 'alto' | 'medio' | 'baixo' = 'baixo', config: ConfigMaos = cfg): MaosEmCena {
+  const maos = new MaosEmCena(0x2f78c8, nivel, config);
   maos.usar(BASE);
   return maos;
 }
@@ -144,7 +146,7 @@ describe('MaosEmCena.posicionar', () => {
     for (let i = 0; i < 40; i++) {
       (m as { pinca: number }).pinca = i / 39;
       (m as { pulso: number }).pulso = 0.01 * i;
-      (m as { aperto: number }).aperto = i / 39;
+      (m as { fechoDoPunho: number }).fechoDoPunho = 0.2 * (i / 39);
       (m as { tamborilando: boolean }).tamborilando = i > 20;
       (m as { ponteAtual: NomeDaPonte }).ponteAtual = PONTES[i % 6]!;
       (m as { reacao: ReacaoEmCurso | null }).reacao = i > 5 && i < 30 ? { ...reacao(['joinha', 'soco_ar', 'tapinha', 'quase'][i % 4] as ReacaoEmCurso['gesto']), inicioS: i } : null;
@@ -184,8 +186,13 @@ describe('MaosEmCena: a ponte que o jogo escolheu', () => {
     expect(maos.diagnostico().pesoDaPoseDaPonte).toBeGreaterThan(0.99);
   });
 
-  it('na troca a mão levanta, faz um arco e pousa: no meio do caminho está acima das duas pontas e passa a meio caminho entre elas', () => {
-    const maos = emCena();
+  it('o jogo não levanta a mão na troca: o taco fica no V ou no anel e levantá-la o arrastaria pela pele', () => {
+    expect(cfg.escolha.troca.arco).toBe(0);
+  });
+
+  it('na troca a mão levanta, faz um arco e pousa (com `troca.arco` acima de zero): no meio do caminho está acima das duas pontas e passa a meio caminho entre elas', () => {
+    const arco = 0.04;
+    const maos = emCena('baixo', { ...cfg, escolha: { ...cfg.escolha, troca: { ...cfg.escolha.troca, arco } } });
     const raiz = maos.grupo.getObjectByName('mao-ponte')!;
     const m = modelo();
     maos.posicionar(m, 0.016);
@@ -200,7 +207,7 @@ describe('MaosEmCena: a ponte que o jogo escolheu', () => {
     m.troca.atualizar(1);
     maos.posicionar(m, 0.001);
     const chegada = raiz.position.clone();
-    expect(meio.y).toBeGreaterThan((saida.y + chegada.y) / 2 + 0.9 * cfg.escolha.troca.arco);
+    expect(meio.y).toBeGreaterThan((saida.y + chegada.y) / 2 + 0.9 * arco);
     expect(meio.x).toBeGreaterThan(Math.min(saida.x, chegada.x));
     expect(meio.x).toBeLessThan(Math.max(saida.x, chegada.x));
     expect(chegada.x).toBeGreaterThan(saida.x + 0.1);
@@ -214,15 +221,18 @@ describe('MaosEmCena: a mão de trás vive', () => {
     return malha.skeleton.bones.find((b) => b.name === nome)!.quaternion.clone();
   };
 
-  it('as duas mãos respiram: com o tempo os ossos mudam sem ninguém pedir', () => {
-    const maos = emCena();
-    const m = modelo();
-    maos.posicionar(m, 0.016);
-    const antes = osso(maos, 'mao-punho', 'palma');
-    const antesPonte = osso(maos, 'mao-ponte', 'palma');
-    for (let t = 0; t < 1.5; t += 0.05) maos.posicionar(m, 0.05);
-    expect(osso(maos, 'mao-punho', 'palma').angleTo(antes)).toBeGreaterThan(1e-4);
-    expect(osso(maos, 'mao-ponte', 'palma').angleTo(antesPonte)).toBeGreaterThan(1e-4);
+  it('a respiração só mexe nos ossos com o peso pedido: nas configurações do jogo (peso zero) a mão que segura o taco fica quieta', () => {
+    const respirando = { ...cfg, vida: { ...cfg.vida, respirar: { ponte: 1, punho: 1 } } };
+    for (const [config, mexe] of [[cfg, false], [respirando, true]] as const) {
+      const maos = emCena('baixo', config);
+      const m = modelo();
+      maos.posicionar(m, 0.016);
+      const antes = osso(maos, 'mao-punho', 'palma');
+      const antesPonte = osso(maos, 'mao-ponte', 'palma');
+      for (let t = 0; t < 1.5; t += 0.05) maos.posicionar(m, 0.05);
+      expect(osso(maos, 'mao-punho', 'palma').angleTo(antes) > 1e-4).toBe(mexe);
+      expect(osso(maos, 'mao-ponte', 'palma').angleTo(antesPonte) > (mexe ? 1e-4 : 1e-3)).toBe(mexe);
+    }
   });
 
   it('o pulso gira com o balanço da conta e volta quando ele zera', () => {
@@ -238,16 +248,16 @@ describe('MaosEmCena: a mão de trás vive', () => {
     expect(osso(maos, 'mao-punho', 'pulso').angleTo(parado)).toBeLessThan(2e-3);
   });
 
-  it('o aperto fecha os dedos da mão de trás a mais, até `aperto.rad`', () => {
+  it('o fecho do punho dobra os dedos da mão de trás a mais', () => {
     const maos = emCena();
     const m = modelo();
     maos.posicionar(m, 0);
     const solto = osso(maos, 'mao-punho', 'indicador_2');
-    (m as { aperto: number }).aperto = 1;
+    (m as { fechoDoPunho: number }).fechoDoPunho = 0.2;
     maos.posicionar(m, 0);
     const a = osso(maos, 'mao-punho', 'indicador_2').angleTo(solto);
     expect(a).toBeGreaterThan(0.05);
-    (m as { aperto: number }).aperto = 0;
+    (m as { fechoDoPunho: number }).fechoDoPunho = 0;
     maos.posicionar(m, 0);
     expect(osso(maos, 'mao-punho', 'indicador_2').angleTo(solto)).toBeLessThan(2e-3);
   });

@@ -60,11 +60,11 @@ describe('PlantadorDeDedos: as pontas dos dedos pousam no apoio', () => {
     }
   });
 
-  it('muito abaixo do alcance o dedo fica estendido no máximo e flutua', () => {
+  it('muito abaixo do alcance o dedo fica na pose do artista (não estica nem fecha no taco) e flutua', () => {
     const longe = pontas(assentar(parado(), plano(-1)));
     for (const d of DEDOS) {
       expect(longe[d].y).toBeGreaterThan(-1);
-      expect(longe[d].y).toBeLessThan(desenho[d].y - 0.008);
+      expect(Math.abs(longe[d].y - desenho[d].y)).toBeLessThan(0.001);
     }
   });
 

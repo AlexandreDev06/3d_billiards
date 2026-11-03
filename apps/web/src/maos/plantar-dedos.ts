@@ -1,4 +1,5 @@
 import type { Cinematica, Corrente } from '@sinuca/personagens';
+import type { LimitesDosDedos } from './limites-dos-dedos';
 import type { MaoCalibrada } from './mao-calibrada';
 import type { PoseDeMao } from './pose-das-maos';
 
@@ -44,6 +45,8 @@ export class PlantadorDeDedos {
     private readonly alcance: number,
     /** O teto de `subidaNecessaria` (m). */
     private readonly subidaMaxima: number,
+    /** Até onde cada dedo vai sem a pele entrar no taco (`limitesDosDedos`); sem isto, de -1 a 1. */
+    private readonly limites: LimitesDosDedos | null = null,
   ) {
     this.correntes = DEDOS.map((nome) => {
       const c = mao.modelo.correntes.get(nome);
@@ -74,7 +77,7 @@ export class PlantadorDeDedos {
   subidaNecessaria(pose: PoseDeMao, apoio: ApoioDosDedos): number {
     let falta = 0;
     for (let i = 0; i < DEDOS.length; i++) {
-      const folga = this.folga(i, -1, pose, apoio);
+      const folga = this.folga(i, this.limites?.min[i] ?? -1, pose, apoio);
       if (folga < 0) falta = Math.max(falta, -folga);
     }
     return Math.min(falta, this.subidaMaxima);
@@ -112,12 +115,16 @@ export class PlantadorDeDedos {
   }
 
   private alvoDoDedo(i: number, pose: PoseDeMao, apoio: ApoioDosDedos): number {
+    // O dedo vai de `menor` (o mais esticado) a `maior` (o mais dobrado) que o taco deixa; sem limites, de -1 a 1.
+    const menor = this.limites?.min[i] ?? -1;
+    const maior = this.limites?.max[i] ?? 1;
     if (this.folga(i, 0, pose, apoio) === Infinity) return 0;
-    if (this.folga(i, -1, pose, apoio) <= 0) return -1;
-    if (this.folga(i, 1, pose, apoio) >= 0) return 1;
+    if (this.folga(i, menor, pose, apoio) <= 0) return menor;
+    // Nem dobrado ao máximo o dedo alcança o apoio (a mão flutua alto): fica na pose do artista, em vez de se fechar no vazio (e no taco).
+    if (this.folga(i, maior, pose, apoio) > 0) return 0;
     // `a` flutua e `b` toca ou afunda; onde o apoio dá um degrau, fica o lado que flutua (nunca dentro da borracha).
-    let a = -1;
-    let b = 1;
+    let a = menor;
+    let b = maior;
     for (let n = 0; n < ITERACOES; n++) {
       const meio = (a + b) / 2;
       if (this.folga(i, meio, pose, apoio) > 0) a = meio;

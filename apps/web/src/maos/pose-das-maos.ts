@@ -111,9 +111,10 @@ export interface ProtecaoDaVista {
 const centro: Vec3 = { x: 0, y: 0, z: 0 };
 
 /**
- * A pose da mão da ponte `s` m atrás de onde a ponta toca o bolão, sobre o eixo do taco; se ali a palma enterra um pouco no pano,
- * na borracha ou na moldura, a mão sobe o que faltar. Devolve o que há embaixo dela e quanto a palma enterraria sem subir
- * (`afundaria`, m; negativo = sobra espaço).
+ * A pose da mão da ponte `s` m atrás de onde a ponta toca o bolão, sobre o eixo do taco. Com `subir` (padrão), se ali a palma enterra
+ * um pouco no pano, na borracha ou na moldura, a mão sobe o que faltar (e o taco, que fica onde estava, passa a atravessar o vão da
+ * mão); sem `subir` a mão fica no eixo, com o vão do artista sobre o taco, e só se diz quanto ela enterraria. Devolve o que há embaixo
+ * dela e quanto a palma enterraria sem subir (`afundaria`, m; negativo = sobra espaço).
  */
 export function poseDaPonte(
   eixo: EixoDoTaco,
@@ -123,6 +124,7 @@ export function poseDaPonte(
   cfg: ConfigDaPonte,
   saida: PoseDeMao,
   esferasDaMao: readonly Esfera[] = [],
+  subir = true,
 ): { apoio: TipoDeApoio; afundaria: number } {
   pontoDeContato(eixo, recuo, centro);
   const eixoY = centro.y - eixo.dy * s;
@@ -140,7 +142,7 @@ export function poseDaPonte(
     const embaixo = Math.max(e.y - e.r, -cfg.fundo);
     afundaria = Math.max(afundaria, chao - (eixoY + embaixo));
   }
-  orientarMao(saida, eixo, x, eixoY + Math.max(afundaria, 0), z);
+  orientarMao(saida, eixo, x, eixoY + (subir ? Math.max(afundaria, 0) : 0), z);
   return { apoio: apoio.tipo, afundaria };
 }
 
@@ -150,9 +152,11 @@ export function poseDaPonte(
  * `protecao.bolas`, a mão se desloca pelo taco, a partir da distância pedida e alternando para os dois lados, até o primeiro lugar
  * em que cabe: no pano, na borracha, na moldura ou no ar, fora da mesa. Sem lugar nenhum, `ok` é falso.
  *
- * Quando a palma só enterra um pouco (até `tolerancia`), a mão sobe junto, para não atravessar a madeira; e sobe mais o que
- * `subidaDosDedos` pedir, para as pontas dos dedos não entrarem na borracha nem na moldura. Com `evitarAr`, um lugar com apoio
- * (pano, borracha ou moldura) mais longe do pedido ganha de um no ar mais perto.
+ * L63: a mão fica **no eixo do taco**, nunca erguida para fugir do pano (o taco passaria a atravessar o vão dela): o lugar só serve se
+ * a palma enterra no máximo `tolerancia` e as pontas dos dedos, esticadas ao máximo (`subidaDosDedos`), também; mais longe da bola o
+ * eixo está mais alto (o taco sobe para trás), então o primeiro lugar que cabe é mais atrás do que a distância pedida. Só se nenhum
+ * lugar serve assim a mão volta a subir (até `tolerancia` na palma e o que os dedos pedirem), para não sumir. Com `evitarAr`, um lugar
+ * com apoio (pano, borracha ou moldura) mais longe do pedido ganha de um no ar mais perto.
  */
 export function escolherPonte(
   eixo: EixoDoTaco,
@@ -168,16 +172,42 @@ export function escolherPonte(
   /** Prefere qualquer lugar com apoio ao ar: a mão só fica no ar, fora da mesa, se não houver onde pousar entre o mínimo e o máximo. */
   evitarAr = false,
 ): PonteEscolhida {
+  // Primeiro a mão no eixo, onde o pano deixa; só se nenhum lugar serve, erguida do pano, como antes do L63.
+  const noEixo = percorrer(true, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr);
+  if (noEixo.ok) return noEixo;
+  return percorrer(false, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr);
+}
+
+/** `rigido`: a mão fica no eixo do taco; senão ela sobe do pano até onde a folga do L28 deixa. */
+function percorrer(
+  rigido: boolean,
+  eixo: EixoDoTaco,
+  recuo: number,
+  obstaculos: ObstaculosDaMesa,
+  bolas: BolasDaMesa,
+  cfg: ConfigDaPonte,
+  protecao: ProtecaoDaVista | null,
+  esferasDaMao: readonly Esfera[],
+  saidaDoLugar: PoseDeMao,
+  subidaDosDedos: ((pose: PoseDeMao) => number) | null,
+  evitarAr: boolean,
+): PonteEscolhida {
   const passos = Math.ceil((cfg.distanciaMaxima - cfg.distanciaMinima) / cfg.passo);
+  // Erguida, vale a folga de antes; no eixo, o pano e os dedos pedem quase nada.
+  const tolerancia = rigido ? cfg.tolerancia : cfg.toleranciaErguida;
   let noAr = NaN;
   for (let k = 0; k <= 2 * passos + 1; k++) {
     // 0, +1, -1, +2, -2...: o lugar mais perto do pedido primeiro.
     const deslocamento = k === 0 ? 0 : (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * cfg.passo;
     const s = cfg.distancia + deslocamento;
     if (s < cfg.distanciaMinima - 1e-9 || s > cfg.distanciaMaxima + 1e-9) continue;
-    const { apoio, afundaria } = poseDaPonte(eixo, recuo, s, obstaculos, cfg, saidaDoLugar, esferasDaMao);
-    if (afundaria > cfg.tolerancia) continue;
-    if (subidaDosDedos !== null) saidaDoLugar.y += subidaDosDedos(saidaDoLugar);
+    const { apoio, afundaria } = poseDaPonte(eixo, recuo, s, obstaculos, cfg, saidaDoLugar, esferasDaMao, !rigido);
+    if (afundaria > tolerancia) continue;
+    if (subidaDosDedos !== null) {
+      const subida = subidaDosDedos(saidaDoLugar);
+      if (rigido ? subida > tolerancia : false) continue;
+      if (!rigido) saidaDoLugar.y += subida;
+    }
     if (batendoEmBola(bolas, saidaDoLugar.x, saidaDoLugar.z, saidaDoLugar.y - cfg.fundo, cfg.pegada)) continue;
     if (protecao !== null && tapaAlgumaBola(esferasDaMao, saidaDoLugar, protecao.bolas, protecao.projetor, protecao.folga)) continue;
     if (evitarAr && apoio === 'ar') {
@@ -188,8 +218,8 @@ export function escolherPonte(
   }
   if (!Number.isNaN(noAr)) {
     // Nada com apoio coube: fica no ar, onde a primeira conta o achou.
-    const { apoio } = poseDaPonte(eixo, recuo, noAr, obstaculos, cfg, saidaDoLugar, esferasDaMao);
-    if (subidaDosDedos !== null) saidaDoLugar.y += subidaDosDedos(saidaDoLugar);
+    const { apoio } = poseDaPonte(eixo, recuo, noAr, obstaculos, cfg, saidaDoLugar, esferasDaMao, !rigido);
+    if (subidaDosDedos !== null && !rigido) saidaDoLugar.y += subidaDosDedos(saidaDoLugar);
     return { ok: true, distancia: noAr, apoio };
   }
   return { ok: false, distancia: cfg.distanciaMaxima, apoio: 'ar' };

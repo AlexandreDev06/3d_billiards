@@ -4,8 +4,11 @@ import type { MetaDoPersonagem, ModeloDoPersonagem } from '@sinuca/personagens';
 import type { ConfigMaos } from '../config';
 import type { ObstaculosDaMesa } from '../controles/elevacao-do-taco';
 import { alturaDoApoioEm } from './apoio';
+import { curvaDoPunho as medirCurvaDoPunho, dobraDoAgarre, escalaDoAgarre, pulsoQueCabe, NOMES_DOS_DEDOS_DO_PUNHO, type CurvaDoPunho } from './agarre-no-taco';
 import { eixoDoTaco, eixoVazio, pontoDeContato, pontoDoTaco, type EixoDoTaco, type Vec3 } from './eixo';
 import type { Esfera } from './esferas';
+import { giroQueLivra } from './giro-que-livra';
+import { limitesDosDedos } from './limites-dos-dedos';
 import { MaoCalibrada } from './mao-calibrada';
 import { lerLugarDaPonte, lugarVazioDaPonte, escolherPoseDaPonte } from './ponte-por-lugar';
 import { PONTES, poseDaPonteNomeada, type NomeDaPonte } from './pontes';
@@ -27,7 +30,7 @@ import {
   type ProtecaoDaVista,
 } from './pose-das-maos';
 import { agarreDaMaoDeTras, caixaDasEsferas, caixaVazia, lugarVazio, type CaixaNaTela } from './lugar-da-mao-de-tras';
-import { PlantadorDeDedos } from './plantar-dedos';
+import { NOMES_DOS_DEDOS_PLANTADOS, PlantadorDeDedos } from './plantar-dedos';
 import type { Projetor } from './projetor';
 
 /** O que as mãos precisam saber do taco desenhado neste quadro. */
@@ -119,6 +122,10 @@ export class MaosDoJogador {
   /** O quanto o pulso da mão de trás gira (rad) e o aperto dos dedos dela no taco (0 a 1): a vida dela (`PunhoVivo`). */
   pulso = 0;
   aperto = 0;
+  /** O quanto os dedos da mão de trás dobram a mais que na pose do arquivo (rad): fecham no taco do jogo, onde ele afina, e o aperto da batida só vale até a pele tocar nele. */
+  fechoDoPunho = 0;
+  /** Quanto a mão de trás cresce (1 ou mais) para fechar no taco onde ele é mais grosso que o do artista (além do ponto em que ele pôs a mão). */
+  escalaDoPunho = 1;
   /** A mão de trás tamborila: a mira ficou parada tempo demais (`Ociosidade`). */
   tamborilando = false;
   /** Onde a mão da ponte bate quando há falta: a moldura mais perto dela, escolhida quando o tapinha começa. */
@@ -127,6 +134,12 @@ export class MaosDoJogador {
   /** A mão do V, no tamanho e do lado do jogo: é nela que o giz fala (a pinça é da mão do V). Sem o arquivo, `null`. */
   ponteCalibrada: MaoCalibrada | null = null;
   punhoCalibrado: MaoCalibrada | null = null;
+  private curvaDoPunho: CurvaDoPunho | null = null;
+  /** Onde a mão da ponte pousou no último quadro, relativo ao taco: a distância do contato (m) e a subida sobre o eixo (m). A troca de ponte os guarda para a mão que sai seguir o taco. */
+  private sDaPose = 0;
+  private subidaDaPose = 0;
+  private sDaSaida = 0;
+  private subidaDaSaida = 0;
   private conjuntos: Record<NomeDaPonte, ConjuntoDaPonte> | null = null;
   private atual: ConjuntoDaPonte | null = null;
   private esferasDoPunho: readonly Esfera[] = [];
@@ -198,9 +211,14 @@ export class MaosDoJogador {
     const conjuntos = {} as Record<NomeDaPonte, ConjuntoDaPonte>;
     for (const nome of PONTES) {
       const pose = poseDaPonteNomeada(nome);
-      const giro = this.cfg.ponte.giro + (this.cfg.escolha.giro[nome] ?? 0);
-      const calibrada = new MaoCalibrada(modelo, pose, this.cfg.escala, true, (giro * Math.PI) / 180);
-      const plantador = new PlantadorDeDedos(calibrada, pose, (this.cfg.plantio.alcance * Math.PI) / 180, this.cfg.plantio.subidaMaxima);
+      const desejado = this.cfg.ponte.giro + (this.cfg.escolha.giro[nome] ?? 0);
+      // O taco passa pelo vão da mão sem atravessar a pele: gira só até onde cabe (L63).
+      const giroEmRad = giroQueLivra(modelo, pose, pose, this.cfg.escala, (desejado * Math.PI) / 180, this.cfg.ponte.penetracaoNoTaco);
+      const giro = (giroEmRad * 180) / Math.PI;
+      const calibrada = new MaoCalibrada(modelo, pose, this.cfg.escala, true, giroEmRad);
+      const alcance = (this.cfg.plantio.alcance * Math.PI) / 180;
+      const limites = limitesDosDedos(modelo, calibrada, pose, NOMES_DOS_DEDOS_PLANTADOS, alcance, this.cfg.ponte.penetracaoNoTaco);
+      const plantador = new PlantadorDeDedos(calibrada, pose, alcance, this.cfg.plantio.subidaMaxima, limites);
       const altura = calibrada.contato.alturaDoEixoAoPlano;
       conjuntos[nome] = {
         nome,
@@ -219,6 +237,7 @@ export class MaosDoJogador {
     this.atual = conjuntos[this.ponteAtual];
     this.ponteCalibrada = conjuntos.v.calibrada;
     this.punhoCalibrado = punho;
+    this.curvaDoPunho = medirCurvaDoPunho(modelo, punho, 'punho', NOMES_DOS_DEDOS_DO_PUNHO, { osso: 'pulso', eixo: this.cfg.vida.pulso.eixo, maximo: this.cfg.vida.pulso.maximo });
     this.reacoes = new ReacoesDaJogada(this.cfg.reacoes, meta, this.sorteio);
     this.sincronizada = false;
   }
@@ -356,7 +375,7 @@ export class MaosDoJogador {
     let conjunto = this.atual!;
     if (escolhidaV.ok) {
       const forca = limitar((e.recuo - this.recuoDeRepouso) / (this.recuoMaximo - this.recuoDeRepouso));
-      lerLugarDaPonte(v.lugar.x, v.lugar.z, escolhidaV.apoio, this.eixo, e.recuo, this.obstaculos, this.bolas, this.cfg.escolha, e.elevacao, forca, this.lugarDaPonte);
+      lerLugarDaPonte(v.lugar.x, v.lugar.z, escolhidaV.apoio, this.eixo, e.recuo, this.obstaculos, this.bolas, this.cfg.escolha, e.elevacao, forca, escolhidaV.distancia, this.lugarDaPonte);
       const pedeV = this.gizPedido || this.fatorDaPinca > 0.002;
       const desejada = pedeV ? 'v' : escolherPoseDaPonte(this.lugarDaPonte, this.cfg.escolha, this.ponteAtual);
       const trocaria = desejada !== this.ponteAtual && !this.troca.ativa && (this.tempoNaPonte >= this.cfg.escolha.troca.permanenciaS || pedeV);
@@ -383,6 +402,8 @@ export class MaosDoJogador {
         this.distanciaSuave = escolhida.distancia;
       } else if (quer !== this.ponteAtual) {
         this.troca.iniciar(this.ponteAtual, this.ponte, this.cfg.escolha.troca.duracaoS);
+        this.sDaSaida = this.sDaPose;
+        this.subidaDaSaida = this.subidaDaPose;
         this.ponteAtual = quer;
         this.atual = conjunto;
         this.tempoNaPonte = 0;
@@ -420,8 +441,13 @@ export class MaosDoJogador {
     // A vida da mão de trás: o pulso e o aperto seguem o recuo do taco; o tédio, a mira parada.
     if (primeira) this.punhoVivo.reiniciar();
     this.punhoVivo.atualizar(dt, e.recuo);
-    this.pulso = this.punhoVivo.pulso;
+    this.pulso = this.curvaDoPunho === null || this.punhoCalibrado === null ? this.punhoVivo.pulso : pulsoQueCabe(this.curvaDoPunho, this.punhoCalibrado, this.agarre, this.punhoVivo.pulso, this.cfg.ponte.penetracaoNoTaco);
     this.aperto = this.punhoVivo.aperto;
+    this.escalaDoPunho = this.punhoCalibrado === null ? 1 : escalaDoAgarre(this.punhoCalibrado, this.agarre);
+    this.fechoDoPunho =
+      this.curvaDoPunho === null || this.punhoCalibrado === null
+        ? this.aperto * this.cfg.vida.aperto.rad
+        : dobraDoAgarre(this.curvaDoPunho, this.punhoCalibrado, this.agarre, this.pulso, this.aperto * this.cfg.vida.aperto.rad, this.cfg.ponte.penetracaoNoTaco);
     this.ociosidade.atualizar(dt, e.ativas && !e.soAPonte && !this.reacaoNoAr, e.angulo, e.recuo, e.lateral, e.vertical);
     this.tamborilando = this.ociosidade.tamborilando;
   }
@@ -451,5 +477,12 @@ export class MaosDoJogador {
     const cz = this.eixo.pz + dz * e.recuo;
     const subida = lugar.y - (cy - dy * escolhida);
     orientarMao(this.ponte, this.eixo, cx - dx * s, cy - dy * s + subida, cz - dz * s);
+    this.sDaPose = s;
+    this.subidaDaPose = subida;
+    // A mão que sai fica onde estava em relação ao taco, não no mundo: com o taco indo à bola, o taco ainda passa no V dela.
+    if (this.troca.ativa) {
+      const ds = this.sDaSaida;
+      orientarMao(this.troca.pose, this.eixo, cx - dx * ds, cy - dy * ds + this.subidaDaSaida, cz - dz * ds);
+    }
   }
 }

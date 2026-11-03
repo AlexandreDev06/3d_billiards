@@ -32,6 +32,10 @@ export interface ModeloDasMaos {
   /** A vida da mão de trás: o pulso que balança (rad), o aperto dos dedos (0 a 1) e o tamborilar. */
   readonly pulso: number;
   readonly aperto: number;
+  /** Quanto os dedos da mão de trás dobram a mais que a pose do arquivo (rad): fecham no taco do jogo, e apertam na batida sem entrar nele. */
+  readonly fechoDoPunho: number;
+  /** Quanto a mão de trás cresce (1 ou mais) onde o taco é mais grosso que o do artista. */
+  readonly escalaDoPunho: number;
   readonly tamborilando: boolean;
   /** A reação em curso e, no tapinha, onde ele cai. */
   readonly reacao: Readonly<ReacaoEmCurso> | null;
@@ -90,6 +94,8 @@ export class MaosEmCena {
   private cor: number;
   private nivel: NivelDeDetalhe;
   private nomeDaPose: NomeDaPonte | null = null;
+  /** Há troca de ponte em curso e os dedos se misturam com o peso dela (a pose só fixa quando a troca acaba). */
+  private misturando = false;
   private temRespirar = false;
   private reacaoVista: Reacao | null = null;
   private inicioDaReacaoVista = NaN;
@@ -184,9 +190,15 @@ export class MaosEmCena {
   }
 
   private posicionarAPonte(modelo: ModeloDasMaos, ponte: PersonagemEmCena, dt: number): void {
-    if (modelo.ponteAtual !== this.nomeDaPose) {
-      // Os dedos de uma ponte para a outra se misturam no tempo da troca; sem troca (a primeira vez), de uma vez.
-      ponte.ir(poseDaPonteNomeada(modelo.ponteAtual), modelo.troca.ativa ? modelo.troca.duracaoS : 0);
+    if (modelo.troca.ativa) {
+      // Os dedos de uma ponte para a outra se misturam com o mesmo peso do quadro da mão: com curvas diferentes, o taco, que está certo
+      // no quadro da mão de cada ponte, atravessa a pele no meio do caminho (L63).
+      ponte.misturar(poseDaPonteNomeada(modelo.troca.de), poseDaPonteNomeada(modelo.ponteAtual), modelo.troca.mistura);
+      this.misturando = true;
+      this.nomeDaPose = modelo.ponteAtual;
+    } else if (this.misturando || modelo.ponteAtual !== this.nomeDaPose) {
+      ponte.ir(poseDaPonteNomeada(modelo.ponteAtual), 0);
+      this.misturando = false;
       this.nomeDaPose = modelo.ponteAtual;
     }
     ponte.sobrepor('pinca', modelo.pinca);
@@ -228,13 +240,14 @@ export class MaosEmCena {
     const { vida } = this.cfg;
     const [ex, ey, ez] = vida.pulso.eixo;
     punho.girarOsso('pulso', ex, ey, ez, modelo.pulso);
-    for (const dedo of DEDOS_DO_PUNHO) punho.dobrar(dedo, modelo.aperto * vida.aperto.rad);
+    for (const dedo of DEDOS_DO_PUNHO) punho.dobrar(dedo, modelo.fechoDoPunho);
     if (this.temRespirar) punho.ligarAditivo('respirar', vida.respirar.punho);
     // O tédio: a mão de trás tamborila no taco, a menos que esteja ocupada com uma reação.
     const ocupada = modelo.reacao?.ambas === true;
     if (modelo.tamborilando && !ocupada && punho.gestoEmCurso === null) punho.fazerGesto('tamborilar', vida.ocio.entraS, vida.ocio.saiS, { repetir: true });
     else if ((!modelo.tamborilando || ocupada) && punho.gestoEmCurso === 'tamborilar') punho.soltarGesto(vida.ocio.saiS);
-    punho.colocar(modelo.punhoCalibrado!.quadro(modelo.punho, modelo.escala, this.quadro), modelo.punhoCalibrado!.escala * modelo.escala);
+    const tamanho = modelo.escala * modelo.escalaDoPunho;
+    punho.colocar(modelo.punhoCalibrado!.quadro(modelo.punho, tamanho, this.quadro), modelo.punhoCalibrado!.escala * tamanho);
     punho.atualizar(dt);
     this.tingir(punho);
   }

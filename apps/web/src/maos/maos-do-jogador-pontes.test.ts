@@ -150,7 +150,7 @@ describe.each(PONTES)('MaosDoJogador: ponte %s no lugar dela', (ponte) => {
     }
   });
 
-  it('o taco passa pela mão sem atravessar a pele (a menos de 10 mm) e a pele não afunda mais de 8 mm no apoio', () => {
+  it('o taco passa pela mão sem atravessar a pele (a menos de 3 mm) e a pele não afunda mais de 2 mm no apoio (L63; eram 10 mm e 8 mm)', () => {
     const q = caso.quadro();
     const m = assentadas(q);
     const pele = peleDaPonte(m.calibradaAtual, BASE, Array.from(m.dobrasDaPonte), nomeDaPose);
@@ -177,8 +177,8 @@ describe.each(PONTES)('MaosDoJogador: ponte %s no lugar dela', (ponte) => {
       const chao = alturaDoApoioEm(obstaculos, px, pz);
       if (chao !== -Infinity) menorVao = Math.min(menorVao, py - chao);
     }
-    expect(pior).toBeLessThan(0.01);
-    expect(menorVao).toBeGreaterThan(-0.008);
+    expect(pior).toBeLessThan(0.003);
+    expect(menorVao).toBeGreaterThan(-0.002);
   });
 
   it('a pele não entra na branca (a menos de 2 mm)', () => {
@@ -204,7 +204,7 @@ describe.each(PONTES)('MaosDoJogador: ponte %s no lugar dela', (ponte) => {
 
 describe('MaosDoJogador: a ponte acompanha o taco', () => {
   it('o V sobe e desce com o efeito vertical: a mão segue a altura do taco', () => {
-    const baixo = assentadas(quadro(-0.4, 0.1, 0, REPOUSO, [], -0.8));
+    const baixo = assentadas(quadro(-0.4, 0.1, 0, REPOUSO, [], -0.15));
     const alto = assentadas(quadro(-0.4, 0.1, 0, REPOUSO, [], 0.8));
     expect(baixo.ponteAtual).toBe('v');
     expect(alto.ponteAtual).toBe('v');

@@ -1,6 +1,6 @@
 import { Cinematica, type Corrente } from './cinematica';
 import type { Contatos } from './contatos';
-import { indiceDoOsso, poseDeRepouso, validarFicha, type Ficha } from './ficha';
+import { indiceDoOsso, poseDeRepouso, validarFicha, type Ficha, type PoseDaFicha } from './ficha';
 import { esferasDosOssos, pelarMalha, pontosDeApoio, type EsferaDoOsso, type MalhaComPele } from './malha';
 import { girarVetor } from './quaternios';
 import type { Ponto, Trio } from './tipos';
@@ -15,6 +15,8 @@ export interface ModeloDoPersonagem {
   readonly esferas: readonly EsferaDoOsso[];
   /** Por pose, os pontos mais baixos da pele no referencial do personagem (3 números cada), para saber se ela afunda. */
   readonly apoios: ReadonlyMap<string, Float64Array>;
+  /** A malha (de maior detalhe) com os pesos de pele: é ela que `peleNaPose` esfola. */
+  readonly malha: MalhaComPele;
 }
 
 export interface OpcoesDoModelo {
@@ -97,7 +99,17 @@ export function construirModelo(ficha: Ficha, contatos: Contatos, malha: MalhaCo
     pelarMalha(ficha, malha, pose, superficie);
     apoios.set(nome, pontosDeApoio(superficie, baixo, opcoes.celulaDoApoio ?? 0.012, opcoes.faixaDoApoio ?? 0.05));
   }
-  return { ficha, contatos, correntes, esferas, apoios };
+  return { ficha, contatos, correntes, esferas, apoios, malha };
+}
+
+/**
+ * A pele do personagem (a malha de maior detalhe) numa pose, no referencial dele: 3 números por vértice. Com `saida` não aloca;
+ * `pose` pode ser o nome de uma pose do arquivo ou a pose por inteiro (a do arquivo com dobras a mais, por exemplo).
+ */
+export function peleNaPose(modelo: ModeloDoPersonagem, pose: string | PoseDaFicha, saida?: Float64Array): Float64Array {
+  const dados = typeof pose === 'string' ? modelo.ficha.poses.get(pose) : pose;
+  if (dados === undefined) throw new Error(`pose "${String(pose)}" não existe`);
+  return pelarMalha(modelo.ficha, modelo.malha, dados, saida ?? new Float64Array(modelo.malha.posicoes.length));
 }
 
 /** Onde ficam os centros das esferas na pose, no referencial do personagem (3 números por esfera), e o raio de cada uma. */

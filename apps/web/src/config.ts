@@ -406,14 +406,23 @@ export interface ConfigMaos {
     readonly distanciaMaxima: number;
     /** Passo da busca por um lugar onde ela caiba (m). */
     readonly passo: number;
-    /** Quanto a palma pode afundar no pano, na borracha ou na moldura antes de a ponte mudar de lugar (m); acima disso sobe junto. */
+    /**
+     * Quanto a palma (e as pontas dos dedos, esticadas ao máximo) pode afundar no pano, na borracha ou na moldura antes de a ponte
+     * mudar de lugar (m). L63: a mão fica no eixo do taco, sem subir; o lugar que enterra mais que isto fica para trás, onde o taco já
+     * está mais alto.
+     */
     readonly tolerancia: number;
+    /** Só se nenhum lugar serve com a mão no eixo: quanto a palma pode enterrar (m) antes de a mão subir para fugir do pano (o jeito de antes do L63). */
+    readonly toleranciaErguida: number;
     /**
      * Quanto a mão da ponte gira no pano, em torno da normal dele e com o V fixo no taco (graus): os dedos apontam para a frente e um
      * pouco para a direita de quem joga e o pulso vai para a esquerda e para trás, como o antebraço esquerdo de quem joga com a
-     * direita. Na câmera de mira se vê o dorso e o lado do punho, não a boca dele.
+     * direita. Na câmera de mira se vê o dorso e o lado do punho, não a boca dele. É o giro que se quer: cada ponte gira só até onde o
+     * taco ainda passa pelo vão sem entrar na pele (`penetracaoNoTaco`, L63; as poses do artista são para a mão reta).
      */
     readonly giro: number;
+    /** O quanto a pele da mão da ponte pode entrar no taco (m): acima disso `giro` cai até o taco passar no vão (L63). */
+    readonly penetracaoNoTaco: number;
     /** O quanto a mão ocupa no pano em volta do eixo: para a frente, para trás e de cada lado. */
     readonly pegada: { readonly frente: number; readonly tras: number; readonly lado: number };
     /** Quão depressa o desenho alcança o lugar escolhido (1/s): ao mudar de lugar a mão desliza pelo taco, não pula. */
@@ -450,15 +459,15 @@ export interface ConfigMaos {
   readonly plantio: { readonly alcance: number; readonly taxa: number; readonly subidaMaxima: number };
   /**
    * Qual das pontes do artista a mão mostra (L29, `maos/ponte-por-lugar.ts`). O laço entra com a força puxada em `laco.entra` (fração
-   * da barra) e só sai abaixo de `laco.sai`. A elevada pede outra bola até `elevada.alcance` m atrás da branca e a menos de
+   * da barra) e só sai abaixo de `laco.sai`; também entra se o V pousaria além de `laco.distanciaEntra` m da bola (e só sai aquém de `laco.distanciaSai`). A elevada pede outra bola até `elevada.alcance` m atrás da branca e a menos de
    * `elevada.lado` m do eixo do taco, com o taco subindo a `elevada.elevacaoMinimaGraus` ou mais. A colada vale quando o taco corre a
    * menos de `colada.anguloMaximoGraus` da tabela sobre a qual a mão pousa. A do canto, quando o lugar fica a menos de `canto.raio` m da
-   * boca ou do círculo de queda de uma caçapa. Trocar de ponte leva `troca.duracaoS`: a mão levanta `troca.arco` m, passa para o lugar
-   * novo e pousa, com os dedos misturando no ar; uma ponte nova só vale depois de `troca.permanenciaS` com a anterior (para a mão não
+   * boca ou do círculo de queda de uma caçapa. Trocar de ponte leva `troca.duracaoS`: a mão levanta `troca.arco` m (zero: o taco fica no V
+   * ou no anel e levantar a mão o arrasta pela pele, L63), passa para o lugar novo e pousa, com os dedos misturando no mesmo peso; uma ponte nova só vale depois de `troca.permanenciaS` com a anterior (para a mão não
    * tremer onde dois lugares se encontram). `giro` ajusta o giro de `ponte.giro` por ponte (graus), se a captura pedir.
    */
   readonly escolha: {
-    readonly laco: { readonly entra: number; readonly sai: number };
+    readonly laco: { readonly entra: number; readonly sai: number; readonly distanciaEntra: number; readonly distanciaSai: number };
     readonly elevada: { readonly alcance: number; readonly lado: number; readonly elevacaoMinimaGraus: number };
     readonly colada: { readonly anguloMaximoGraus: number };
     readonly canto: { readonly raio: number };
@@ -776,26 +785,28 @@ export const CONFIG_WEB: ConfigWeb = {
       distanciaMinima: 0.11,
       distanciaMaxima: 0.8,
       passo: 0.01,
-      tolerancia: 0.003,
+      tolerancia: 0.0015,
+      toleranciaErguida: 0.003,
       giro: 45,
+      penetracaoNoTaco: 0.001,
       pegada: { frente: 0.05, tras: 0.065, lado: 0.045 },
       taxa: 22,
     },
     punho: { rolo: 0, agarre: 1.3, agarreMinimo: 0.2, visivelAlvo: 0.4, visivelMinima: 0.12, visivelPuxada: 0.12, folgaDaPonte: 0.04, folgaMinima: 0, distanciaMinimaDaCamera: 0.2, taxa: 16 },
     plantio: { alcance: 40, taxa: 22, subidaMaxima: 0.03 },
     escolha: {
-      laco: { entra: 0.6, sai: 0.5 },
+      laco: { entra: 0.6, sai: 0.5, distanciaEntra: 0.38, distanciaSai: 0.33 },
       elevada: { alcance: 0.3, lado: 0.045, elevacaoMinimaGraus: 9 },
       colada: { anguloMaximoGraus: 35 },
       canto: { raio: 0.14 },
-      troca: { duracaoS: 0.25, arco: 0.04, permanenciaS: 0.3 },
+      troca: { duracaoS: 0.15, arco: 0, permanenciaS: 0.3 },
       giro: {},
     },
     joinha: { entradaS: 0.25, saiS: 0.3, subida: 0.08, lado: 0.12, giro: 55 },
     vida: {
       pulso: { eixo: [1, 0, 0], ganho: 0.35, maximo: 0.25, frequencia: 16, amortecimento: 0.35 },
       aperto: { rad: 0.28, velocidadeMinima: 0.6, subidaS: 0.05, seguirS: 0.18, soltaS: 0.3 },
-      respirar: { ponte: 1, punho: 1 },
+      respirar: { ponte: 0, punho: 0 },
       ocio: { aposS: 8, entraS: 0.35, saiS: 0.25 },
     },
     reacoes: {
