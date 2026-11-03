@@ -1,4 +1,5 @@
 import {
+  type BufferGeometry,
   CircleGeometry,
   CylinderGeometry,
   Group,
@@ -49,6 +50,22 @@ function uvDaMoldura(semi: { readonly x: number; readonly z: number }, borda: nu
     if (Math.abs(p.nz) >= Math.abs(p.nx)) return [u(p.x), v(Math.sign(p.z || 1) * (semi.z - borda / 2) + p.y)];
     return [u(Math.sign(p.x || 1) * (semi.x - borda / 2) + p.y), v(p.z)];
   };
+}
+
+/** O pano: a chapa de `espessuraPano` sob a moldura, furada nos seis círculos de queda (`contornoPano`). */
+export function geometriaDoPano(mesa: MedidasMesa, cfg: ConfigMesa): BufferGeometry {
+  const { externo, furos } = contornoPano(mesa, cfg);
+  return atribuirUv(extrudar(formaDe(externo, furos), { yBase: -cfg.espessuraPano, altura: cfg.espessuraPano }), uvLadrilho(cfg.ladoTexturaPano));
+}
+
+/** A moldura de madeira, do fundo do pano ao topo, com os seis entalhes das caçapas (`contornoMoldura`); `mesa` já com a moldura visual. */
+export function geometriaDaMoldura(mesa: MedidasMesa, cfg: ConfigMesa, semi: { readonly x: number; readonly z: number }): BufferGeometry {
+  const { externo, furo } = contornoMoldura(mesa, cfg);
+  const yTopo = mesa.alturaTabela + cfg.sobraMoldura;
+  return atribuirUv(
+    extrudar(formaDe(externo, [furo]), { yBase: -cfg.espessuraPano, altura: yTopo + cfg.espessuraPano, chanfro: cfg.chanfroMoldura }),
+    uvDaMoldura(semi, mesa.larguraMoldura),
+  );
 }
 
 /** Diamantes: três entre cada par de caçapas, nos dois lados compridos e nas duas cabeceiras. */
@@ -106,14 +123,7 @@ export function criarMesa(medidas: MedidasMesa, opcoes: OpcoesDaMesa): Group {
   const materiais = criarMateriaisMesa(cfg, semi.x, semi.z, mesa.larguraMoldura, opcoes.anisotropia ?? 1, opcoes.escalaTextura ?? 1);
   const yTopo = mesa.alturaTabela + cfg.sobraMoldura;
 
-  const { externo: contornoDoPano, furos: furosDoPano } = contornoPano(mesa, cfg);
-  const pano = new Mesh(
-    atribuirUv(
-      extrudar(formaDe(contornoDoPano, furosDoPano), { yBase: -cfg.espessuraPano, altura: cfg.espessuraPano }),
-      uvLadrilho(cfg.ladoTexturaPano),
-    ),
-    materiais.pano,
-  );
+  const pano = new Mesh(geometriaDoPano(mesa, cfg), materiais.pano);
   pano.name = 'pano';
   pano.receiveShadow = true;
   pano.castShadow = true;
@@ -127,18 +137,7 @@ export function criarMesa(medidas: MedidasMesa, opcoes: OpcoesDaMesa): Group {
     grupo.add(tabela);
   }
 
-  const { externo, furo } = contornoMoldura(mesa, cfg);
-  const moldura = new Mesh(
-    atribuirUv(
-      extrudar(formaDe(externo, [furo]), {
-        yBase: -cfg.espessuraPano,
-        altura: yTopo + cfg.espessuraPano,
-        chanfro: cfg.chanfroMoldura,
-      }),
-      uvDaMoldura(semi, mesa.larguraMoldura),
-    ),
-    materiais.madeira,
-  );
+  const moldura = new Mesh(geometriaDaMoldura(mesa, cfg, semi), materiais.madeira);
   moldura.name = 'moldura';
   moldura.receiveShadow = true;
   moldura.castShadow = true;

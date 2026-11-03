@@ -1,4 +1,4 @@
-import { BufferGeometry, ExtrudeGeometry, Path, Shape, Vector2 } from 'three';
+import { BufferGeometry, ExtrudeGeometry, Path, Shape, ShapeUtils, Vector2 } from 'three';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 import type { Ponto2 } from '@sinuca/fisica';
 
@@ -8,11 +8,17 @@ const ANGULO_VIVO = (40 * Math.PI) / 180;
 /**
  * Forma 2D com furos. A extrusão do three corre ao longo de +Z e `rotateX(-π/2)` leva (x, y, z) a
  * (x, z, -y): por isso o `y` da forma é o `-z` do mundo.
+ *
+ * O sentido dos pontos de entrada não importa: o contorno sai horário e os furos anti-horários (no plano da forma), que é o único
+ * par para o qual o `ExtrudeGeometry` vira as paredes do furo para dentro dele. Se os dois chegassem no mesmo sentido (o caso da
+ * mesa: contorno e caçapas anti-horários em XZ), o three só inverteria o contorno e a parede do furo ficaria de costas para quem
+ * olha de dentro do buraco: o `FrontSide` a corta e, pelo grosso do pano, vê-se o chão.
  */
 export function formaDe(contorno: readonly Ponto2[], buracos: readonly (readonly Ponto2[])[] = []): Shape {
   const ponto = (p: Ponto2): Vector2 => new Vector2(p.x, -p.z);
-  const forma = new Shape(contorno.map(ponto));
-  for (const buraco of buracos) forma.holes.push(new Path(buraco.map(ponto)));
+  const sentido = (pontos: Vector2[], horario: boolean): Vector2[] => (ShapeUtils.isClockWise(pontos) === horario ? pontos : pontos.reverse());
+  const forma = new Shape(sentido(contorno.map(ponto), true));
+  for (const buraco of buracos) forma.holes.push(new Path(sentido(buraco.map(ponto), false)));
   return forma;
 }
 

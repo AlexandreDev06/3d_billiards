@@ -70,3 +70,52 @@ describe('extrudar', () => {
     }
   });
 });
+
+/** Triângulos de parede (face quase vertical) com a normal geométrica da ordem dos vértices, que é a que o `FrontSide` usa para desenhar ou cortar. */
+function paredes(g: BufferGeometry): { centro: [number, number, number]; normal: [number, number, number] }[] {
+  const p = g.getAttribute('position');
+  const lista: { centro: [number, number, number]; normal: [number, number, number] }[] = [];
+  for (let i = 0; i < p.count; i += 3) {
+    const v = [0, 1, 2].map((k) => [p.getX(i + k), p.getY(i + k), p.getZ(i + k)] as const);
+    const a = [v[1]![0] - v[0]![0], v[1]![1] - v[0]![1], v[1]![2] - v[0]![2]];
+    const b = [v[2]![0] - v[0]![0], v[2]![1] - v[0]![1], v[2]![2] - v[0]![2]];
+    const n: [number, number, number] = [a[1]! * b[2]! - a[2]! * b[1]!, a[2]! * b[0]! - a[0]! * b[2]!, a[0]! * b[1]! - a[1]! * b[0]!];
+    const comprimento = Math.hypot(...n);
+    if (comprimento === 0 || Math.abs(n[1]! / comprimento) > 0.5) continue;
+    lista.push({
+      centro: [(v[0]![0] + v[1]![0] + v[2]![0]) / 3, (v[0]![1] + v[1]![1] + v[2]![1]) / 3, (v[0]![2] + v[1]![2] + v[2]![2]) / 3],
+      normal: [n[0] / comprimento, n[1]! / comprimento, n[2]! / comprimento],
+    });
+  }
+  return lista;
+}
+
+describe('extrudar: as paredes do furo', () => {
+  const horario = (pontos: Ponto2[]): Ponto2[] => [...pontos].reverse();
+  const casos: [string, Ponto2[], Ponto2[]][] = [
+    ['contorno e furo no mesmo sentido (a caçapa do pano: os dois anti-horários em XZ)', retangulo(-1, -1, 1, 1), retangulo(-0.25, -0.25, 0.25, 0.25)],
+    ['contorno anti-horário e furo horário', retangulo(-1, -1, 1, 1), horario(retangulo(-0.25, -0.25, 0.25, 0.25))],
+    ['contorno horário e furo anti-horário', horario(retangulo(-1, -1, 1, 1)), retangulo(-0.25, -0.25, 0.25, 0.25)],
+    ['contorno e furo horários', horario(retangulo(-1, -1, 1, 1)), horario(retangulo(-0.25, -0.25, 0.25, 0.25))],
+  ];
+  for (const [nome, contorno, furo] of casos) {
+    it(`a parede do furo olha para dentro do furo, para ser vista dele, e a de fora para fora: ${nome}`, () => {
+      const g = extrudar(formaDe(contorno, [furo]), { yBase: 0, altura: 0.05 });
+      let doFuro = 0;
+      let defora = 0;
+      for (const { centro, normal } of paredes(g)) {
+        const noFuro = Math.abs(centro[0]) < 0.3 && Math.abs(centro[2]) < 0.3;
+        const paraOCentro = -(normal[0] * centro[0] + normal[2] * centro[2]) / Math.hypot(centro[0], centro[2]);
+        if (noFuro) {
+          doFuro++;
+          expect(paraOCentro).toBeGreaterThan(0.5);
+        } else {
+          defora++;
+          expect(-paraOCentro).toBeGreaterThan(0.5);
+        }
+      }
+      expect(doFuro).toBeGreaterThan(0);
+      expect(defora).toBeGreaterThan(0);
+    });
+  }
+});
