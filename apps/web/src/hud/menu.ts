@@ -329,7 +329,7 @@ export function criarMenu(pai: HTMLElement, opcoes: OpcoesMenu): Menu {
   const letreiro = (grande: boolean): HTMLElement => {
     const l = el('h1', `menu-titulo menu-letreiro${grande ? ' grande' : ''}`);
     const texto = el('span', 'menu-letreiro-texto');
-    texto.append(el('span', 'menu-letreiro-a', 'Sinuca'), ' ', el('span', 'menu-letreiro-b', 'Par ou Ímpar'));
+    texto.append(el('span', 'menu-letreiro-a', 'Sinuca'), ' ', el('span', 'menu-letreiro-b', 'de Beco'));
     const imagem = (estado: 'acesa' | 'apagada'): HTMLImageElement => {
       const i = document.createElement('img');
       i.className = `menu-letreiro-img menu-letreiro-${estado}`;

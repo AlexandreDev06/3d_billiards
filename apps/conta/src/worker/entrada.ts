@@ -28,6 +28,10 @@ export class Banco extends WorkerEntrypoint<Env> implements ApiDoBanco {
     return await this.objeto().contaDaSessao(token);
   }
 
+  async contaDaSessaoPorResumo(resumo: string): Promise<{ id: string; nome: string } | null> {
+    return await this.objeto().contaDaSessaoPorResumo(resumo);
+  }
+
   async contaDoCodigo(codigo: string): Promise<{ id: string; convidado: boolean } | null> {
     return await this.objeto().contaDoCodigo(codigo);
   }

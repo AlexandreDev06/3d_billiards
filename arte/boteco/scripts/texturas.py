@@ -512,9 +512,10 @@ def decoracao(n=512):
 
 
 # ---------------------------------------------------------------- néon do boteco
-def letreiro_halo(larg=1024):
+def letreiro_halo(larg=1024, so_brilho=False):
+    """O letreiro aceso (RGBA). `so_brilho`: só o halo em volta dos tubos, para ir por cima dos tubos 3D do nível alto (L68c)."""
     els, h = marca.elementos("completo", 2048, 190)
-    rgba = marca.render_aceso(els, 2048, h, 1)
+    rgba = (marca.render_halo if so_brilho else marca.render_aceso)(els, 2048, h, 1)
     im = Image.fromarray((np.clip(rgba, 0, 1) * 255).astype(np.uint8), "RGBA")
     return im.resize((larg, int(round(h * larg / 2048))), Image.LANCZOS)
 
@@ -556,7 +557,7 @@ def gerar(pasta):
     mestres = {"decoracao": decoracao(512), "quadro": sinais_p6.quadro_p6(1536, 1024)}
     cache = {}
     placa = letreiro_placa(1024)
-    halo = letreiro_halo(1024)
+    halo = letreiro_halo(1024, so_brilho=True)
     for nivel, f in NIVEIS.items():
         base = os.path.join(pasta, nivel)
         for nome, a in mestres.items():

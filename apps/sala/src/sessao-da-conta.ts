@@ -14,14 +14,31 @@ export const NOME_DO_COOKIE_DA_SESSAO = 'becogames_sessao';
 export const CABECALHO_DA_CONTA = 'x-sinuca-conta';
 
 /**
- * O cabeçalho INTERNO com o token da sessão, só no upgrade do WebSocket (L61b): o objeto o guarda na conexão para reler a sessão no Banco antes
- * de mexer em moeda (a borda não está mais no caminho depois do upgrade). Mesma regra do `CABECALHO_DA_CONTA`: a borda apaga o que vier de fora
- * e só põe o token do cookie que o Banco acabou de provar. É segredo: nunca vai a log, a erro nem a resposta.
+ * O cabeçalho INTERNO com o RESUMO da sessão (SHA-256 em hexadecimal do token do cookie, o mesmo que o Banco guarda), só no upgrade do WebSocket
+ * (L61b, resumo no L66): o objeto o guarda na conexão para reler a sessão no Banco (`contaDaSessaoPorResumo`) antes de mexer em moeda (a borda
+ * não está mais no caminho depois do upgrade). Mesma regra do `CABECALHO_DA_CONTA`: a borda apaga o que vier de fora e só põe o resumo da
+ * sessão que o Banco acabou de provar. O token em claro nunca passa da borda: o objeto, o anexo, o `Registro` e os logs só veem o resumo (que
+ * ainda assim não vai a log, a erro nem a resposta).
  */
-export const CABECALHO_DA_SESSAO = 'x-sinuca-sessao';
+export const CABECALHO_DO_RESUMO_DA_SESSAO = 'x-sinuca-resumo-da-sessao';
+
+/** O nome que o L61b usava, quando o cabeçalho levava o token em claro: não é mais lido, e a borda ainda o apaga de qualquer pedido que o traga. */
+export const CABECALHO_ANTIGO_DA_SESSAO = 'x-sinuca-sessao';
 
 const FORMA_DO_TOKEN = /^[A-Za-z0-9_-]{43}$/;
 export const FORMA_DO_ID_DE_CONTA = /^[0-9a-f]{64}$/;
+const FORMA_DO_RESUMO = /^[0-9a-f]{64}$/;
+
+/**
+ * O resumo de uma sessão: o SHA-256 em hexadecimal minúsculo do token, o que o Banco guarda e entende em `contaDaSessaoPorResumo`. É calculado
+ * uma vez, no ponto de entrada (o Worker da borda, o servidor Node, a migração de um anexo antigo); o token não segue adiante.
+ */
+export async function resumoDaSessao(token: string): Promise<string> {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(token)));
+  let hex = '';
+  for (const b of bytes) hex += b.toString(16).padStart(2, '0');
+  return hex;
+}
 
 /** O token do cookie `becogames_sessao` no cabeçalho `Cookie`, ou `null` se falta ou não tem a forma de um token (43 caracteres base64url). */
 export function tokenDaSessao(cookie: string | null | undefined): string | null {
@@ -40,7 +57,12 @@ export function idDaContaDoCabecalho(valor: string | null | undefined): string |
   return typeof valor === 'string' && FORMA_DO_ID_DE_CONTA.test(valor) ? valor : undefined;
 }
 
-/** O token do cabeçalho interno, se tem a forma de um token (43 caracteres base64url); senão `undefined`. */
-export function tokenDoCabecalho(valor: string | null | undefined): string | undefined {
-  return typeof valor === 'string' && FORMA_DO_TOKEN.test(valor) ? valor : undefined;
+/** O resumo do cabeçalho interno ou do anexo, se tem a forma de um resumo (SHA-256 em hexadecimal minúsculo); senão `undefined`. */
+export function resumoDeSessaoValido(valor: unknown): string | undefined {
+  return typeof valor === 'string' && FORMA_DO_RESUMO.test(valor) ? valor : undefined;
+}
+
+/** O valor tem a forma de um token de sessão (43 caracteres base64url)? Só para reconhecer o anexo antigo do L61b, que guardava o token. */
+export function ehTokenDeSessao(valor: unknown): valor is string {
+  return typeof valor === 'string' && FORMA_DO_TOKEN.test(valor);
 }

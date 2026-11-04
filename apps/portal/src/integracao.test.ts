@@ -1,11 +1,12 @@
 /**
  * O portal e o Banco juntos (L56), pelos Workers de verdade: `wrangler dev --local -c apps/portal/wrangler.jsonc -c apps/conta/wrangler.jsonc`
  * (o workerd da máquina, o service binding `CONTA` -> `Banco`, o Durable Object com SQLite em disco, os assets do portal com o `_headers`).
- * O `.dev.vars` de teste do `apps/conta` é criado aqui e apagado no fim. Nada de conta nem de rede da Cloudflare.
+ * O Banco roda de uma cópia do config em pasta temporária do teste, com o `.dev.vars` ao lado (o pepper): nada é escrito nem apagado dentro de `apps/conta`
+ * (L69: antes um `.dev.vars` dividido com os testes da sala se pisava). Nada de conta nem de rede da Cloudflare.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +15,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const RAIZ = fileURLToPath(new URL('../../..', import.meta.url));
 const WRANGLER = join(RAIZ, 'apps/portal/node_modules/wrangler/bin/wrangler.js');
-const DEV_VARS = join(RAIZ, 'apps/conta/.dev.vars');
+/** A guarda que derruba o wrangler e o workerd se este processo sumir (a mesma dos testes da sala). */
+const GUARDA = join(RAIZ, 'apps/sala/src/guarda-do-wrangler.mjs');
 const MENSAGEM_ESQUECI = 'Se houver uma conta com este e-mail, mandamos um link para criar a senha nova. Confira também o spam.';
 
 const portaLivre = (): Promise<number> =>
@@ -65,13 +67,22 @@ describe('o portal e o Banco no wrangler dev --local', () => {
   beforeAll(async () => {
     const [porta, inspetor] = [await portaLivre(), await portaLivre()];
     base = `http://127.0.0.1:${porta}`;
+    // O Banco numa pasta só deste teste: o wrangler lê o `.dev.vars` e grava o `.wrangler` ao lado do config de cada Worker, então uma cópia do
+    // config da conta (com o `main` apontando para o código de verdade) isola as variáveis; nada é escrito nem apagado dentro de `apps/conta`.
+    const pastaDaConta = join(RAIZ, 'apps/conta');
+    const cfg = JSON.parse(readFileSync(join(pastaDaConta, 'wrangler.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '')) as Record<string, unknown>;
+    delete cfg.$schema;
+    cfg.main = join(pastaDaConta, cfg.main as string);
+    mkdirSync(join(pasta, 'conta'), { recursive: true });
+    const configDoBanco = join(pasta, 'conta', 'wrangler.jsonc');
+    writeFileSync(configDoBanco, JSON.stringify(cfg));
     writeFileSync(
-      DEV_VARS,
+      join(pasta, 'conta', '.dev.vars'),
       [`PEPPER_DA_SENHA=${randomBytes(24).toString('hex')}`, 'DOMINIO_DO_COOKIE=""', 'COOKIE_SEGURO="0"', `ORIGENS_DE_DEV=${base}`, ''].join('\n'),
     );
     filho = spawn(
       process.execPath,
-      [WRANGLER, 'dev', '--local', '-c', 'apps/portal/wrangler.jsonc', '-c', 'apps/conta/wrangler.jsonc', '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--persist-to', join(pasta, 'estado')],
+      [GUARDA, String(process.pid), process.execPath, WRANGLER, 'dev', '--local', '-c', 'apps/portal/wrangler.jsonc', '-c', configDoBanco, '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--persist-to', join(pasta, 'estado')],
       {
         cwd: RAIZ,
         env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(pasta, 'logs'), NO_COLOR: '1', FORCE_COLOR: '0', CI: 'true' },
@@ -110,11 +121,7 @@ describe('o portal e o Banco no wrangler dev --local', () => {
         matarGrupo(filho, 'SIGTERM');
       });
     }
-    rmSync(DEV_VARS, { force: true });
     rmSync(pasta, { recursive: true, force: true });
-    rmSync(join(RAIZ, 'apps/portal/.wrangler'), { recursive: true, force: true });
-    rmSync(join(RAIZ, 'apps/conta/.wrangler'), { recursive: true, force: true });
-    expect(existsSync(DEV_VARS)).toBe(false);
   });
 
   it('serve as páginas de conta com a CSP que deixa o fetch da própria origem', async () => {

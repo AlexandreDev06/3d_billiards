@@ -17,6 +17,7 @@ export const MAX_EXCLUIDAS_POR_CHAMADA = 500;
 
 /** O que um token de sessão ou de recuperação é: 32 bytes em base64url. */
 const FORMA_DO_TOKEN = /^[A-Za-z0-9_-]{43}$/;
+const FORMA_DO_RESUMO = /^[0-9a-f]{64}$/;
 const TAMANHO_DO_SAL = 16;
 /** O sal do hash de mentira: tem o mesmo custo do hash de verdade. */
 const SAL_DE_MENTIRA = new Uint8Array(TAMANHO_DO_SAL);
@@ -156,7 +157,12 @@ export class Contas {
   /** A conta da sessão; renova o prazo (90 dias) se a última renovação foi há mais de 1 dia. Vencida ou de conta excluída: `null`. */
   async sessao(token: string): Promise<{ conta: ContaPublica; renovada: boolean } | null> {
     if (typeof token !== 'string' || !FORMA_DO_TOKEN.test(token)) return null;
-    const resumo = await resumoHex(token);
+    return this.sessaoPorResumo(await resumoHex(token));
+  }
+
+  /** O mesmo de `sessao`, a partir do resumo que o Banco guarda (SHA-256 em hexadecimal minúsculo, 64 caracteres); resumo mal formado: `null`. */
+  async sessaoPorResumo(resumo: string): Promise<{ conta: ContaPublica; renovada: boolean } | null> {
+    if (typeof resumo !== 'string' || !FORMA_DO_RESUMO.test(resumo)) return null;
     return this.transacao(() => this.lerSessao(resumo));
   }
 

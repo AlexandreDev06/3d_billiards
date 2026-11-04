@@ -62,8 +62,8 @@ export class ConexaoFalsa implements Conexao {
   versao?: number;
   /** O `id` da conta que a sessão provou (L61); ausente = vale o código da carteira. */
   idDaConta?: string;
-  /** O token da sessão que provou `idDaConta` e quando foi conferido (L61b). */
-  sessao?: string;
+  /** O resumo da sessão que provou `idDaConta` e quando foi conferido (L61b, L66). */
+  resumoDaSessao?: string;
   sessaoConferidaEm?: number;
   /** Pesos de cada infração que a sala mandou o transporte contar. */
   readonly punicoes: number[] = [];

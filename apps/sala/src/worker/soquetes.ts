@@ -13,9 +13,12 @@
  *   toda queda decidida aqui também solta a ligação na hora, como o `terminate()` do Node dispara o `close` na hora.
  * - **Hibernação**: o último sinal de cada soquete vai no anexo (`serializeAttachment`, sobrevive à hibernação), e ao acordar
  *   `adotar` refaz a ligação de cada soquete com ele, para o silêncio enxergar quem voltou sem falar e não zerar a cada despertar.
+ * - **Anexo antigo (L66)**: até o L61c o anexo guardava o TOKEN da sessão (`sessao`); agora só o resumo (`resumoDaSessao`). Uma conexão que
+ *   hibernou antes da publicação acorda com o anexo antigo, e `migrarAnexosAntigos` (o construtor do objeto, antes de qualquer evento) calcula
+ *   o resumo, regrava o anexo sem o token e mantém a hora da última conferência.
  */
 import { LigacaoDaSala } from '../ligacao';
-import { CABECALHO_DA_CONTA, CABECALHO_DA_SESSAO, idDaContaDoCabecalho, tokenDoCabecalho } from '../sessao-da-conta';
+import { CABECALHO_DA_CONTA, CABECALHO_DO_RESUMO_DA_SESSAO, ehTokenDeSessao, idDaContaDoCabecalho, resumoDaSessao, resumoDeSessaoValido } from '../sessao-da-conta';
 import { BaldesPorChave } from '../limite-taxa';
 import type { Logger } from '../log';
 import type { OrigemDaQueda } from '../rastro';
@@ -43,24 +46,30 @@ export interface AnexoDoSoquete {
   readonly sinalEm?: number;
   /** O `id` da conta que a sessão provou ao abrir a conexão (L61); sobrevive à hibernação no anexo. */
   readonly idDaConta?: string;
-  /** O token da sessão que provou `idDaConta` (L61b), para reler a sessão antes de mexer em moeda; segredo (nunca em log), só com `idDaConta`. */
-  readonly sessao?: string;
+  /** O resumo (SHA-256 em hexadecimal) da sessão que provou `idDaConta` (L61b, resumo no L66), para reler a sessão antes de mexer em moeda; só com `idDaConta`. Nunca o token. */
+  readonly resumoDaSessao?: string;
   /** Quando a sessão foi conferida com o Banco pela última vez (ms do relógio da sala). */
   readonly sessaoConferidaEm?: number;
 }
 
 /**
- * O anexo de um WebSocket recém-aberto, a partir dos cabeçalhos internos que a borda pôs (L61, L61b): o `id` da conta e, só com ele, o token
- * da sessão e a hora da conferência. Sem o token no anexo a conexão nunca é relida enquanto viver.
+ * O que se pode LER de um anexo: o atual e, de uma conexão que hibernou antes do L66, o campo `sessao` com o token em claro. Nada grava este
+ * campo; `migrarAnexosAntigos` o troca pelo resumo.
+ */
+type AnexoLido = Partial<AnexoDoSoquete> & { readonly sessao?: unknown };
+
+/**
+ * O anexo de um WebSocket recém-aberto, a partir dos cabeçalhos internos que a borda pôs (L61, L61b, L66): o `id` da conta e, só com ele, o
+ * resumo da sessão e a hora da conferência. Sem o resumo no anexo a conexão nunca é relida enquanto viver.
  */
 export function anexoDoUpgrade(cabecalhos: Headers, ip: string, agora: number): AnexoDoSoquete {
   const idDaConta = idDaContaDoCabecalho(cabecalhos.get(CABECALHO_DA_CONTA));
-  const sessao = idDaConta === undefined ? undefined : tokenDoCabecalho(cabecalhos.get(CABECALHO_DA_SESSAO));
+  const resumo = idDaConta === undefined ? undefined : resumoDeSessaoValido(cabecalhos.get(CABECALHO_DO_RESUMO_DA_SESSAO));
   return {
     ip,
     sinalEm: agora,
     ...(idDaConta === undefined ? {} : { idDaConta }),
-    ...(sessao === undefined ? {} : { sessao, sessaoConferidaEm: agora }),
+    ...(resumo === undefined ? {} : { resumoDaSessao: resumo, sessaoConferidaEm: agora }),
   };
 }
 
@@ -136,15 +145,21 @@ export class SoquetesDaSala {
     let ligacao = this.ligacoes.get(ws);
     if (ligacao) return ligacao;
     const { config, registro, relogio, log } = this.deps;
-    const anexo = ws.deserializeAttachment() as Partial<AnexoDoSoquete> | null;
+    const anexo = ws.deserializeAttachment() as AnexoLido | null;
+    const resumo = resumoDeSessaoValido(anexo?.resumoDaSessao);
+    // um anexo que ainda tem o token (`sessao`) e não foi migrado, sem resumo válido, falha fechado: o resumo não se calcula aqui e o token não segue
+    // adiante, e conta sem releitura não pode ficar (a releitura a pularia e o `sair` daquele aparelho não a acharia); a conexão vira sem conta
+    const semSessaoParaReler = anexo !== null && typeof anexo === 'object' && 'sessao' in anexo && resumo === undefined;
+    const idDoAnexo = anexo?.idDaConta;
+    const idDaConta = typeof idDoAnexo === 'string' && !semSessaoParaReler ? idDoAnexo : undefined;
     ligacao = new LigacaoDaSala({
       config,
       registro,
       relogio,
       log,
       ip: anexo?.ip ?? 'desconhecido',
-      ...(typeof anexo?.idDaConta === 'string' ? { idDaConta: anexo.idDaConta } : {}),
-      ...(typeof anexo?.idDaConta === 'string' && typeof anexo.sessao === 'string' ? { sessao: anexo.sessao, ...(typeof anexo.sessaoConferidaEm === 'number' ? { sessaoConferidaEm: anexo.sessaoConferidaEm } : {}) } : {}),
+      ...(idDaConta === undefined ? {} : { idDaConta }),
+      ...(idDaConta !== undefined && resumo !== undefined ? { resumoDaSessao: resumo, ...(typeof anexo?.sessaoConferidaEm === 'number' ? { sessaoConferidaEm: anexo.sessaoConferidaEm } : {}) } : {}),
       ...(typeof anexo?.sinalEm === 'number' ? { sinalEm: anexo.sinalEm } : {}),
       soquete: {
         aberto: () => ws.readyState === ABERTO,
@@ -177,6 +192,43 @@ export class SoquetesDaSala {
   }
 
   /**
+   * Troca o anexo antigo (L61b: o TOKEN da sessão em `sessao`) pelo atual (o resumo em `resumoDaSessao`), regravando-o sem o token e sem mexer no
+   * resto (IP, último sinal, `id`, hora da conferência). Roda no construtor do objeto, antes de `adotar` e de qualquer evento: é o único lugar
+   * em que o token de um anexo é lido, e é para ser trocado, nunca para seguir. Falha fechado: sem resumo válido (nem o que o anexo já tinha, nem
+   * o calculado do token) o anexo perde também o `idDaConta` e a hora da conferência, e a conexão vira sem conta. Nunca lança (um soquete cujo
+   * anexo não se lê ou não se grava é pulado, e o `adotar` ainda tira a conta de um anexo com `sessao` e sem resumo). Devolve quantos anexos
+   * foram migrados.
+   */
+  async migrarAnexosAntigos(soquetes: Iterable<SoqueteDoObjeto>): Promise<number> {
+    let migrados = 0;
+    for (const ws of soquetes) {
+      try {
+        const anexo = ws.deserializeAttachment() as AnexoLido | null;
+        if (anexo === null || typeof anexo !== 'object' || !('sessao' in anexo)) continue;
+        const { sessao, ...resto } = anexo;
+        const { resumoDaSessao: resumoGravado, idDaConta, sessaoConferidaEm, ...semConta } = resto;
+        const resumo = resumoDeSessaoValido(resumoGravado) ?? (ehTokenDeSessao(sessao) ? await resumoDaSessao(sessao) : undefined);
+        const comConta = typeof idDaConta === 'string' && resumo !== undefined;
+        ws.serializeAttachment({ ...semConta, ...(comConta ? { idDaConta, resumoDaSessao: resumo, ...(sessaoConferidaEm === undefined ? {} : { sessaoConferidaEm }) } : {}) });
+        migrados++;
+      } catch {
+        // soquete que fechou no meio, ou anexo ilegível
+      }
+    }
+    if (migrados > 0) this.deps.log('anexos-migrados', { conexoes: migrados });
+    return migrados;
+  }
+
+  /**
+   * O objeto acordou (ou foi publicado de novo) com estes WebSockets abertos: troca os anexos antigos (`migrarAnexosAntigos`) e só então adota
+   * cada soquete. É o que o construtor do `SalaDO` roda dentro de `blockConcurrencyWhile`, para nenhum evento ver um anexo com o token.
+   */
+  async adotarTodos(soquetes: readonly SoqueteDoObjeto[]): Promise<void> {
+    await this.migrarAnexosAntigos(soquetes);
+    for (const ws of soquetes) this.adotar(ws);
+  }
+
+  /**
    * A conta de uma conexão mudou (saiu, foi excluída, a sessão morreu ou foi conferida de novo): o anexo, que sobrevive à hibernação, é regravado
    * com o que a conexão tem agora, SEM mexer no último sinal (senão uma conta esquecida adiaria o silêncio). Sem isto o objeto que acordasse
    * adotaria o soquete com a conta de antes.
@@ -184,7 +236,7 @@ export class SoquetesDaSala {
   regravarAnexo(conn: Conexao): void {
     for (const [ws, ligacao] of this.ligacoes) {
       if (ligacao.conn !== conn || ws.readyState !== ABERTO) continue;
-      const anterior = ws.deserializeAttachment() as Partial<AnexoDoSoquete> | null;
+      const anterior = ws.deserializeAttachment() as AnexoLido | null;
       this.gravarAnexo(ws, conn, typeof anterior?.sinalEm === 'number' ? anterior.sinalEm : undefined);
       return;
     }
@@ -236,7 +288,7 @@ export class SoquetesDaSala {
         ip: conn.ip,
         ...(sinalEm === undefined ? {} : { sinalEm }),
         ...(comConta ? { idDaConta: conn.idDaConta } : {}),
-        ...(comConta && conn.sessao !== undefined ? { sessao: conn.sessao, ...(conn.sessaoConferidaEm === undefined ? {} : { sessaoConferidaEm: conn.sessaoConferidaEm }) } : {}),
+        ...(comConta && conn.resumoDaSessao !== undefined ? { resumoDaSessao: conn.resumoDaSessao, ...(conn.sessaoConferidaEm === undefined ? {} : { sessaoConferidaEm: conn.sessaoConferidaEm }) } : {}),
       } satisfies AnexoDoSoquete);
     } catch {
       // soquete que fechou entre a conferência e a gravação: o anexo não importa mais

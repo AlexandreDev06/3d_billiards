@@ -1,4 +1,4 @@
-# Sinuca 3D Par ou Ímpar — Guia do Repositório
+# Sinuca de Beco — Guia do Repositório
 
 Jogo de sinuca 3D de boteco ("par ou ímpar") para PC, no navegador, entre amigos: sem linha de mira, tacada pelo mouse, efeito e giz; hot-seat primeiro, online depois.
 **Estado (2026-11-04): jogo no ar em `sinuca.becogames.app`; fases 0 a 2 fechadas e Fase 3 cancelada pelo usuário.** Hot-seat e online jogam de ponta a ponta, com par ou ímpar e mata-mata, emojis, loja de tacos, aposta e a conta Beco Games.
@@ -74,7 +74,7 @@ Git desde 2026-10-26 (commit-base `b8ce47c`; remote `origin` no GitHub, branch `
 
 ## Time multiagente (subagentes)
 
-O jogo é desenvolvido por um time de papéis: Principal (este chat, só planeja/despacha/revisa), Brainstormer, Dev, Frontend, Backend, QA, Artista e Revisor, cada um um subagente do Claude Code com prompt de lote em `.outros/prompts/` e status em `.outros/status.md`. Carregue `sinuca-maestri-time` para orquestrar, ou ao ser despachado sob um papel. O fluxo com terminais do Maestri está parado (licença travada desde 2026-10-12) e descrito em `maestri.md` da mesma skill.
+O jogo é desenvolvido por um time de papéis: Principal (este chat, só planeja/despacha/revisa), Brainstormer, Dev, Frontend, Backend, QA, Artista e Revisor, cada um um terminal do Maestri (outro chat), com prompt de lote em `.outros/prompts/` e status em `.outros/status.md`. **Pedido do usuário em 2026-11-04, para economizar tokens: lote vai para outro chat, nunca para subagente; o Principal faz direto o que é pequeno, como commit e deploy.** Fluxo em `maestri.md` da skill `sinuca-maestri-time`.
 
 **Modelo por tarefa (economia de tokens, pedido do usuário em 2026-10-14).** Opus só para o Principal (este chat) e o Revisor (Juiz). Todo o resto, inclusive o Dev da física e das regras e o Brainstormer, sobe com Sonnet. Busca e coleta de dados (Explore) vão com Haiku. Subagente do Claude Code (ferramenta Agent) **sempre** com `model` e `effort` explícitos: `model` omitido herda o Opus do Principal, e foi esse o desperdício; `effort` omitido cai no `xhigh` do `modelSettings` global. **Esforço por tarefa (pedido do usuário em 2026-10-28):** `low` para busca pontual e ajuste mecânico, `medium` para lote bem especificado (padrão), `high` para física, contrato, segurança e bug sem causa, `xhigh` só no Artista e na varredura de fase do Juiz, `max` só a pedido; tabela em "Esforço por tarefa" de `sinuca-maestri-time`. Revisão do Juiz só em lote de risco (física, contrato, segurança); ajuste pequeno não passa por ela. Nunca `/effort` no terminal: ele grava o nível como padrão global do usuário. (Esforço por terminal do Maestri: `time.sh despachar --esforco` e `time.sh esforco`, em `maestri.md`.)
 

@@ -34,7 +34,7 @@ function modelo(visivel = true, escala = 1, mudancas: Partial<{ -readonly [K in 
     ponteCalibrada: PONTE,
     punhoCalibrado: PUNHO,
     ponteAtual: 'v',
-    troca: new TrocaDePonte(),
+    troca: new TrocaDePonte(cfg.escolha.troca),
     calibradaAtual: PONTE,
     calibradaDa: (n) => CALIBRADAS[n],
     pulso: 0,
@@ -175,7 +175,7 @@ describe('MaosEmCena: a ponte que o jogo escolheu', () => {
     expect(maos.diagnostico().poseDaPonte).toBe('ponte_v');
     (m as { ponteAtual: NomeDaPonte }).ponteAtual = 'laco';
     (m as { calibradaAtual: MaoCalibrada }).calibradaAtual = CALIBRADAS.laco;
-    m.troca.iniciar('v', m.ponte, cfg.escolha.troca.duracaoS);
+    m.troca.iniciar('v', 'laco', m.ponte, cfg.escolha.troca.duracaoS);
     maos.posicionar(m, 0.016);
     expect(maos.diagnostico().poseDaPonte).toBe('ponte_laco');
     expect(maos.diagnostico().pesoDaPoseDaPonte).toBeLessThan(0.5);
@@ -186,13 +186,8 @@ describe('MaosEmCena: a ponte que o jogo escolheu', () => {
     expect(maos.diagnostico().pesoDaPoseDaPonte).toBeGreaterThan(0.99);
   });
 
-  it('o jogo não levanta a mão na troca: o taco fica no V ou no anel e levantá-la o arrastaria pela pele', () => {
-    expect(cfg.escolha.troca.arco).toBe(0);
-  });
-
-  it('na troca a mão levanta, faz um arco e pousa (com `troca.arco` acima de zero): no meio do caminho está acima das duas pontas e passa a meio caminho entre elas', () => {
-    const arco = 0.04;
-    const maos = emCena('baixo', { ...cfg, escolha: { ...cfg.escolha, troca: { ...cfg.escolha.troca, arco } } });
+  it('na troca a mão passa pela pose aberta, afasta-se do lugar e chega ao de agora', () => {
+    const maos = emCena();
     const raiz = maos.grupo.getObjectByName('mao-ponte')!;
     const m = modelo();
     maos.posicionar(m, 0.016);
@@ -200,16 +195,15 @@ describe('MaosEmCena: a ponte que o jogo escolheu', () => {
     (m as { ponteAtual: NomeDaPonte }).ponteAtual = 'laco';
     (m as { calibradaAtual: MaoCalibrada }).calibradaAtual = CALIBRADAS.laco;
     m.ponte.x += 0.2;
-    m.troca.iniciar('v', { ...modelo().ponte }, 0.25);
-    m.troca.atualizar(0.125);
+    m.troca.iniciar('v', 'laco', { ...modelo().ponte }, cfg.escolha.troca.duracaoS);
+    m.troca.atualizar(cfg.escolha.troca.duracaoS / 2);
     maos.posicionar(m, 0.001);
     const meio = raiz.position.clone();
+    expect(maos.diagnostico().pesoDaPoseDaPonte).toBeLessThan(0.01);
     m.troca.atualizar(1);
     maos.posicionar(m, 0.001);
     const chegada = raiz.position.clone();
-    expect(meio.y).toBeGreaterThan((saida.y + chegada.y) / 2 + 0.9 * arco);
-    expect(meio.x).toBeGreaterThan(Math.min(saida.x, chegada.x));
-    expect(meio.x).toBeLessThan(Math.max(saida.x, chegada.x));
+    expect(meio.distanceTo(saida)).toBeGreaterThan(0.05);
     expect(chegada.x).toBeGreaterThan(saida.x + 0.1);
   });
 });

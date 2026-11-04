@@ -22,7 +22,7 @@ import { BaldesPorChave } from './limite-taxa';
 import { origemPermitida } from './origem';
 import { logSilencioso, type Logger } from './log';
 import { Registro, type DependenciasRegistro } from './registro';
-import { tokenDaSessao } from './sessao-da-conta';
+import { resumoDaSessao, tokenDaSessao } from './sessao-da-conta';
 import { VarreduraDeExcluidas } from './varredura-de-excluidas';
 
 export interface Servidor {
@@ -93,13 +93,14 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
   const origensDeDevDaConta: string[] = config.origensPermitidas.map((o) => o.toLowerCase());
   const conta: BancoDaConta | null = bancoLocal === null ? null : bancoLocal.abrirConta({ pepper: config.pepperDaSenha, origensDeDev: origensDeDevDaConta, log });
   // L61b: com o Banco local a sessão de quem tem conta é relida (no máximo a cada 10 min por conexão) antes de criar, entrar ou começar partida com aposta
-  const registro = new Registro({ config, log, relogio, carteiras, ...(conta === null ? {} : { contaDaSessao: (token: string) => conta.contaDaSessao(token) }), ...opcoes.registro });
-  /** O `id` da conta do cookie do pedido (o Banco local diz) e o token que o provou, ou `undefined`: sem cookie, ou sessão que ele não reconhece, vale o código. */
-  const contaDaSessaoDoPedido = async (req: IncomingMessage): Promise<{ readonly id: string; readonly token: string } | undefined> => {
+  const registro = new Registro({ config, log, relogio, carteiras, ...(conta === null ? {} : { contaDaSessaoPorResumo: (resumo: string) => conta.contaDaSessaoPorResumo(resumo) }), ...opcoes.registro });
+  /** O `id` da conta do cookie do pedido (o Banco local diz) e o resumo da sessão que o provou, ou `undefined`: sem cookie, ou sessão que ele não reconhece, vale o código. O token acaba aqui (L66). */
+  const contaDaSessaoDoPedido = async (req: IncomingMessage): Promise<{ readonly id: string; readonly resumo: string } | undefined> => {
     const token = tokenDaSessao(req.headers.cookie);
     if (token === null || conta === null) return undefined;
-    const c = await conta.contaDaSessao(token);
-    return c === null ? undefined : { id: c.id, token };
+    const resumo = await resumoDaSessao(token);
+    const c = await conta.contaDaSessaoPorResumo(resumo);
+    return c === null ? undefined : { id: c.id, resumo };
   };
   const idDaSessao = async (req: IncomingMessage): Promise<string | undefined> => (await contaDaSessaoDoPedido(req))?.id;
   const carteira = carteiraNoNode(criarHttpDaCarteira({ config, carteiras, relogio, origensAceitas: () => origensAceitas }), ipDe, idDaSessao);
@@ -131,7 +132,7 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
         efeitos: {
           marcarDaConta: (id) => carteiras.marcarDaConta(id),
           apagarDaConta: (id) => carteiras.apagarDasContas([id]),
-          esquecerConta: (id, sessao) => registro.esquecerConta(id, sessao),
+          esquecerConta: (id, resumo) => registro.esquecerConta(id, resumo),
           adiarMarca: (id) => carteiras.adiarMarca(id),
         },
         tempoDoCorpoMs: config.carteira.tempoDoCorpoMs,
@@ -204,7 +205,7 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
     if ((porIp.get(ip) ?? 0) >= config.maxConexoesPorIp) return recusarUpgrade(socket, 429, 'Too Many Requests');
     if (!novasConexoes.tentar(ip)) return recusarUpgrade(socket, 429, 'Too Many Requests');
     // L61: a sessão da conta manda; a conta é perguntada ao Banco local antes de aceitar. Quem tem cookie e o Banco não responde, não entra.
-    const aceitarComConta = (c: { readonly id: string; readonly token: string } | undefined): void => {
+    const aceitarComConta = (c: { readonly id: string; readonly resumo: string } | undefined): void => {
       if (socket.destroyed) return;
       wss.handleUpgrade(req, socket, head, (ws) => aceitar(ws, ip, c));
     };
@@ -212,14 +213,14 @@ export async function iniciarServidor(config: ConfigSala, opcoes: OpcoesDoServid
     contaDaSessaoDoPedido(req).then(aceitarComConta, () => recusarUpgrade(socket, 503, 'Service Unavailable'));
   });
 
-  function aceitar(ws: WebSocket, ip: string, daConta?: { readonly id: string; readonly token: string }): void {
+  function aceitar(ws: WebSocket, ip: string, daConta?: { readonly id: string; readonly resumo: string }): void {
     const ligacao = new LigacaoDaSala({
       config,
       registro,
       relogio,
       log,
       ip,
-      ...(daConta === undefined ? {} : { idDaConta: daConta.id, sessao: daConta.token }),
+      ...(daConta === undefined ? {} : { idDaConta: daConta.id, resumoDaSessao: daConta.resumo }),
       soquete: {
         aberto: () => ws.readyState === WebSocket.OPEN,
         enviar: (dado) => ws.send(dado, { binary: typeof dado !== 'string' }),

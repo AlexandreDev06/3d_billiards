@@ -78,6 +78,8 @@ interface ConjuntoDaPonte {
   /** O lugar que `escolherPonte` achou para esta ponte neste quadro (a pose antes de a mão deslizar até ele). */
   readonly lugar: PoseDeMao;
   readonly subidaDosDedos: (pose: PoseDeMao) => number;
+  /** Uma ponta de dedo desta mão alcança o apoio no lugar `pose` (`PlantadorDeDedos.alcancaOApoio`). */
+  readonly dedosPousam: (pose: PoseDeMao) => boolean;
 }
 
 /**
@@ -88,7 +90,7 @@ interface ConjuntoDaPonte {
  * - A ponte é uma das seis do artista (`PONTES`), escolhida pelo lugar (`escolherPoseDaPonte`): o V no pano aberto, o laço com a
  *   força puxada, a elevada com bola atrás da branca, a da tabela, a colada e a do canto. Cada uma é alinhada ao taco pela própria
  *   altura de eixo (`alturaDoEixoAoPlano` do arquivo) e pousa onde cabe (`escolherPonte`), com os dedos no apoio. Trocar de ponte
- *   leva `escolha.troca.duracaoS` (`TrocaDePonte`): quem desenha levanta a mão, faz um arco e a pousa no lugar novo;
+ *   leva `escolha.troca.duracaoS` (`TrocaDePonte`): quem desenha tira a mão do taco, abre os dedos, troca de lugar e fecha na ponte nova;
  * - a mão de trás segura o taco no fundo da tela, cortada pela borda de baixo e longe da ponte (`agarreDaMaoDeTras`, escolhido com o
  *   taco em repouso) e acompanha o recuo, a batida e o seguimento, porque está presa ao taco; puxado o taco, ela desce com ele até
  *   a fração mínima à mostra e daí desliza para a ponta, para nunca sumir;
@@ -104,8 +106,8 @@ export class MaosDoJogador {
    * pousarem no que há embaixo. Vai a zero quando a mão fecha na pinça do giz. O polegar e o resto da mão são a pose do arquivo.
    */
   readonly dobrasDaPonte = new Float32Array(4);
-  /** A troca de ponte em curso (a mão levanta, faz um arco e pousa). */
-  readonly troca = new TrocaDePonte();
+  /** A troca de ponte em curso (a mão sai do taco, abre, troca de lugar e fecha na nova). */
+  readonly troca: TrocaDePonte;
   /** 0 a 1: o quanto as mãos estão em cena (a escala do desenho). */
   escala = 0;
   /** A ponte coube em algum lugar e a de trás não taparia nada: o desenho pode mostrar cada uma. */
@@ -115,6 +117,13 @@ export class MaosDoJogador {
   distanciaDaPonte = 0;
   agarre = 0;
   apoioDaPonte: string = 'pano';
+  /**
+   * L65: a mão da ponte tem apoio embaixo. Falso numa pose rara (a branca no canto, junto da caçapa do meio, ou o taco puxado com a
+   * branca colada na tabela): nenhum lugar entre a distância mínima e a máxima tem apoio, e a mão fica no ar, onde o de sempre a pôs.
+   * `folgaDoApoio` é quanto a palma flutua sobre o apoio quando o lugar foi achado pela busca do pouso (`Infinity` nos outros casos).
+   */
+  pousaNoApoio = true;
+  folgaDoApoio = 0;
   /** Só a ponte aparece (a mão de trás fica de fora): o joinha depois que o taco saiu de cena. */
   soAPonte = false;
   /** Qual das pontes do artista a mão mostra agora. */
@@ -174,6 +183,7 @@ export class MaosDoJogador {
     /** O sorteio (0 a 1) que escolhe entre o joinha e o soco no ar: o RNG do jogo, não o `Math.random` solto. */
     private readonly sorteio: () => number,
   ) {
+    this.troca = new TrocaDePonte(cfg.escolha.troca);
     this.punhoVivo = new PunhoVivo(cfg.vida);
     this.ociosidade = new Ociosidade(cfg.vida.ocio);
   }
@@ -229,6 +239,7 @@ export class MaosDoJogador {
         alturaDoEixo: altura === undefined ? null : altura.noPonto * this.cfg.escala,
         lugar: poseVaziaDeMao(),
         subidaDosDedos: (p) => plantador.subidaNecessaria(p, this.apoio),
+        dedosPousam: (p) => plantador.alcancaOApoio(p, this.apoio, this.cfg.ponte.pouso),
       };
     }
     const punho = new MaoCalibrada(modelo, 'punho', this.cfg.escala, false);
@@ -369,7 +380,7 @@ export class MaosDoJogador {
     // O V diz onde a mão pousa no pano; o que há em volta dele diz qual ponte o lugar pede.
     const conjuntos = this.conjuntos!;
     const v = conjuntos.v;
-    const escolhidaV = escolherPonte(this.eixo, e.recuo, this.obstaculos, this.bolas, v.cfg, protecao, v.esferas, v.lugar, v.subidaDosDedos, true);
+    const escolhidaV = escolherPonte(this.eixo, e.recuo, this.obstaculos, this.bolas, v.cfg, protecao, v.esferas, v.lugar, v.subidaDosDedos, true, v.dedosPousam);
     this.ponteVisivel = escolhidaV.ok;
     let escolhida = escolhidaV;
     let conjunto = this.atual!;
@@ -386,7 +397,7 @@ export class MaosDoJogador {
       } else {
         conjunto = conjuntos[quer];
         conjunto.cfg.distancia = this.distanciaIdeal(conjunto, e, escolhidaV.distancia);
-        escolhida = escolherPonte(this.eixo, e.recuo, this.obstaculos, this.bolas, conjunto.cfg, protecao, conjunto.esferas, conjunto.lugar, conjunto.subidaDosDedos, false);
+        escolhida = escolherPonte(this.eixo, e.recuo, this.obstaculos, this.bolas, conjunto.cfg, protecao, conjunto.esferas, conjunto.lugar, conjunto.subidaDosDedos, false, conjunto.dedosPousam);
         if (!escolhida.ok) {
           // Esta ponte não cabe aqui: fica no V, que coube.
           quer = 'v';
@@ -401,7 +412,7 @@ export class MaosDoJogador {
         conjunto.plantador.reiniciar();
         this.distanciaSuave = escolhida.distancia;
       } else if (quer !== this.ponteAtual) {
-        this.troca.iniciar(this.ponteAtual, this.ponte, this.cfg.escolha.troca.duracaoS);
+        this.troca.iniciar(this.ponteAtual, quer, this.ponte, this.cfg.escolha.troca.duracaoS);
         this.sDaSaida = this.sDaPose;
         this.subidaDaSaida = this.subidaDaPose;
         this.ponteAtual = quer;
@@ -412,6 +423,8 @@ export class MaosDoJogador {
       } else this.distanciaSuave += (escolhida.distancia - this.distanciaSuave) * fator(this.cfg.ponte.taxa, dt);
     }
     this.apoioDaPonte = escolhida.apoio;
+    this.pousaNoApoio = escolhida.pousa;
+    this.folgaDoApoio = escolhida.folga;
     this.distanciaDaPonte = this.distanciaSuave;
     if (escolhida.ok) {
       this.poseDaPonteNaDistancia(e, this.distanciaSuave, escolhida.distancia, conjunto.lugar);

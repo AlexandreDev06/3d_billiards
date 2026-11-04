@@ -12,8 +12,8 @@ import { ClienteDeTeste, ConexaoFalsa, SEM_LIMITE, TACADA_MEDIA, criarAmbiente, 
 import { bancoDeTeste } from './para-testes-banco';
 import type { MotorDeRegras } from './regras';
 
-const TOKEN_A = 'A'.repeat(43);
-const TOKEN_B = 'B'.repeat(43);
+const RESUMO_A = 'a'.repeat(64);
+const RESUMO_B = 'b'.repeat(64);
 const ID_FORA = 'f'.repeat(64);
 
 const fim = (p: EstadoPartida, vencedor: number | null): ResultadoRegras => ({
@@ -27,9 +27,9 @@ interface Mundo {
   readonly amb: Ambiente;
   readonly carteiras: CarteirasEmMemoria;
   readonly controle: { acabaCom?: number };
-  /** Quantas vezes o Banco foi perguntado e por qual token. */
+  /** Quantas vezes o Banco foi perguntado e por qual resumo. */
   readonly perguntas: string[];
-  /** O que o Banco responde a cada token: o `id`, `null` (sessão morta) ou `'fora'` (não responde). */
+  /** O que o Banco responde a cada resumo: o `id`, `null` (sessão morta) ou `'fora'` (não responde). */
   readonly sessoes: Map<string, string | null | 'fora'>;
 }
 
@@ -48,9 +48,9 @@ function mundo(comBanco = false): Mundo {
     {
       carteiras,
       regras,
-      contaDaSessao: async (token) => {
-        perguntas.push(token);
-        const r = sessoes.get(token);
+      contaDaSessaoPorResumo: async (resumo) => {
+        perguntas.push(resumo);
+        const r = sessoes.get(resumo);
         if (r === 'fora') throw new Error('o Banco está fora do ar');
         return r === undefined || r === null ? null : { id: r };
       },
@@ -66,15 +66,15 @@ function contaNova(m: Mundo): { codigo: string; id: string } {
   return c;
 }
 
-/** Um cliente cuja conexão traz a conta `id` (e o token que a provou). */
-function cliente(m: Mundo, nome: string, id: string | null, token?: string): ClienteDeTeste {
+/** Um cliente cuja conexão traz a conta `id` (e o resumo da sessão que a provou). */
+function cliente(m: Mundo, nome: string, id: string | null, resumo?: string): ClienteDeTeste {
   const c = new ClienteDeTeste(m.amb, nome);
   if (id !== null) {
     c.conn.idDaConta = id;
-    if (token !== undefined) {
-      c.conn.sessao = token;
+    if (resumo !== undefined) {
+      c.conn.resumoDaSessao = resumo;
       c.conn.sessaoConferidaEm = m.amb.agora();
-      m.sessoes.set(token, id);
+      m.sessoes.set(resumo, id);
     }
   }
   return c;
@@ -83,11 +83,11 @@ function cliente(m: Mundo, nome: string, id: string | null, token?: string): Cli
 const saldoNoLugar = (c: ClienteDeTeste, lugar: number): number | null | undefined => c.estado.lugares[lugar]?.saldo;
 
 /** Sala 1x1 com as duas contas sentadas e a partida em andamento. */
-function duasContas(m: Mundo, tokens = true) {
+function duasContas(m: Mundo, resumos = true) {
   const a = contaNova(m);
   const b = contaNova(m);
-  const ana = cliente(m, 'Ana', a.id, tokens ? TOKEN_A : undefined);
-  const beto = cliente(m, 'Beto', b.id, tokens ? TOKEN_B : undefined);
+  const ana = cliente(m, 'Ana', a.id, resumos ? RESUMO_A : undefined);
+  const beto = cliente(m, 'Beto', b.id, resumos ? RESUMO_B : undefined);
   ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
   beto.entrar(ana.codigo);
   return { a, b, ana, beto };
@@ -104,12 +104,12 @@ describe('esquecerConta: quem saiu da conta ou a excluiu perde a carteira dela (
   it('a conexão ainda fora de sala perde o id; o criar-sala seguinte joga sem carteira (saldo null)', () => {
     const m = mundo(true);
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     expect(m.amb.registro.esquecerConta(a.id)).toBe(0); // nada recebido ainda: o registro só conhece a conexão quando ela fala
     m.amb.registro.conexaoAberta(ana.conn);
     expect(m.amb.registro.esquecerConta(a.id)).toBe(1);
     expect(ana.conn.idDaConta).toBeUndefined();
-    expect(ana.conn.sessao).toBeUndefined();
+    expect(ana.conn.resumoDaSessao).toBeUndefined();
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(ana.ultimoErro).toBeUndefined();
     expect(saldoNoLugar(ana, 0) ?? null).toBeNull();
@@ -144,32 +144,32 @@ describe('esquecerConta: quem saiu da conta ou a excluiu perde a carteira dela (
     expect(ana.conn.ultima('aposta-paga')).toBeDefined();
   });
 
-  it('o sair de um aparelho (com a sessão) tira só as conexões daquele token; o outro aparelho da mesma conta segue com a carteira (L61c)', () => {
+  it('o sair de um aparelho (com a sessão) tira só as conexões daquele resumo de sessão; o outro aparelho da mesma conta segue com a carteira (L61c)', () => {
     const m = mundo();
     const a = contaNova(m);
-    const TOKEN_C = 'C'.repeat(43);
-    const celular = cliente(m, 'Cel', a.id, TOKEN_A);
-    const pc = cliente(m, 'PC', a.id, TOKEN_C);
+    const RESUMO_C = 'c'.repeat(64);
+    const celular = cliente(m, 'Cel', a.id, RESUMO_A);
+    const pc = cliente(m, 'PC', a.id, RESUMO_C);
     m.amb.registro.conexaoAberta(celular.conn);
     m.amb.registro.conexaoAberta(pc.conn);
     pc.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(saldoNoLugar(pc, 0)).toBe(SALDO_INICIAL);
-    expect(m.amb.registro.esquecerConta(a.id, TOKEN_A)).toBe(1);
+    expect(m.amb.registro.esquecerConta(a.id, RESUMO_A)).toBe(1);
     expect(celular.conn.idDaConta).toBeUndefined();
     expect(pc.conn.idDaConta).toBe(a.id);
-    expect(pc.conn.sessao).toBe(TOKEN_C);
+    expect(pc.conn.resumoDaSessao).toBe(RESUMO_C);
     expect(saldoNoLugar(pc, 0)).toBe(SALDO_INICIAL); // o lugar do PC segue com a carteira
   });
 
   it('o sair tira a carteira do lugar do aparelho que saiu, se a outra conexão da conta não está nele (L61c)', () => {
     const m = mundo();
     const a = contaNova(m);
-    const TOKEN_C = 'C'.repeat(43);
-    const celular = cliente(m, 'Cel', a.id, TOKEN_A);
-    const pc = cliente(m, 'PC', a.id, TOKEN_C);
+    const RESUMO_C = 'c'.repeat(64);
+    const celular = cliente(m, 'Cel', a.id, RESUMO_A);
+    const pc = cliente(m, 'PC', a.id, RESUMO_C);
     m.amb.registro.conexaoAberta(pc.conn);
     celular.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
-    expect(m.amb.registro.esquecerConta(a.id, TOKEN_A)).toBe(1);
+    expect(m.amb.registro.esquecerConta(a.id, RESUMO_A)).toBe(1);
     expect(saldoNoLugar(celular, 0) ?? null).toBeNull();
     expect(pc.conn.idDaConta).toBe(a.id);
   });
@@ -177,8 +177,8 @@ describe('esquecerConta: quem saiu da conta ou a excluiu perde a carteira dela (
   it('o excluir (sem sessão) segue levando todas as conexões e todos os lugares da conta (L61c)', () => {
     const m = mundo();
     const a = contaNova(m);
-    const celular = cliente(m, 'Cel', a.id, TOKEN_A);
-    const pc = cliente(m, 'PC', a.id, 'C'.repeat(43));
+    const celular = cliente(m, 'Cel', a.id, RESUMO_A);
+    const pc = cliente(m, 'PC', a.id, 'c'.repeat(64));
     m.amb.registro.conexaoAberta(celular.conn);
     pc.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(m.amb.registro.esquecerConta(a.id)).toBe(2);
@@ -201,7 +201,7 @@ describe('o registro dos excluídos: a conexão com o id de uma conta apagada n�
     const a = contaNova(m);
     m.carteiras.apagarDasContas([a.id]); // o que a varredura faz quando o portal exclui
     expect(m.carteiras.total).toBe(0);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(ana.ultimoErro).toBeUndefined();
     expect(saldoNoLugar(ana, 0) ?? null).toBeNull();
@@ -216,7 +216,7 @@ describe('o registro dos excluídos: a conexão com o id de uma conta apagada n�
     const anfitriao = cliente(m, 'Dono', null);
     anfitriao.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     m.carteiras.apagarDasContas([a.id]);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     ana.entrar(anfitriao.codigo);
     expect(saldoNoLugar(anfitriao, 1) ?? null).toBeNull();
     expect(m.carteiras.total).toBe(0);
@@ -284,7 +284,7 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('sessão conferida há menos de 10 minutos não pergunta ao Banco', () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS - 1);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(m.perguntas).toEqual([]);
@@ -294,12 +294,12 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('passados 10 minutos, o criar-sala pergunta uma vez; sessão viva segue com a carteira e a pergunta não se repete', async () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     expect(ana.conn.ultima('boas-vindas')).toBeUndefined(); // espera o Banco responder
     await esperar();
-    expect(m.perguntas).toEqual([TOKEN_A]);
+    expect(m.perguntas).toEqual([RESUMO_A]);
     expect(saldoNoLugar(ana, 0)).toBe(SALDO_INICIAL);
     passarOTempo(m, 5 * 60_000);
     ana.enviar({ tipo: 'iniciar' });
@@ -309,8 +309,8 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('sessão morta (portal, senha nova): faz o que o esquecerConta faz naquela conexão', async () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
-    m.sessoes.set(TOKEN_A, null);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
+    m.sessoes.set(RESUMO_A, null);
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     await esperar();
@@ -323,7 +323,7 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('um fn que lança depois da releitura não vira rejeição sem tratamento: deixa o log erro-interno com o tipo da mensagem (L61c)', async () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     const solta: unknown[] = [];
     const ouvinte = (e: unknown): void => void solta.push(e);
     process.on('unhandledRejection', ouvinte);
@@ -346,25 +346,25 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
     }
   });
 
-  it('o entrar também relê; o token da sessão nunca vai a log', async () => {
+  it('o entrar também relê; o resumo da sessão nunca vai a log', async () => {
     const m = mundo();
     const dono = cliente(m, 'Dono', null);
     dono.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
-    m.sessoes.set(TOKEN_A, null);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
+    m.sessoes.set(RESUMO_A, null);
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.entrar(dono.codigo);
     await esperar();
     expect(saldoNoLugar(dono, 1) ?? null).toBeNull();
-    expect(m.amb.logs.join('\n')).not.toContain(TOKEN_A);
+    expect(m.amb.logs.join('\n')).not.toContain(RESUMO_A);
   });
 
   it('Banco fora do ar não derruba ninguém: mantém a conta, loga e só tenta de novo daqui a um minuto', async () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
-    m.sessoes.set(TOKEN_A, 'fora');
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
+    m.sessoes.set(RESUMO_A, 'fora');
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     await esperar();
@@ -380,12 +380,12 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('o começo de uma partida com aposta confere a sessão de quem está sentado com conta; a morta joga sem carteira e o pote deixa de valer', async () => {
     const m = mundo();
     const { b, ana, beto } = duasContas(m);
-    m.sessoes.set(TOKEN_B, null); // a sessão do Beto morreu
+    m.sessoes.set(RESUMO_B, null); // a sessão do Beto morreu
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.enviar({ tipo: 'iniciar' });
     expect(ana.estado.fase).toBe('espera'); // espera as respostas do Banco
     await esperar();
-    expect(m.perguntas.sort()).toEqual([TOKEN_A, TOKEN_B]);
+    expect(m.perguntas.sort()).toEqual([RESUMO_A, RESUMO_B]);
     expect(ana.estado.fase).toBe('jogando');
     expect(beto.conn.idDaConta).toBeUndefined();
     expect(saldoNoLugar(ana, 1) ?? null).toBeNull();
@@ -396,7 +396,7 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
   it('conexão que caiu enquanto o Banco respondia não abre sala', async () => {
     const m = mundo();
     const a = contaNova(m);
-    const ana = cliente(m, 'Ana', a.id, TOKEN_A);
+    const ana = cliente(m, 'Ana', a.id, RESUMO_A);
     passarOTempo(m, INTERVALO_DA_RELEITURA_MS);
     ana.criar('1x1', PRESET_BOTECO.regras, SEM_LIMITE);
     ana.sair();
@@ -404,7 +404,7 @@ describe('a releitura da sessão antes de mexer em moeda (d)', () => {
     expect(m.amb.registro.totalSalas).toBe(0);
   });
 
-  it('a conexão sem token de sessão (aberta antes do L61b) nunca é relida', () => {
+  it('a conexão sem resumo da sessão (aberta antes do L61b) nunca é relida', () => {
     const m = mundo();
     const a = contaNova(m);
     const ana = cliente(m, 'Ana', a.id);

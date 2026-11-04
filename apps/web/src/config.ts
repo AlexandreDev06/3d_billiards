@@ -6,6 +6,7 @@ import { REGRAS_GIZ_PADRAO, type RegrasGiz } from './controles/regras-giz';
 import type { ConfigDaTransicao } from './jogo/transicao-modelo';
 import type { TempoDaTacadaS } from './relogio/modelo';
 import type { NomeDaPonte } from './maos/pontes';
+import type { ConfigDaTroca } from './maos/troca-de-ponte';
 import type { AcaoDoBalao } from './baloes/acao-do-balao';
 import type { ConfigDaAtencaoDoBalao } from './baloes/atencao-do-balao';
 
@@ -423,6 +424,12 @@ export interface ConfigMaos {
     readonly giro: number;
     /** O quanto a pele da mão da ponte pode entrar no taco (m): acima disso `giro` cai até o taco passar no vão (L63). */
     readonly penetracaoNoTaco: number;
+    /**
+     * L65: quão perto do apoio (m) a mão tem de ficar para contar como pousada: a palma flutuando até isto sobre o pano, a borracha ou a
+     * moldura, ou uma ponta de dedo que ainda alcança o apoio dobrando-se até o limite. Um lugar que não pousa só vale se nenhum outro
+     * pousa; então vale o que fica mais perto (`PonteEscolhida.pousa`).
+     */
+    readonly pouso: number;
     /** O quanto a mão ocupa no pano em volta do eixo: para a frente, para trás e de cada lado. */
     readonly pegada: { readonly frente: number; readonly tras: number; readonly lado: number };
     /** Quão depressa o desenho alcança o lugar escolhido (1/s): ao mudar de lugar a mão desliza pelo taco, não pula. */
@@ -462,16 +469,17 @@ export interface ConfigMaos {
    * da barra) e só sai abaixo de `laco.sai`; também entra se o V pousaria além de `laco.distanciaEntra` m da bola (e só sai aquém de `laco.distanciaSai`). A elevada pede outra bola até `elevada.alcance` m atrás da branca e a menos de
    * `elevada.lado` m do eixo do taco, com o taco subindo a `elevada.elevacaoMinimaGraus` ou mais. A colada vale quando o taco corre a
    * menos de `colada.anguloMaximoGraus` da tabela sobre a qual a mão pousa. A do canto, quando o lugar fica a menos de `canto.raio` m da
-   * boca ou do círculo de queda de uma caçapa. Trocar de ponte leva `troca.duracaoS`: a mão levanta `troca.arco` m (zero: o taco fica no V
-   * ou no anel e levantar a mão o arrasta pela pele, L63), passa para o lugar novo e pousa, com os dedos misturando no mesmo peso; uma ponte nova só vale depois de `troca.permanenciaS` com a anterior (para a mão não
-   * tremer onde dois lugares se encontram). `giro` ajusta o giro de `ponte.giro` por ponte (graus), se a captura pedir.
+   * boca ou do círculo de queda de uma caçapa. Trocar de ponte leva `troca.duracaoS` (L65b): a mão sai da ponte antiga pela `rota` dela (afasta-se do taco e abre os dedos até
+   * a pose `troca.aberta`, que não toca nele), troca de lugar aberta e chega pela `rota` da nova, ao contrário; uma mistura linear
+   * de um anel de dedos a outro atravessava o taco (L63, L65). Uma ponte nova só vale depois de `troca.permanenciaS` com a
+   * anterior (para a mão não tremer onde dois lugares se encontram). `giro` ajusta o giro de `ponte.giro` por ponte (graus), se a captura pedir.
    */
   readonly escolha: {
     readonly laco: { readonly entra: number; readonly sai: number; readonly distanciaEntra: number; readonly distanciaSai: number };
     readonly elevada: { readonly alcance: number; readonly lado: number; readonly elevacaoMinimaGraus: number };
     readonly colada: { readonly anguloMaximoGraus: number };
     readonly canto: { readonly raio: number };
-    readonly troca: { readonly duracaoS: number; readonly arco: number; readonly permanenciaS: number };
+    readonly troca: ConfigDaTroca;
     readonly giro: Readonly<Partial<Record<NomeDaPonte, number>>>;
   };
   /**
@@ -789,6 +797,7 @@ export const CONFIG_WEB: ConfigWeb = {
       toleranciaErguida: 0.003,
       giro: 45,
       penetracaoNoTaco: 0.001,
+      pouso: 0.002,
       pegada: { frente: 0.05, tras: 0.065, lado: 0.045 },
       taxa: 22,
     },
@@ -799,7 +808,24 @@ export const CONFIG_WEB: ConfigWeb = {
       elevada: { alcance: 0.3, lado: 0.045, elevacaoMinimaGraus: 9 },
       colada: { anguloMaximoGraus: 35 },
       canto: { raio: 0.14 },
-      troca: { duracaoS: 0.15, arco: 0, permanenciaS: 0.3 },
+      troca: {
+        duracaoS: 0.25,
+        permanenciaS: 0.3,
+        aberta: 'aberta',
+        saidaAte: 0.33,
+        chegadaDe: 0.67,
+        // Passos [abertura, lado, subida, recuo]: da pose da ponte (tudo zero) à mão aberta num lugar livre do taco, 9 cm ao lado. A
+        // `troca-varrida.test.ts` mede a pele no taco em cada quadro destas rotas (o V, a tabela e a elevada abrem sem se mexer; o laço, a
+        // colada e o canto sobem ou se afastam um pouco antes de abrir).
+        rotas: {
+          v: [[0, 0, 0, 0], [1, 0, 0, 0], [1, 0.09, 0, 0]],
+          tabela: [[0, 0, 0, 0], [1, 0, 0, 0], [1, 0.09, 0, 0]],
+          elevada: [[0, 0, 0, 0], [0.6, 0, 0, 0], [0.6, 0.07, 0, 0], [1, 0.09, 0, 0]],
+          laco: [[0, 0, 0, 0], [0, 0, 0.03, 0], [0.25, 0, 0.04, 0], [1, 0, 0.04, 0], [1, 0.09, 0.04, 0]],
+          colada: [[0, 0, 0, 0], [0, 0, 0.01, 0], [1, 0, 0.01, 0], [1, 0.09, 0.01, 0]],
+          canto: [[0, 0, 0, 0], [0, 0.01, 0, 0], [0.25, 0.01, 0.01, 0], [0.5, 0.01, 0.02, 0], [1, 0.01, 0.02, 0], [1, 0.09, 0.02, 0]],
+        },
+      },
       giro: {},
     },
     joinha: { entradaS: 0.25, saiS: 0.3, subida: 0.08, lado: 0.12, giro: 55 },

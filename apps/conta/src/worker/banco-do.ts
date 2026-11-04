@@ -69,6 +69,11 @@ export class BancoDO extends DurableObject<Env> implements ApiDoBanco {
     return s === null ? null : { id: s.conta.id, nome: s.conta.nome };
   }
 
+  async contaDaSessaoPorResumo(resumo: string): Promise<{ id: string; nome: string } | null> {
+    const s = await this.contas.sessaoPorResumo(resumo);
+    return s === null ? null : { id: s.conta.id, nome: s.conta.nome };
+  }
+
   contaDoCodigo(codigo: string): Promise<{ id: string; convidado: boolean } | null> {
     return this.contas.contaDoCodigo(codigo);
   }

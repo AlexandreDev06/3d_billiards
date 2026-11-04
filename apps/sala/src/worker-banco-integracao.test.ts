@@ -10,24 +10,22 @@
  * uma skin cai nos dois e ler o espelho de novo não devolve as moedas; a compra sem saldo dá 402 e não dá o item; uma partida de
  * mata-mata de 2 com aposta, até o fim; no fim, drenada a caixa, a soma do Banco é a soma dos espelhos e não sobra reserva.
  *
- * Sobe com um `apps/conta/.dev.vars` de teste (pepper de 32 caracteres ou mais), que o teste cria e apaga (`reservarDevVarsDaConta`: os testes de dois Workers se revezam nele).
+ * Sobe o Banco de uma pasta temporária com o `.dev.vars` de teste (pepper de 32 caracteres ou mais; `criarContaDeTeste`): nada em `apps/conta`, nada dividido com os outros testes.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SALDO_INICIAL, diaDaMissao, precoDaSkinNoDia, type EstadoCarteira } from '@sinuca/protocolo';
 import { PRESET_MATA_MATA } from '@sinuca/regras';
 import { SEM_LIMITE } from './para-testes';
 import { ClienteWs } from './para-testes-ws';
-import { depoisDe, escolherTacada, http, reservarDevVarsDaConta, subirWrangler, type WranglerLocal } from './para-testes-worker';
+import { depoisDe, escolherTacada, http, criarContaDeTeste, subirWrangler, type WranglerLocal } from './para-testes-worker';
 
 const SEGREDO = 'segredo-so-de-teste-do-l59-0123456789';
 const PEPPER_DE_TESTE = 'pepper-so-de-teste-do-l59-0123456789-abcdef';
-const PASTA_DA_CONTA = fileURLToPath(new URL('../../conta/', import.meta.url));
 
 type Carteira = EstadoCarteira & { codigo?: string };
 
@@ -65,7 +63,7 @@ describe('a sala com o saldo no Banco (wrangler dev --local com os dois Workers,
   const clientes: ClienteWs[] = [];
   const codigos: string[] = [];
   let w: WranglerLocal;
-  let soltarDevVars: (() => void) | undefined;
+  const contaDeTeste = criarContaDeTeste(PEPPER_DE_TESTE);
 
   const saldoDoBanco = (codigo: string): number | null => consultar<{ saldo: number }>(arquivoDoObjeto(persistir, 'becogames-conta-BancoDO'), 'SELECT saldo FROM contas WHERE id = ?', idDe(codigo))[0]?.saldo ?? null;
   const espelho = (codigo: string): number | null => {
@@ -109,19 +107,17 @@ describe('a sala com o saldo no Banco (wrangler dev --local com os dois Workers,
 
   beforeAll(async () => {
     ClienteWs.esperaPadraoMs = 20_000;
-    // o pepper de teste do Banco (32 caracteres ou mais); .dev.vars já está no .gitignore e o teste o apaga
-    soltarDevVars = await reservarDevVarsDaConta(PASTA_DA_CONTA, PEPPER_DE_TESTE);
     // o cliente de mentira que o Worker serve (só precisa existir)
     mkdirSync(assets, { recursive: true });
     writeFileSync(join(assets, 'index.html'), '<!doctype html><title>Sinuca</title>');
-    w = await subirWrangler({ persistir, assets, configs: ['wrangler.jsonc', '../conta/wrangler.jsonc'], vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: '1' } });
+    w = await subirWrangler({ persistir, assets, configs: ['wrangler.jsonc', contaDeTeste.config], vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: '1' } });
   }, 540_000);
 
   afterAll(async () => {
     for (const c of clientes) c.derrubar();
     await w?.parar();
     rmSync(raiz, { recursive: true, force: true });
-    soltarDevVars?.(); // por último: apaga o .dev.vars e o .wrangler da conta e deixa o outro teste subir
+    contaDeTeste.soltar();
   }, 60_000);
 
   it('a carteira nova chega ao Banco pela caixa (garantirConta pelo RPC de verdade) e os dois saldos são o inicial', async () => {

@@ -261,3 +261,6 @@ p { text-wrap: pretty; }
 .conta .dados.cartao { padding: 8px 22px; }
 .conta .dados div { padding: 14px 0; }
 @media (max-width: 640px) { .conta .dados.cartao { padding: 6px 18px; } }
+
+/* Campo de usuário só para o gerenciador de senhas (nova-senha): fora da vista, sem ocupar espaço no layout. */
+.so-leitor { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; overflow: hidden; pointer-events: none; }

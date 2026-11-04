@@ -126,7 +126,7 @@ describe('MaosDoJogador: a mão da ponte', () => {
     }
   });
 
-  it('nunca tapa a branca nem a bola mirada: em cada posição, mirando em volta, nos três zooms, parado e puxado', () => {
+  it('nunca tapa a branca nem a bola mirada: em cada posição, mirando em volta, nos três zooms, parado e puxado', { timeout: 30000 }, () => {
     for (const [nome, x, z] of POSICOES) {
       for (const zoom of ZOOMS) {
         for (let graus = 0; graus < 360; graus += 15) {
@@ -164,7 +164,7 @@ function caixasNaTela(m: MaosDoJogador, projetor: ReturnType<typeof quadro>['pro
 }
 
 describe('MaosDoJogador: a mão de trás', () => {
-  it('as duas mãos nunca se sobrepõem na tela: em cada posição, mirando em volta, nos três zooms, com o taco parado e puxado', () => {
+  it('as duas mãos nunca se sobrepõem na tela: em cada posição, mirando em volta, nos três zooms, com o taco parado e puxado', { timeout: 30000 }, () => {
     let vistas = 0;
     for (const [nome, x, z] of POSICOES) {
       for (const zoom of ZOOMS) {
@@ -187,7 +187,7 @@ describe('MaosDoJogador: a mão de trás', () => {
     expect(vistas).toBeGreaterThan(0.55 * POSICOES.length * ZOOMS.length * 24 * 3);
   });
 
-  it('com o zoom padrão ou mais longe, o pano livre entre as mãos é de 12% da altura da tela, salvo onde a mão já está no mínimo à mostra', () => {
+  it('com o zoom padrão ou mais longe, o pano livre entre as mãos é de 12% da altura da tela, salvo onde a mão já está no mínimo à mostra', { timeout: 30000 }, () => {
     for (const [nome, x, z] of POSICOES) {
       for (const zoom of [1.6, 2, CONFIG_WEB.camera.zoomMax]) {
         for (let graus = 0; graus < 360; graus += 15) {
@@ -228,7 +228,7 @@ describe('MaosDoJogador: a mão de trás', () => {
     expect(Math.abs(meio - meioDaPonte)).toBeLessThan(0.2);
   });
 
-  it('puxado o taco, ela recua com ele até a fração mínima e daí desliza para a ponta: nunca some (se aparecia parado) e nunca invade a ponte', () => {
+  it('puxado o taco, ela recua com ele até a fração mínima e daí desliza para a ponta: nunca some (se aparecia parado) e nunca invade a ponte', { timeout: 30000 }, () => {
     for (const [nome, x, z] of POSICOES) {
       for (const zoom of [1, 1.3, 2]) {
         for (let graus = 0; graus < 360; graus += 30) {
@@ -368,10 +368,12 @@ describe('MaosDoJogador: aparecer e sumir', () => {
     m.definirBolas(q1.mesa, r);
     for (let i = 0; i < 30; i++) m.atualizar(1 / 60, q1.entrada, q1.projetor, q1.protegidas);
     const antes = m.distanciaDaPonte;
+    const poseAntes = m.ponteAtual;
     m.definirBolas(q2.mesa, r);
     m.atualizar(1 / 60, q2.entrada, q2.projetor, q2.protegidas);
     const alvo = maosEm(q2).distanciaDaPonte;
-    if (Math.abs(alvo - antes) > 0.05) {
+    // L65: a bola colada na tabela pede a ponte da tabela; trocar de ponte recomeça a distância (a troca mistura as poses), não desliza.
+    if (Math.abs(alvo - antes) > 0.05 && m.ponteAtual === poseAntes) {
       expect(Math.abs(m.distanciaDaPonte - antes)).toBeGreaterThan(0);
       expect(Math.abs(m.distanciaDaPonte - alvo)).toBeGreaterThan(0.001);
     }

@@ -83,6 +83,18 @@ export class PlantadorDeDedos {
     return Math.min(falta, this.subidaMaxima);
   }
 
+  /**
+   * Alguma ponta de dedo alcança o apoio sob ela (a folga fica em `margem` m ou menos) com o dedo dobrado até onde o taco deixa: a
+   * mão em `pose` pousa pelos dedos. Sem apoio sob nenhuma ponta, ou com todas flutuando além do alcance, é falso.
+   */
+  alcancaOApoio(pose: PoseDeMao, apoio: ApoioDosDedos, margem: number): boolean {
+    for (let i = 0; i < DEDOS.length; i++) {
+      if (this.folga(i, 0, pose, apoio) === Infinity) continue;
+      if (this.folga(i, this.limites?.max[i] ?? 1, pose, apoio) <= margem) return true;
+    }
+    return false;
+  }
+
   /** Anda o `t` de cada dedo para o apoio sob a mão em `pose`; depois disso `dobra(i)` diz o quanto cada dedo dobra a mais. */
   plantar(dt: number, taxa: number, pose: PoseDeMao, apoio: ApoioDosDedos): void {
     const passo = 1 - Math.exp(-taxa * Math.max(dt, 0));

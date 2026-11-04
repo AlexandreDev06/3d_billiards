@@ -1,8 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "types": ["node"],
-    "typeRoots": ["../conta/node_modules/@types"]
+    "types": ["node"]
   },
   "include": ["src"]
 }

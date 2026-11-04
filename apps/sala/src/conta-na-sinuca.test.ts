@@ -2,6 +2,7 @@
  * O `/conta/*` da sinuca (L61) com um Banco de mentira: o que ela repassa, o que faz na carteira só depois de o Banco dizer que deu certo,
  * o que não faz quando ele recusa, e o que acontece com ele fora do ar. A varredura das excluídas também (ordem, `ate`, páginas, falhas).
  */
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import type { PedidoDaConta, RespostaDaConta } from '@sinuca/conta/contrato';
 import { MAX_CORPO_DA_CONTA, ehCaminhoDaConta, tratarContaDaSinuca, type BancoDaConta } from './conta-na-sinuca';
@@ -11,6 +12,8 @@ import { INTERVALO_DA_VARREDURA_MS, LIMITE_POR_CHAMADA, VarreduraDeExcluidas } f
 
 const CODIGO_DE_TESTE = 'Q'.repeat(43);
 const TOKEN = 'T'.repeat(43);
+/** O que a sinuca pergunta ao Banco no lugar do token (L66): o SHA-256 em hexadecimal. */
+const RESUMO = createHash('sha256').update(TOKEN).digest('hex');
 const ID_DA_SESSAO = 'd'.repeat(64);
 
 interface Montagem {
@@ -42,15 +45,15 @@ function mundo(resposta: RespostaDaConta = { status: 200, corpo: { ok: true } })
   const adiadas: string[] = [];
   const logs: string[] = [];
   const estado = { banco: 'ok' as 'ok' | 'fora', falhaNoEfeito: 0 };
-  const banco: Pick<BancoDaConta, 'tratar' | 'contaDaSessao'> = {
+  const banco: Pick<BancoDaConta, 'tratar' | 'contaDaSessaoPorResumo'> = {
     tratar: async (p) => {
       if (estado.banco === 'fora') throw new Error('fora');
       vistos.push(p);
       return resposta;
     },
-    contaDaSessao: async (t) => {
+    contaDaSessaoPorResumo: async (t) => {
       sessoes.push(t);
-      return t === TOKEN ? { id: ID_DA_SESSAO, nome: 'Ana' } : null;
+      return t === RESUMO ? { id: ID_DA_SESSAO, nome: 'Ana' } : null;
     },
   };
   const efeitos = {
@@ -148,7 +151,7 @@ describe('tratarContaDaSinuca: o que faz na carteira', () => {
   it('excluir com 200: lê a sessão ANTES do Banco e apaga a carteira desse id', async () => {
     const m = mundo({ status: 200, corpo: { ok: true } });
     await m.tratar(pedido('/conta/excluir', { corpo: '{}', cabecalhos: { cookie: `becogames_sessao=${TOKEN}` } }));
-    expect(m.sessoes).toEqual([TOKEN]);
+    expect(m.sessoes).toEqual([RESUMO]);
     expect(m.apagadas).toEqual([ID_DA_SESSAO]);
   });
 
@@ -178,10 +181,10 @@ describe('tratarContaDaSinuca: o que faz na carteira', () => {
     for (const acao of ['sair', 'excluir']) {
       const m = mundo({ status: 200, corpo: { ok: true } });
       await m.tratar(pedido(`/conta/${acao}`, { corpo: '{}', cabecalhos: { cookie: `becogames_sessao=${TOKEN}` } }));
-      expect(m.sessoes, acao).toEqual([TOKEN]);
+      expect(m.sessoes, acao).toEqual([RESUMO]);
       expect(m.esquecidas, acao).toEqual([ID_DA_SESSAO]);
       // L61c: o sair esquece só a sessão que saiu (o Banco apaga só aquela); o excluir leva a conta toda
-      expect(m.sessoesEsquecidas, acao).toEqual([acao === 'sair' ? TOKEN : undefined]);
+      expect(m.sessoesEsquecidas, acao).toEqual([acao === 'sair' ? RESUMO : undefined]);
       expect(m.apagadas, acao).toEqual(acao === 'excluir' ? [ID_DA_SESSAO] : []);
       const recusado = mundo({ status: 401, corpo: { erro: 'senha-errada' } });
       await recusado.tratar(pedido(`/conta/${acao}`, { corpo: '{}', cabecalhos: { cookie: `becogames_sessao=${TOKEN}` } }));

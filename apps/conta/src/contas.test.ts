@@ -238,6 +238,45 @@ describe('Contas: sessões', () => {
     expect(await contas.sessao('x'.repeat(10_000))).toBeNull();
     expect(await contas.sessao('A'.repeat(43))).toBeNull();
   });
+  describe('pelo resumo do token (L66)', () => {
+    it('devolve a mesma conta que o token, e o Banco só guarda o resumo', async () => {
+      const { token, conta } = ok(await contas.criar({ email: 'a@b.com', senha: 'segredo-bom', nome: 'Ana' }));
+      const resumo = await resumoHex(token);
+      expect(await contas.sessaoPorResumo(resumo)).toEqual(await contas.sessao(token));
+      expect((await contas.sessaoPorResumo(resumo))!.conta.id).toBe(conta.id);
+      expect(b.sql.exec('SELECT hash FROM sessoes').toArray().map((l) => l.hash)).toEqual([resumo]);
+    });
+    it('renova como o token: depois de um dia, uma vez só, e vence em 90 dias', async () => {
+      const { token } = ok(await contas.criar({ email: 'a@b.com', senha: 'segredo-bom', nome: 'A' }));
+      const resumo = await resumoHex(token);
+      expect((await contas.sessaoPorResumo(resumo))!.renovada).toBe(false);
+      relogio.avancar(DIA + 1);
+      expect((await contas.sessaoPorResumo(resumo))!.renovada).toBe(true);
+      expect((await contas.sessaoPorResumo(resumo))!.renovada).toBe(false);
+      // a renovação vale para o token também: passa dos 90 dias da criação, e a sessão ainda vive
+      relogio.avancar(89 * DIA);
+      expect(await contas.sessao(token)).not.toBeNull();
+      relogio.avancar(91 * DIA);
+      expect(await contas.sessaoPorResumo(resumo)).toBeNull();
+      expect(contarLinhas('sessoes')).toBe(0);
+    });
+    it('sair e conta excluída valem também por aqui', async () => {
+      const s1 = ok(await contas.criar({ email: 'a@b.com', senha: 'segredo-bom', nome: 'A' }));
+      const s2 = ok(await contas.entrar('a@b.com', 'segredo-bom'));
+      await contas.sair(s1.token);
+      expect(await contas.sessaoPorResumo(await resumoHex(s1.token))).toBeNull();
+      expect(await contas.sessaoPorResumo(await resumoHex(s2.token))).not.toBeNull();
+      expect(await contas.excluir(s2.token, 'segredo-bom')).toMatchObject({ ok: true });
+      expect(await contas.sessaoPorResumo(await resumoHex(s2.token))).toBeNull();
+    });
+    it('resumo malformado, desconhecido ou o próprio token dá null, sem lançar (o token não vale no lugar do resumo)', async () => {
+      const { token } = ok(await contas.criar({ email: 'a@b.com', senha: 'segredo-bom', nome: 'A' }));
+      for (const torto of ['', 'x'.repeat(10_000), 'f'.repeat(64), 'F'.repeat(64), token, (await resumoHex(token)).toUpperCase(), (await resumoHex(token)).slice(1)]) {
+        expect(await contas.sessaoPorResumo(torto), torto.slice(0, 12)).toBeNull();
+      }
+      expect(await contas.sessaoPorResumo(undefined as unknown as string)).toBeNull();
+    });
+  });
   it('sair apaga só aquela sessão', async () => {
     const s1 = ok(await contas.criar({ email: 'a@b.com', senha: 'segredo-bom', nome: 'A' }));
     const s2 = ok(await contas.entrar('a@b.com', 'segredo-bom'));

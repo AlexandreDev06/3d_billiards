@@ -7,7 +7,7 @@ import type { MaoCalibrada } from '../maos/mao-calibrada';
 import { poseDaPonteNomeada, type NomeDaPonte } from '../maos/pontes';
 import { poseVaziaDeMao, type PoseDeMao } from '../maos/pose-das-maos';
 import type { Reacao, ReacaoEmCurso } from '../maos/reacoes';
-import type { TrocaDePonte } from '../maos/troca-de-ponte';
+import { afastarQuadro, type TrocaDePonte } from '../maos/troca-de-ponte';
 
 /** O que a conta (`MaosDoJogador`) entrega ao desenho. */
 export interface ModeloDasMaos {
@@ -190,10 +190,12 @@ export class MaosEmCena {
   }
 
   private posicionarAPonte(modelo: ModeloDasMaos, ponte: PersonagemEmCena, dt: number): void {
-    if (modelo.troca.ativa) {
-      // Os dedos de uma ponte para a outra se misturam com o mesmo peso do quadro da mão: com curvas diferentes, o taco, que está certo
-      // no quadro da mão de cada ponte, atravessa a pele no meio do caminho (L63).
-      ponte.misturar(poseDaPonteNomeada(modelo.troca.de), poseDaPonteNomeada(modelo.ponteAtual), modelo.troca.mistura);
+    const troca = modelo.troca;
+    if (troca.ativa) {
+      // A mão sai da ponte antiga até a pose aberta, troca de lugar aberta e fecha na nova: misturar um anel de dedos com outro
+      // atravessa o taco (L65b). A fase de chegada mistura a pose nova com a aberta.
+      const pose = troca.fase === 'chegada' ? modelo.ponteAtual : troca.de;
+      ponte.misturar(poseDaPonteNomeada(pose), this.cfg.escolha.troca.aberta, troca.abertura);
       this.misturando = true;
       this.nomeDaPose = modelo.ponteAtual;
     } else if (this.misturando || modelo.ponteAtual !== this.nomeDaPose) {
@@ -202,7 +204,9 @@ export class MaosEmCena {
       this.nomeDaPose = modelo.ponteAtual;
     }
     ponte.sobrepor('pinca', modelo.pinca);
-    for (let i = 0; i < DEDOS_DA_PONTE.length; i++) ponte.dobrar(DEDOS_DA_PONTE[i]!, modelo.dobrasDaPonte[i]!);
+    // Os dedos plantados são da ponte nova: só valem quando ela fecha sobre o apoio.
+    const plantio = troca.ativa ? (troca.fase === 'chegada' ? 1 - troca.abertura : 0) : 1;
+    for (let i = 0; i < DEDOS_DA_PONTE.length; i++) ponte.dobrar(DEDOS_DA_PONTE[i]!, modelo.dobrasDaPonte[i]! * plantio);
     if (this.temRespirar) ponte.ligarAditivo('respirar', this.cfg.vida.respirar.ponte);
 
     const calibrada = modelo.calibradaAtual;
@@ -210,11 +214,12 @@ export class MaosEmCena {
     const deslocamento = r === null ? null : this.deslocamentoDe(r.gesto);
     const pose = deslocamento === null ? modelo.ponte : this.deslocada(modelo.ponte, deslocamento, ponte.pesoDoGesto);
     calibrada.quadro(pose, modelo.escala, this.quadro);
-    if (modelo.troca.ativa) {
-      // A mão levanta, faz o arco e pousa: sai do quadro em que estava, na ponte de onde veio, e chega ao de agora.
-      modelo.calibradaDa(modelo.troca.de).quadro(modelo.troca.pose, modelo.escala, this.quadroDaSaida);
-      misturarQuadros(this.quadroDaSaida, this.quadro, modelo.troca.mistura, this.quadro);
-      this.quadro.py += modelo.troca.levanta(this.cfg.escolha.troca.arco);
+    if (troca.ativa) {
+      // Cada ponte tem o quadro da mão afastado do taco pela rota dela; a mão vai de um ao outro com os dedos abertos.
+      afastarQuadro(this.quadro, pose, troca.afastaPara, modelo.escala);
+      modelo.calibradaDa(troca.de).quadro(troca.pose, modelo.escala, this.quadroDaSaida);
+      afastarQuadro(this.quadroDaSaida, troca.pose, troca.afastaDe, modelo.escala);
+      misturarQuadros(this.quadroDaSaida, this.quadro, troca.viagem, this.quadro);
     }
     if (r !== null && r.gesto === 'tapinha') this.irAoTapinha(modelo, calibrada, ponte);
     ponte.colocar(this.quadro, calibrada.escala * modelo.escala);

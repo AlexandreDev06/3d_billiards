@@ -83,10 +83,10 @@ export interface Conexao {
    */
   idDaConta?: string;
   /**
-   * O token da sessão (o do cookie `becogames_sessao`) com que a conexão abriu (L61b), só para reler `contaDaSessao` antes de mexer em moeda.
-   * É segredo: nunca vai a log, a mensagem nem a erro.
+   * O resumo (SHA-256 em hexadecimal) do token da sessão (o do cookie `becogames_sessao`) com que a conexão abriu (L61b, resumo no L66), só para
+   * reler `contaDaSessaoPorResumo` antes de mexer em moeda. O token em claro nunca chega até aqui; o resumo ainda não vai a log, a mensagem nem a erro.
    */
-  sessao?: string;
+  resumoDaSessao?: string;
   /** Quando a sessão foi conferida com o Banco pela última vez (ms do relógio da sala); ausente = nunca depois de abrir (a abertura já a provou). */
   sessaoConferidaEm?: number;
   /**

@@ -1,4 +1,4 @@
-"""O letreiro do jogo: "SINUCA" e "PAR OU ÍMPAR" em néon de boteco, aceso e apagado, em SVG e PNG transparente (2048 px de largura).
+"""O letreiro do jogo: "SINUCA" e "DE BECO" em néon de boteco, aceso e apagado, em SVG e PNG transparente (2048 px de largura).
 
 Só traços das letras de `letras.py` (desenhadas aqui; nenhuma fonte de terceiros). Roda com `uv run --with numpy --with pillow python3 marca.py [saida]`.
 O PNG aceso é "luz sobre transparente": o alfa é o maior canal, então por cima de um fundo escuro dá a soma de luz de um néon de verdade.
@@ -15,6 +15,8 @@ import letras
 
 LARGURA = 2048
 MARGEM = 190
+ESCALA_DE_BECO = 0.68  # altura das letras de "DE BECO" sobre a de "SINUCA"
+FOLGA_DE_BECO = 1.1  # vão entre as bolas do filete e o topo de "DE BECO", em alturas de unidade de SINUCA
 COR = {"rosa": (255, 46, 140), "ciano": (40, 218, 255), "ambar": (255, 178, 44), "estrela": (255, 238, 170)}
 COR_APAGADO = {"rosa": (176, 124, 150), "ciano": (126, 164, 178), "ambar": (178, 152, 104), "estrela": (196, 186, 150)}
 
@@ -37,7 +39,7 @@ def _circulo(cx, cy, r, cor, larg):
 
 
 def elementos(variante="completo", largura=LARGURA, margem=MARGEM):
-    """Lista de traços (em px) e a altura do quadro. variante: completo | sinuca | par-ou-impar."""
+    """Lista de traços (em px) e a altura do quadro. variante: completo | sinuca | de-beco."""
     els = []
     tr1, w1 = letras.compor("SINUCA", 2.7)
     util = largura - 2 * margem
@@ -65,27 +67,22 @@ def elementos(variante="completo", largura=LARGURA, margem=MARGEM):
         els.append(_circulo(x1, yl, raio, "ambar", larg1 * .55))
         els.append(_circulo(x0, yl, raio * .38, "ambar", larg1 * .3))
         y = yl + raio
-    if variante in ("completo", "par-ou-impar"):
-        s2 = 0.4 * s1 if variante == "completo" else None
-        if variante == "par-ou-impar":
-            tr0, w0 = letras.compor("PAR OU ÍMPAR", 2.4)
-            s2 = util / w0 * 0.9
-            tr2, w2 = tr0, w0
-        else:
-            tr2, w2 = letras.justificar("PAR OU ÍMPAR", util / s2, 2.4)
-        larg2 = 0.95 * s2 * (1.0 if variante == "par-ou-impar" else 1.25)
-        topo2 = y + (1.6 * s1 if variante == "completo" else margem * 0.0) + (2.7 * s2 if variante == "par-ou-impar" else 0)
-        base2 = topo2 + 10 * s2 + (0 if variante == "completo" else 0)
-        off = margem + (0 if variante == "completo" else (util - w2 * s2) / 2)
+    if variante in ("completo", "de-beco"):
+        # "DE BECO" tem 7 letras contra as 12 da linha antiga: letra maior (60% da altura de SINUCA, sem esticar) e o resto da largura em espaçamento
+        s2 = ESCALA_DE_BECO * s1
+        alvo = util if variante == "completo" else util * 0.9
+        tr2, w2 = letras.justificar("DE BECO", alvo / s2, 2.4)
+        larg2 = 0.95 * s2 * 1.25
+        topo2 = y + (FOLGA_DE_BECO * s1 if variante == "completo" else 0)
+        base2 = topo2 + 10 * s2
+        off = margem + (util - w2 * s2) / 2
         for t in letras.transformar(tr2, s2, off, base2, True):
             els.append(El(t, "ciano", larg2))
         y = base2
-        if variante == "par-ou-impar":
+        if variante == "de-beco":
             els += _estrela(margem * .9, base2 - 5 * s2, 0.9 * s2, "estrela", larg2 * .3)
             els += _estrela(largura - margem * .9, base2 - 5 * s2, 0.9 * s2, "estrela", larg2 * .3)
     altura = int(math.ceil(y + margem * 0.9 + (0.3 * margem if variante != "completo" else 0)))
-    if variante == "par-ou-impar":
-        altura = int(math.ceil(y + margem + 2.3 * 0.4 * s1))
     return els, altura
 
 
@@ -134,6 +131,25 @@ def render_aceso(els, w, h, ss=2):
     alfa = acc.max(axis=2)
     rgb = np.where(alfa[:, :, None] > 1e-4, acc / np.maximum(alfa[:, :, None], 1e-4), 0)
     # o brilho que passa de 1 no núcleo vira cor mais clara: já está no `acc`
+    return np.dstack([rgb, alfa])
+
+
+def render_halo(els, w, h, ss=2):
+    """Só o brilho em volta dos tubos (RGBA straight), sem o traço nem o núcleo branco: é o `letreiro-halo` do boteco alto, somado por cima dos tubos 3D.
+    O `render_aceso` inteiro, somado ali, repetia o núcleo branco sobre os tubos e os lavava (L68c)."""
+    acc = np.zeros((h, w, 3), np.float32)
+    for chave in ("rosa", "ciano", "ambar", "estrela"):
+        sub = [e for e in els if e.cor == chave]
+        if not sub:
+            continue
+        lw = np.mean([e.largura for e in sub])
+        col = np.array(COR[chave], np.float32) / 255.0
+        m = _mascara(sub, w, h, ss)
+        luz = 0.45 * _borrar(m, lw * 0.45) + 0.45 * _borrar(m, lw * 1.0) + 0.22 * _borrar(m, lw * 2.2) + 0.04 * _borrar(m, lw * 5.0)   # forte perto do tubo e curto: o largo do `render_aceso` tingia a placa inteira
+        acc += col[None, None, :] * luz[:, :, None]
+    acc = np.clip(acc, 0, 1)
+    alfa = acc.max(axis=2)
+    rgb = np.where(alfa[:, :, None] > 1e-4, acc / np.maximum(alfa[:, :, None], 1e-4), 0)
     return np.dstack([rgb, alfa])
 
 
@@ -241,7 +257,7 @@ def para_svg(els, w, h, aceso, caminho):
 def gerar(pasta):
     os.makedirs(pasta, exist_ok=True)
     saidas = []
-    for variante, nome in (("completo", "letreiro"), ("sinuca", "sinuca"), ("par-ou-impar", "par-ou-impar")):
+    for variante, nome in (("completo", "letreiro"), ("sinuca", "sinuca"), ("de-beco", "de-beco")):
         els, h = elementos(variante)
         for aceso in (True, False):
             sufixo = "acesa" if aceso else "apagada"

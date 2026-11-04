@@ -1,6 +1,6 @@
 # Fluxo com terminais no Maestri (parado)
 
-**Só vale com a licença do Maestri ativa.** Desde 2026-10-12 o workspace está travado (fim do teste): sem ask, notas nem check. O fluxo de hoje é por subagente (`SKILL.md`). Este arquivo guarda o outro, para quando a licença voltar. Se voltar, volte também `sinuca-status`, `sinuca-bugs` e `sinuca-perguntas` como notas; hoje são `.outros/status.md`, `.outros/bugs.md` e `.outros/perguntas.md`.
+**Este é o fluxo atual (pedido do usuário em 2026-11-04, para economizar tokens):** lote vai para terminal do Maestri, nunca para subagente. Onde o `SKILL.md` falar em subagente, vale este arquivo.
 
 Se você é um **recruta** (terminal `Sinuca *`): leia só o seu `papeis/<papel>.md` e a seção "Relatório" abaixo.
 

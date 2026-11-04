@@ -149,6 +149,8 @@ export class CarteiraDoAparelho {
   #geracao = 0;
   /** Com a sessão da conta (L62) a carteira é a da conta: sem código, sem `Authorization`, sem carteira nova no lugar. */
   #modoConta = false;
+  /** Saiu ou excluiu a conta (L67): a carteira de convidado só nasce no primeiro uso. */
+  #adiada = false;
   readonly #ouvintes = new Set<(estado: EstadoCarteira | null) => void>();
 
   constructor(private readonly deps: DependenciasDaCarteira) {
@@ -183,6 +185,7 @@ export class CarteiraDoAparelho {
   definirModoConta(ligado: boolean): void {
     if (ligado === this.#modoConta) return;
     this.#modoConta = ligado;
+    if (ligado) this.#adiada = false;
     this.#geracao++;
     this.#emVoo = null;
     this.#estado = null;
@@ -191,10 +194,11 @@ export class CarteiraDoAparelho {
   }
 
   /**
-   * Esquece o código deste navegador e cria uma carteira nova e vazia (L62): é o que "Sair" e "Jogar como convidado" fazem. O código velho
-   * não serve para nada (a carteira da conta só abre com a sessão). Sem aviso de "carteira nova": a pessoa pediu.
+   * Esquece o código deste navegador (L62, L67): é o que "Sair", "Excluir" e "Jogar como convidado" fazem. Não cria carteira na hora (isso
+   * gastaria o limite de criações por IP da sala): ela nasce no primeiro uso real (`garantir`, compra, aposta, `abrir sala`) e até lá
+   * `pendente()` é verdadeiro. O código velho não serve para nada (a carteira da conta só abre com a sessão). Sem aviso de "carteira nova".
    */
-  async comecarDoZero(): Promise<ResultadoDaCarteira> {
+  comecarDoZero(): void {
     this.#geracao++;
     this.#emVoo = null;
     this.#modoConta = false;
@@ -202,9 +206,23 @@ export class CarteiraDoAparelho {
     this.#guardada = false;
     this.#estado = null;
     this.#aviso = null;
+    this.#adiada = true;
     apagarJson(CHAVE_DA_CARTEIRA, this.deps.armazenamento);
     this.#avisar();
-    return this.#criar();
+  }
+
+  /** O convidado saiu ou excluiu a conta e ainda não usou a carteira nova: não há código nem estado, e nada foi pedido à sala. */
+  pendente(): boolean {
+    this.#lerGuardado();
+    return this.#adiada && this.#codigo === null && !this.#modoConta;
+  }
+
+  /**
+   * Põe a carteira em dia SEM criar uma: leituras de tela (loja, perfil, missões) usam esta. `null` quando a carteira está `pendente()`;
+   * a criação fica para `garantir()` e para o que de fato precisa dela.
+   */
+  ler(): Promise<ResultadoDaCarteira | null> {
+    return this.pendente() ? Promise.resolve(null) : this.garantir();
   }
 
   /** O recado pendente (a carteira foi trocada por uma nova), até alguém o dispensar. */
@@ -338,6 +356,7 @@ export class CarteiraDoAparelho {
     this.#geracao++;
     this.#emVoo = null;
     this.#codigo = codigo;
+    this.#adiada = false;
     this.#guardada = gravarJson(CHAVE_DA_CARTEIRA, { versao: VERSAO_DA_CARTEIRA, codigo }, this.deps.armazenamento);
     this.#estado = estado;
     this.#aviso = null;
@@ -422,6 +441,7 @@ export class CarteiraDoAparelho {
     if (!criada.ok) return falha('fora-do-ar');
     const { codigo, ...estado } = criada.valor;
     this.#codigo = codigo;
+    this.#adiada = false;
     this.#guardada = gravarJson(CHAVE_DA_CARTEIRA, { versao: VERSAO_DA_CARTEIRA, codigo }, this.deps.armazenamento);
     this.#estado = estado;
     this.#avisar();

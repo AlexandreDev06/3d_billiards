@@ -19,17 +19,17 @@ import { SEGURANCA } from './cabecalhos';
 import type { PedidoDaCarteira, RespostaDaCarteira } from './carteira-http';
 import { idDoCodigo } from './id-da-carteira';
 import type { Logger } from './log';
-import { tokenDaSessao } from './sessao-da-conta';
+import { resumoDaSessao, tokenDaSessao } from './sessao-da-conta';
 
 /** O Banco como o `/conta/*` e a identidade o usam: o HTTP da conta, a conta da sessão e a varredura das excluídas. */
-export type BancoDaConta = Pick<ApiDoBanco, 'tratar' | 'contaDaSessao' | 'excluidasDesde'>;
+export type BancoDaConta = Pick<ApiDoBanco, 'tratar' | 'contaDaSessaoPorResumo' | 'excluidasDesde'>;
 
 /** O que a sinuca faz com a carteira de itens quando a conta muda. No Worker são chamadas ao `SalaDO`; na sala Node, as carteiras direto. */
 export interface EfeitosNaCarteira {
   marcarDaConta(id: string): Promise<unknown> | unknown;
   apagarDaConta(id: string): Promise<unknown> | unknown;
-  /** A conta saiu ou foi excluída (L61b): as conexões e os lugares que a trazem a esquecem. No `sair` vai a `sessao` que saiu: só ela é esquecida (L61c). */
-  esquecerConta(id: string, sessao?: string): Promise<unknown> | unknown;
+  /** A conta saiu ou foi excluída (L61b): as conexões e os lugares que a trazem a esquecem. No `sair` vai o resumo da sessão que saiu (L66; antes o token): só ela é esquecida (L61c). */
+  esquecerConta(id: string, resumoDaSessao?: string): Promise<unknown> | unknown;
   /**
    * A marca `daConta` não pôde ser posta (as duas tentativas falharam): fica pendente, persistida, para o alarm e a sessão a cumprirem (L61b).
    * Opcional só para quem não guarda estado (os testes de rota).
@@ -96,7 +96,7 @@ export interface DependenciasDoPedidoDaConta {
   readonly pedido: PedidoDaCarteira;
   /** O IP como o Banco o quer: o `CF-Connecting-IP` cru no Worker (o Banco calcula a chave do balde), a chave do balde na sala Node. Nunca vai a log. */
   readonly ipParaOBanco: string;
-  readonly banco: Pick<BancoDaConta, 'tratar' | 'contaDaSessao'>;
+  readonly banco: Pick<BancoDaConta, 'tratar' | 'contaDaSessaoPorResumo'>;
   readonly efeitos: EfeitosNaCarteira;
   /** Tempo para o corpo chegar inteiro (o mesmo do HTTP da carteira). */
   readonly tempoDoCorpoMs: number;
@@ -143,11 +143,12 @@ export async function tratarContaDaSinuca(d: DependenciasDoPedidoDaConta): Promi
   try {
     // excluir e sair apagam a sessão: o `id` da conta tem de ser lido antes do Banco (L61b: o `sair` também)
     let idAntes: string | null = null;
-    let tokenAntes: string | null = null;
+    let resumoAntes: string | null = null;
     if (acao === 'excluir' || acao === 'sair') {
       const token = tokenDaSessao(cookie);
-      tokenAntes = token;
-      if (token !== null) idAntes = (await comPrazo(Promise.resolve(banco.contaDaSessao(token)), prazo))?.id ?? null;
+      // L66: o token do cookie só segue ao Banco dentro do `cookie` do pedido (como o portal o manda); a leitura do `id` e o `esquecerConta` usam o resumo
+      resumoAntes = token === null ? null : await resumoDaSessao(token);
+      if (resumoAntes !== null) idAntes = (await comPrazo(Promise.resolve(banco.contaDaSessaoPorResumo(resumoAntes)), prazo))?.id ?? null;
     }
     const pedidoDoBanco: PedidoDaConta = { acao, metodo: pedido.metodo, origem: pedido.cabecalho('origin') ?? null, ip: d.ipParaOBanco, cookie, convidado, corpo };
     const r: RespostaDaConta = await comPrazo(Promise.resolve(banco.tratar(pedidoDoBanco)), prazo);
@@ -162,7 +163,7 @@ export async function tratarContaDaSinuca(d: DependenciasDoPedidoDaConta): Promi
     if (acao === 'excluir' && r.status === 200 && idAntes !== null) await aplicar('conta-apagar-falhou', () => efeitos.apagarDaConta(idAntes), log);
     if ((acao === 'excluir' || acao === 'sair') && r.status === 200 && idAntes !== null) {
       // o `sair` apaga só a sessão daquele aparelho no Banco: a sinuca esquece só as conexões dela; o `excluir` leva a conta toda
-      const sessao = acao === 'sair' && tokenAntes !== null ? tokenAntes : undefined;
+      const sessao = acao === 'sair' && resumoAntes !== null ? resumoAntes : undefined;
       await aplicar('conta-esquecer-falhou', () => efeitos.esquecerConta(idAntes, sessao), log);
     }
 

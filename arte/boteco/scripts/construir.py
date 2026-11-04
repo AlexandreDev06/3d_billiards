@@ -42,8 +42,8 @@ ATLAS = ("casco", "objetos", "sinais")
 CONVERTE_NO_BAIXO = {"vidro-ambar", "vidro-verde", "vidro-claro", "vidro-pet", "tampa", "cromado", "inox", "rotulos", "madeira-pa", "vitrine", "tv-tela", "luz-estufa", "lampada"}
 ACESO = {"tv-tela": 1.5, "vitrine": 1.4, "luz-estufa": 1.9, "lampada": 2.4}
 # força de emissão dos materiais na cena de assar (luz que eles jogam no salão); na exportação voltam a 1
-EMISSAO = {"luz-estufa": 7.0, "vitrine": 4.0, "tv-tela": 5.0, "lampada": 28.0, "neon-rosa": 24.0, "neon-ciano": 24.0, "neon-ambar": 22.0, "neon-branco": 22.0,
-           "luminaria-luz": 12.0, "letreiro": 7.0, "rua": 1.8, "rua-fundo": 0.9, "rua-fachada": 1.3, "rua-chao": 0.25, "rua-placa": 2.5, "poste-halo": 1.0}
+EMISSAO = {"luz-estufa": 7.0, "vitrine": 4.0, "tv-tela": 5.0, "lampada": 28.0, "neon-rosa": 33.6, "neon-ciano": 33.6, "neon-ambar": 30.8, "neon-branco": 30.8,
+           "luminaria-luz": 12.0, "letreiro": 7.0, "rua": 1.8, "rua-fundo": 0.9, "rua-fachada": 1.3, "rua-chao": 0.25, "rua-placa": 2.5, "poste-halo": 1.0, "letreiro-halo": 1.0}
 # as luzes do salão: nome -> (tipo, posição no jogo, direção ou None, tamanho, cor, watts)
 LUZES = {
     "luminaria": ("area", (0.0, LUMINARIA_Y - 0.035, 0.0), "baixo", (1.46, 0.3), (1.0, 0.78, 0.5), 230.0),

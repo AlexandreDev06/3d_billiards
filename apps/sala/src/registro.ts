@@ -39,11 +39,11 @@ export interface DependenciasRegistro {
   /** As carteiras (L22). Sem elas, o registro cria um armazém só de memória (os testes das salas). */
   readonly carteiras?: CarteirasBase;
   /**
-   * A conta de uma sessão, como o Banco diz (`Banco.contaDaSessao`), ou `null` se a sessão não vale mais (L61b). Com ela o registro relê a
+   * A conta de uma sessão pelo resumo do token, como o Banco diz (`Banco.contaDaSessaoPorResumo`, L66), ou `null` se a sessão não vale mais (L61b). Com ela o registro relê a
    * sessão de quem tem conta antes de mexer em moeda (`criar-sala`, `entrar`, o começo de uma partida com aposta), no máximo uma vez por
    * `INTERVALO_DA_RELEITURA_MS` por conexão. Sem ela (sala sem contas) nada é relido.
    */
-  readonly contaDaSessao?: (token: string) => Promise<{ readonly id: string } | null> | { readonly id: string } | null;
+  readonly contaDaSessaoPorResumo?: (resumo: string) => Promise<{ readonly id: string } | null> | { readonly id: string } | null;
   /** A conta de uma conexão mudou (saiu, foi excluída, a sessão morreu): o transporte que guarda o `id` fora da memória (o anexo do WebSocket do Worker) o regrava. */
   readonly aoMudarConta?: (conn: Conexao) => void;
   /** Quanto a releitura da sessão espera o Banco (ms). */
@@ -73,12 +73,12 @@ export class Registro {
   /** Todas as conexões vivas que o registro conhece (L61b), em sala ou não: é por aqui que `esquecerConta` acha quem tem o `id` da conta. */
   private readonly conexoes = new Set<Conexao>();
   private readonly releituras = new Map<Conexao, Promise<void>>();
-  private readonly contaDaSessao: DependenciasRegistro['contaDaSessao'];
+  private readonly contaDaSessaoPorResumo: DependenciasRegistro['contaDaSessaoPorResumo'];
   private readonly aoMudarConta: DependenciasRegistro['aoMudarConta'];
   private readonly prazoDaReleituraMs: number;
 
   constructor(deps: DependenciasRegistro) {
-    this.contaDaSessao = deps.contaDaSessao;
+    this.contaDaSessaoPorResumo = deps.contaDaSessaoPorResumo;
     this.aoMudarConta = deps.aoMudarConta;
     this.prazoDaReleituraMs = deps.prazoDaReleituraMs ?? PRAZO_DA_RELEITURA_MS;
     this.config = deps.config;
@@ -147,28 +147,28 @@ export class Registro {
   /**
    * A conta `id` saiu (`/conta/sair`) ou foi excluída (`/conta/excluir`): toda conexão que a trazia a perde (a conexão segue, sem conta, e
    * o que mandar depois joga como convidado) e os lugares que usam a carteira dela ficam sem carteira (o `estado-sala` mostra `saldo: null`).
-   * Com `sessao` (o `sair` de um aparelho) só as conexões com esse token esquecem a conta, e o lugar só perde a carteira se nenhuma outra conexão
-   * viva da conta continuar nele; sem `sessao` (`excluir`) é tudo da conta.
+   * Com `resumoDaSessao` (o `sair` de um aparelho) só as conexões com essa sessão esquecem a conta, e o lugar só perde a carteira se nenhuma outra
+   * conexão viva da conta continuar nele; sem ele (`excluir`) é tudo da conta.
    * Uma aposta que já está em curso com essa carteira continua até o fim (ver `Sala.esquecerCarteira`). Devolve quantas conexões perderam a conta.
    */
-  esquecerConta(id: string, sessao?: string): number {
+  esquecerConta(id: string, resumoDaSessao?: string): number {
     let conexoes = 0;
     for (const conn of this.conexoes) {
       if (conn.idDaConta !== id) continue;
-      if (sessao !== undefined && conn.sessao !== sessao) continue;
+      if (resumoDaSessao !== undefined && conn.resumoDaSessao !== resumoDaSessao) continue;
       this.tirarAConta(conn);
       conexoes++;
     }
-    const segue = sessao === undefined ? undefined : (c: Conexao) => c.idDaConta === id;
+    const segue = resumoDaSessao === undefined ? undefined : (c: Conexao) => c.idDaConta === id;
     for (const sala of this.salas.values()) sala.esquecerCarteira(id, segue);
     if (conexoes > 0) this.log('conta-esquecida', { conexoes });
     return conexoes;
   }
 
-  /** A conexão deixa de ter conta: sem `id`, sem token de sessão. */
+  /** A conexão deixa de ter conta: sem `id`, sem resumo de sessão. */
   private tirarAConta(conn: Conexao): void {
     delete conn.idDaConta;
-    delete conn.sessao;
+    delete conn.resumoDaSessao;
     delete conn.sessaoConferidaEm;
     this.aoMudarConta?.(conn);
   }
@@ -180,7 +180,7 @@ export class Registro {
    */
   private depoisDeConferirASessao(conexoes: readonly Conexao[], dona: Conexao, tipoDoPendente: string, fn: () => void): void {
     const agora = this.relogio();
-    const velhas = this.contaDaSessao === undefined ? [] : conexoes.filter((c) => c.idDaConta !== undefined && c.sessao !== undefined && agora - (c.sessaoConferidaEm ?? 0) >= INTERVALO_DA_RELEITURA_MS);
+    const velhas = this.contaDaSessaoPorResumo === undefined ? [] : conexoes.filter((c) => c.idDaConta !== undefined && c.resumoDaSessao !== undefined && agora - (c.sessaoConferidaEm ?? 0) >= INTERVALO_DA_RELEITURA_MS);
     if (velhas.length === 0) return fn();
     Promise.all(velhas.map((c) => this.reler(c)))
       .then(() => {
@@ -204,10 +204,10 @@ export class Registro {
 
   private async releitura(conn: Conexao): Promise<void> {
     const id = conn.idDaConta;
-    const token = conn.sessao;
-    if (id === undefined || token === undefined || this.contaDaSessao === undefined) return;
+    const resumo = conn.resumoDaSessao;
+    if (id === undefined || resumo === undefined || this.contaDaSessaoPorResumo === undefined) return;
     try {
-      const conta = await comPrazo(Promise.resolve(this.contaDaSessao(token)), this.prazoDaReleituraMs);
+      const conta = await comPrazo(Promise.resolve(this.contaDaSessaoPorResumo(resumo)), this.prazoDaReleituraMs);
       if (conn.idDaConta !== id) return; // mudou enquanto esperava
       if (conta !== null && conta.id === id) {
         conn.sessaoConferidaEm = this.relogio();

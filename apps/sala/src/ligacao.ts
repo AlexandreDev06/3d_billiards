@@ -51,8 +51,8 @@ export interface DependenciasDaLigacao {
   readonly ip: string;
   /** O `id` da conta que a sessão provou ao abrir a conexão (L61); ausente = jogador com ou sem código de convidado. */
   readonly idDaConta?: string;
-  /** O token da sessão que provou `idDaConta` (L61b), só para reler a sessão antes de mexer em moeda; segredo, nunca vai a log. */
-  readonly sessao?: string;
+  /** O resumo da sessão que provou `idDaConta` (L61b, resumo no L66), só para reler a sessão antes de mexer em moeda; nunca vai a log. */
+  readonly resumoDaSessao?: string;
   /** Quando a sessão foi conferida com o Banco pela última vez (ms do relógio da sala); sem isto vale o instante em que a ligação nasce. */
   readonly sessaoConferidaEm?: number;
   readonly soquete: SoqueteDaSala;
@@ -77,7 +77,7 @@ export class LigacaoDaSala {
       id: 'ws',
       ip: deps.ip,
       ...(deps.idDaConta === undefined ? {} : { idDaConta: deps.idDaConta }),
-      ...(deps.idDaConta === undefined || deps.sessao === undefined ? {} : { sessao: deps.sessao, sessaoConferidaEm: deps.sessaoConferidaEm ?? relogio() }),
+      ...(deps.idDaConta === undefined || deps.resumoDaSessao === undefined ? {} : { resumoDaSessao: deps.resumoDaSessao, sessaoConferidaEm: deps.sessaoConferidaEm ?? relogio() }),
       punir: (peso) => void this.punir(peso),
       enviar: (mensagem) => {
         if (!soquete.aberto()) return;

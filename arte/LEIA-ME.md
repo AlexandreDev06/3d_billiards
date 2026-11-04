@@ -30,7 +30,7 @@ arte/
   ferramentas/captura_visor.sh           quadro do visor com o Chrome sem janela
   visor/                                 visores three.js que provam os .glb (porta livre, nunca a 8001): index.html (mão), balao.html (balão), boteco.html (boteco, P4 a P6)
   boteco/                                o boteco em volta da mesa (P4 a P6): scripts/ (00_tudo.sh refaz tudo), fotos/ (CC0), texturas/<nivel>/, exportados/boteco-{alto,medio,baixo}.glb + boteco-meta.json, boteco-*.blend; ver "O boteco (P4 a P6)" abaixo
-  marca/                                 o letreiro do jogo (P4): letreiro, sinuca e par-ou-impar, cada um aceso e apagado, em SVG e PNG transparente de 2048 px
+  marca/                                 o letreiro do jogo (P4): letreiro, sinuca e de-beco, cada um aceso e apagado, em SVG e PNG transparente de 2048 px
   skins/                                 as skins de taco (P2: Coral, Bicho Solto, Corujão, Dragão das Quinze; P3: Dragon Lore e Howl), PNGs pintados no Blender; ver "Skins de taco" abaixo
 ```
 
@@ -323,6 +323,8 @@ da mesa e os cantinhos (extintor, botijão, ar-condicionado split, caixa de som,
 - **Sem luz** (`KHR_materials_unlit`): `piso`, `forro`, `paredes`, `assado`, `decoracao` (e `prateleira-garrafas` no baixo). Não ligam às luzes do jogo nem recebem a sombra da mesa (a sombra do pano e da luminária já está assada no piso).
   O material `madeira` não existe mais (as vigas estão em `forro`, a madeira em `assado`). **PBR**: `vidro-*` (alfa, uma face), `liquido-*`, `capsula`, `tampa*`, `rolha`, `espuma`, `cromado`, `inox`, `rotulos`, `madeira-pa`, `luminaria-casco`, `ferro`, `poste`, `vidro-janela` (alfa por textura). **Emissivos**: `neon-*`, `letreiro`, `luminaria-luz`, `lampada`, `luz-estufa`, `vitrine`, `tv-tela`, `cartazes` (P6), `rua-fundo`, `rua-fachada`, `rua-chao`, `rua-placa`, `poste-halo` (a lista exata sai do próprio .glb em `boteco-meta.json`).
   `letreiro-halo` é alfa: use blending **aditivo** e `depthWrite = false` (o visor faz). `decoracao` e `letreiro-halo` são de duas faces.
+  **Néon do alto (L68c).** Duas causas deixavam o letreiro do alto mais fraco que o do médio: (1) as cores `neon-*` de `cena.py` eram de tela (sRGB) e iam ao Blender e ao `emissiveFactor` como se fossem linear, e o rosa `(1, 0,18, 0,55)` saía na tela como `(255, 137, 227)`, pálido; agora `_linear()` converte e `GANHO_NEON = 1/1,4` desconta o `brilhoDoNeon` (1,4) que o jogo aplica sem tonemapping (se o jogo mudar o ganho, mude lá e a compensação de `EMISSAO` em `construir.py`); a cor-base dos tubos fica quase preta (a luz da sala os lavava) e a `neon-placa` é preta (era `0,035`, marrom sob a luminária);
+  (2) o `letreiro-halo` saía sem `emissiveFactor` (faltava em `EMISSAO`) e não acendia nada no jogo; ao acender, a textura inteira (com o núcleo branco dos tubos) lavava os tubos, então `marca.render_halo` gera só o brilho, curto e forte perto do tubo. O emissivo dos tubos do alto agora é o do `.glb` em linear já dividido por 1,4: o visor (sem o ganho) os mostra 30% mais escuros.
 - Luzes são **marcadores** (nós vazios com `extras`: `tipo`, `cor`, `intensidade` relativa, `alcance`; o `GLTFLoader` os deixa em `userData`): `luz-luminaria`, `luz-neon`, `luz-balcao`, `luz-janela`, `luz-salao`. Como o casco e os móveis já vêm iluminados,
   essas luzes agora só valem para o PBR (garrafas, vidros, metais, luminária, ventilador, néon): `luz-salao` deixou de ser necessária para as paredes. No visor, `ponto` = intensidade × 8.
 - Câmeras do menu: `camera-menu-1`, `-2`, `-3` (câmeras glTF, yfov 50°, olhando para a mesa; o alvo está em `extras.alvo`). A `camera-menu-1` mudou para `(4,6, 1,6, 2,0)`.
@@ -370,13 +372,13 @@ Na luz assada, o mapa de normais é amortecido (detalhe fino em resolução meno
 
 ## O letreiro do jogo (P4)
 
-"SINUCA" e "PAR OU ÍMPAR" em néon de boteco (rosa, ciano e âmbar), com uma linha âmbar de bolas nas pontas (o taco) e estrelas entre as duas linhas. Em `arte/marca/`, 2048 px de largura, PNG com fundo transparente e SVG (com filtros de brilho):
+"SINUCA" e "DE BECO" (o nome do jogo é Sinuca de Beco desde 2026-11-04) em néon de boteco (rosa, ciano e âmbar), com uma linha âmbar de bolas nas pontas (o taco) e estrelas entre as duas linhas. Em `arte/marca/`, 2048 px de largura, PNG com fundo transparente e SVG (com filtros de brilho):
 
 | Arquivos | O que é |
 | --- | --- |
-| `letreiro-acesa.{svg,png}` / `letreiro-apagada.{svg,png}` | as duas linhas juntas (2048×1034) |
+| `letreiro-acesa.{svg,png}` / `letreiro-apagada.{svg,png}` | as duas linhas juntas (2048×1120) |
 | `sinuca-acesa` / `sinuca-apagada` | só "SINUCA" com o taco (2048×882) |
-| `par-ou-impar-acesa` / `par-ou-impar-apagada` | só "PAR OU ÍMPAR" (2048×635) |
+| `de-beco-acesa` / `de-beco-apagada` | só "DE BECO" (2048×672) |
 
 Acesa: o alfa é o maior canal da luz somada (soma de luz sobre transparente): em fundo escuro dá o brilho do néon, em fundo claro fica lavada, então use sobre escuro. Apagada: tubo de vidro fosco com as tampas pretas nas pontas, sem brilho.
 As letras são desenhadas por nós (`letras.py`), sem fonte de terceiros. Refaz com `uv run --with numpy --with pillow python3 arte/boteco/scripts/marca.py arte/marca`.

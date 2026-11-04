@@ -368,7 +368,7 @@ export function criarPerfil(pai: HTMLElement, carteira: CarteiraDoAparelho, opco
   const ler = (): void => {
     lendo = true;
     desenhar();
-    void carteira.garantir().then((r) => aberto && tratar(r));
+    void carteira.ler().then((r) => aberto && (r === null ? ((lendo = false), desenhar()) : tratar(r)));
   };
 
   tentar.addEventListener('click', ler);

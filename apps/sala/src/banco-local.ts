@@ -21,7 +21,7 @@ export interface BancoLocal {
   readonly moedas: Moedas;
   /**
    * As contas da Beco Games sobre o mesmo arquivo (L61): o `Contas` e o `HttpDaConta` do `apps/conta`, o mesmo código do Worker do Banco,
-   * atrás da mesma interface (`tratar`, `contaDaSessao`, `excluidasDesde`). O cookie não leva `Domain` nem `Secure` (a sala Node é
+   * atrás da mesma interface (`tratar`, `contaDaSessaoPorResumo`, `excluidasDesde`). O cookie não leva `Domain` nem `Secure` (a sala Node é
    * `http://localhost`) e o e-mail de recuperação não existe (sem carteiro). `origensDeDev` é lido a cada pedido (a lista pode crescer
    * depois que a porta é conhecida). Sem `pepper` (ausente ou com menos de 32 caracteres) as operações de senha dão `nao-configurado`.
    */
@@ -99,8 +99,8 @@ export function abrirBancoLocal(pasta: string | null, relogio: () => number = Da
       });
       return {
         tratar: (pedido) => http.tratar(pedido),
-        contaDaSessao: async (token) => {
-          const s = await contas.sessao(token);
+        contaDaSessaoPorResumo: async (resumo) => {
+          const s = await contas.sessaoPorResumo(resumo);
           return s === null ? null : { id: s.conta.id, nome: s.conta.nome };
         },
         excluidasDesde: async (ms, limite) => contas.excluidasDesde(ms, limite),

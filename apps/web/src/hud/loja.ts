@@ -32,6 +32,9 @@ const MINIATURA = { largura: 300, altura: 40 } as const;
  * mostrou; se a sala o recusar por ter mudado, a carteira é relida e a tela já mostra o preço novo). A vitrine é relida quando o dia
  * dela acaba. O código secreto da carteira nunca chega aqui.
  */
+/** O que a loja diz a quem saiu da conta e ainda não tem carteira neste aparelho (L67). */
+const TEXTO_SEM_CARTEIRA = 'Você ainda não tem carteira neste aparelho. Ela é criada quando você pedir.';
+
 export function criarLoja(pai: HTMLElement, carteira: CarteiraDoAparelho): Loja {
   const raiz = el('div', 'loja');
   raiz.hidden = true;
@@ -235,7 +238,7 @@ export function criarLoja(pai: HTMLElement, carteira: CarteiraDoAparelho): Loja 
     temporizadorDaVirada = window.setTimeout(() => {
       temporizadorDaVirada = null;
       viradaRelida = fim;
-      void carteira.garantir().then((r) => aberta && tratar(r, ''));
+      void carteira.ler().then((r) => aberta && r !== null && tratar(r, ''));
     }, atraso);
   };
 
@@ -246,6 +249,13 @@ export function criarLoja(pai: HTMLElement, carteira: CarteiraDoAparelho): Loja 
     aviso.hidden = avisoDaCarteira === null;
     avisoTexto.textContent = avisoDaCarteira ?? '';
     // O aviso de "fora do ar" só aparece depois de uma resposta ruim: a vitrine fica sem ele enquanto a primeira leitura não volta.
+    if (carteira.pendente()) {
+      foraTexto.textContent = TEXTO_SEM_CARTEIRA;
+      tentar.textContent = 'Criar carteira';
+    } else if (tentar.textContent === 'Criar carteira') {
+      foraTexto.textContent = '';
+      tentar.textContent = 'Tentar de novo';
+    }
     fora.hidden = foraTexto.textContent === '';
     caixa.classList.toggle('fora-do-ar', !loja.disponivel);
     desenharVitrine(loja.vitrine);
@@ -347,7 +357,7 @@ export function criarLoja(pai: HTMLElement, carteira: CarteiraDoAparelho): Loja 
       fechar.focus();
       if (item !== undefined) irAoItem(item);
       // Põe o saldo em dia: a compra feita em outra aba, ou o pote de uma partida, mudou o número.
-      void carteira.garantir().then((r) => aberta && tratar(r, ''));
+      void carteira.ler().then((r) => aberta && r !== null && tratar(r, ''));
     },
 
     fechar() {

@@ -3,7 +3,7 @@
  * no pedido neutro, lê o corpo com limite e prazo e devolve a resposta pronta. Nada de regra aqui.
  */
 import type { LeituraDoCorpo, PedidoDaCarteira, RespostaDaCarteira } from '../carteira-http';
-import { CABECALHO_DA_CONTA, CABECALHO_DA_SESSAO, idDaContaDoCabecalho } from '../sessao-da-conta';
+import { CABECALHO_ANTIGO_DA_SESSAO, CABECALHO_DA_CONTA, CABECALHO_DO_RESUMO_DA_SESSAO, idDaContaDoCabecalho } from '../sessao-da-conta';
 
 /** Lê o corpo até `limite` bytes e `tempoMs`; passou de um dos dois, desiste sem ler o resto. */
 export async function lerCorpoDoPedido(request: Request, limite: number, tempoMs: number): Promise<LeituraDoCorpo> {
@@ -79,15 +79,16 @@ export function respostaDoResultado(r: RespostaDaCarteira): Response {
  * O pedido como o objeto o recebe (L61): o cabeçalho interno da conta que veio de fora é SEMPRE apagado (nenhum navegador diz ao objeto
  * quem é), e só então a borda põe o `id` que o Banco provou pela sessão, se houve. O `Cookie` não segue: o objeto não precisa dele.
  */
-export function paraOObjeto(request: Request, idDaConta: string | undefined, sessao?: string): Request {
+export function paraOObjeto(request: Request, idDaConta: string | undefined, resumoDaSessao?: string): Request {
   const cabecalhos = new Headers(request.headers);
   cabecalhos.delete(CABECALHO_DA_CONTA);
-  cabecalhos.delete(CABECALHO_DA_SESSAO);
+  cabecalhos.delete(CABECALHO_DO_RESUMO_DA_SESSAO);
+  cabecalhos.delete(CABECALHO_ANTIGO_DA_SESSAO);
   cabecalhos.delete('cookie');
   if (idDaConta !== undefined) {
     cabecalhos.set(CABECALHO_DA_CONTA, idDaConta);
-    // L61b: só o upgrade do WebSocket leva o token (o objeto relê a sessão antes de mexer em moeda); o HTTP da carteira não precisa dele
-    if (sessao !== undefined) cabecalhos.set(CABECALHO_DA_SESSAO, sessao);
+    // L61b: só o upgrade do WebSocket leva a sessão (o objeto relê no Banco antes de mexer em moeda); L66: o resumo dela, nunca o token do cookie
+    if (resumoDaSessao !== undefined) cabecalhos.set(CABECALHO_DO_RESUMO_DA_SESSAO, resumoDaSessao);
   }
   return new Request(request, { headers: cabecalhos });
 }

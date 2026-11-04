@@ -5,7 +5,7 @@ description: Use para desenvolver a sinuca com o time de papéis (Principal, Bra
 
 # Time Sinuca (subagentes)
 
-Cada papel é um subagente do Claude Code (ferramenta Agent, em segundo plano) com prompt de lote em arquivo. O Maestri está travado desde 2026-10-12 (terminais, notas, ask-back, `time.sh`): o que é dele está em `maestri.md`, para quando a licença voltar. Nome da skill mantido por isso.
+Desde 2026-11-04, por pedido do usuário para economizar tokens, cada papel é um terminal do Maestri (outro chat), nunca subagente: siga `maestri.md`. O texto abaixo sobre subagente fica só como histórico; economia, ciclo do lote, relatório e confiança continuam valendo.
 
 Se você é um **subagente**: leia só o seu `papeis/<papel>.md` e as seções "Relatório" e "Confiança" abaixo. No arquivo do papel, ignore o bloco `<!-- prompt:inicio -->…<!-- prompt:fim -->` (é o prompt do role do Maestri) e tudo que cita `maestri`.
 

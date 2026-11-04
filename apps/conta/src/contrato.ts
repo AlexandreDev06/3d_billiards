@@ -98,8 +98,17 @@ export interface RespostaDaConta {
 export interface ApiDoBanco {
   /** O HTTP da conta (rotas, Origin, limites, cookie e mensagens). O portal só repassa. */
   tratar(pedido: PedidoDaConta): Promise<RespostaDaConta>;
-  /** A conta de um token de sessão (o do cookie), renovando-a se for o caso; `null` se não há, venceu ou a conta foi excluída. */
+  /**
+   * A conta de um token de sessão (o do cookie), renovando-a se for o caso; `null` se não há, venceu ou a conta foi excluída. Forma antiga, que a
+   * sinuca de antes do L66 usa: sai quando a sinuca nova estiver no ar e sem volta (`contaDaSessaoPorResumo` a substitui).
+   */
   contaDaSessao(token: string): Promise<{ id: string; nome: string } | null>;
+  /**
+   * O mesmo de `contaDaSessao`, inclusive a renovação, mas pelo resumo SHA-256 em hexadecimal minúsculo (64 caracteres) do token: o que o Banco
+   * guarda no lugar dele. O Worker da sinuca calcula o resumo na entrada e só ele circula (objeto, anexo hibernado, log); o token em claro nunca
+   * passa do ponto de entrada. Resumo que não tem a forma, não existe, venceu ou é de conta excluída: `null` (nunca lança).
+   */
+  contaDaSessaoPorResumo(resumo: string): Promise<{ id: string; nome: string } | null>;
   /** O `id` de quem tem este código de convidado e se ainda é convidado; `null` se não há conta ou foi excluída. */
   contaDoCodigo(codigo: string): Promise<{ id: string; convidado: boolean } | null>;
   /** Cria a conta de convidado com `saldoInicial` se ela não existe (o saldo entra no livro). Conta existente não muda. */

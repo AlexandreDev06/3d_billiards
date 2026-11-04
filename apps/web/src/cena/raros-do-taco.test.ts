@@ -2,10 +2,26 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { TACO } from '@sinuca/fisica';
 import { SKINS_DE_TACO, padraoDaSemente, type SkinDoCatalogo, type SkinTaco } from '@sinuca/protocolo';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { APARENCIAS_DO_TACO, aparenciaDoTaco, type AparenciaTaco } from './aparencia-do-taco';
 import { PARTES_COM_IMAGEM, contextoDaPeca, corDaPeca } from './imagem-da-peca';
 import { PADROES_DO_TACO } from './raros-do-taco';
+
+/** Quantas amostras de ruído fractal as tramas pediram (oitavas por chamada): o custo delas, medido sem relógio. */
+const contadorDeRuido = vi.hoisted(() => ({ amostras: 0 }));
+vi.mock('./ferramentas-de-trama', async (original) => {
+  const real = await original<typeof import('./ferramentas-de-trama')>();
+  return {
+    ...real,
+    fractal: (semente: number, celulas: number, oitavas: number) => {
+      const campo = real.fractal(semente, celulas, oitavas);
+      return (a: number, b: number): number => {
+        contadorDeRuido.amostras += oitavas;
+        return campo(a, b);
+      };
+    },
+  };
+});
 
 const PINTADAS: readonly SkinTaco[] = ['coral', 'bicho-solto', 'corujao', 'dragao-das-quinze'];
 const SEMENTES = Array.from({ length: 1000 }, (_, i) => i);
@@ -393,18 +409,20 @@ describe('os acabamentos do CS, medidos nos pixels (L36)', () => {
     expect(asiimov.laranja).toBeGreaterThan(0.03);
   });
 
-  it('o nível baixo continua barato: a trama simples sai bem mais rápido que a cheia no Doppler e no Case Hardened', () => {
-    for (const skin of ['obsidiana', 'tempera'] as const) {
+  it('o nível baixo continua barato: a trama simples amostra bem menos ruído que a cheia no Doppler e no Case Hardened', () => {
+    // Sem relógio (os milissegundos de uma rodada oscilam com a carga da máquina): o custo da trama é o ruído fractal que ela amostra em cada
+    // pixel (oitavas vezes chamadas), e isso é o mesmo número em qualquer máquina e sob qualquer carga.
+    const trabalho = (skin: SkinTaco, detalhe: 'cheio' | 'simples'): number => {
+      contadorDeRuido.amostras = 0;
       const a = aparenciaDoTaco(skin, 5);
-      const gerar = (detalhe: 'cheio' | 'simples'): number => {
-        const t0 = performance.now();
-        corDaPeca(contextoDaPeca(a, TACO, 'haste', { largura: 128, altura: 512 }, detalhe), 'haste');
-        return performance.now() - t0;
-      };
-      gerar('cheio'); // aquece
-      const cheio = Math.min(gerar('cheio'), gerar('cheio'));
-      const simples = Math.min(gerar('simples'), gerar('simples'));
-      expect(simples, skin).toBeLessThan(cheio);
+      corDaPeca(contextoDaPeca(a, TACO, 'haste', { largura: 32, altura: 128 }, detalhe), 'haste');
+      return contadorDeRuido.amostras;
+    };
+    for (const skin of ['obsidiana', 'tempera'] as const) {
+      const cheio = trabalho(skin, 'cheio');
+      const simples = trabalho(skin, 'simples');
+      expect(cheio, skin).toBeGreaterThan(0);
+      expect(simples, `${skin}: ${simples} amostras contra ${cheio}`).toBeLessThan(cheio * 0.8);
     }
   });
 });

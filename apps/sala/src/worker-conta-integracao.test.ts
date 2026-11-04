@@ -1,7 +1,7 @@
 /**
  * As contas da Beco Games na sala, nos DOIS Workers de verdade (L61): `wrangler dev --local -c apps/sala/wrangler.jsonc -c apps/conta/wrangler.jsonc`
  * (workerd, service binding `CONTA` com RPC de verdade para o `Banco`), com `SALDO_NO_BANCO=1`. O Banco aceita o `Origin` do endereço do teste e
- * grava o cookie sem `Secure` nem `Domain` (um `apps/conta/.dev.vars` que o teste cria e apaga). O que se prova, em ordem:
+ * grava o cookie sem `Secure` nem `Domain` (um `.dev.vars` numa pasta temporária do teste, ao lado de uma cópia do config da conta). O que se prova, em ordem:
  *
  * 1. um convidado que comprou uma skin vira conta (`POST /conta/criar` com o código): o código sozinho já não abre a carteira (401), o cookie
  *    abre, com a skin; o `id` entra na tabela `carteiras_da_conta` do objeto;
@@ -17,20 +17,17 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SALDO_INICIAL, diaDaMissao, precoDaSkinNoDia, type EstadoCarteira } from '@sinuca/protocolo';
 import { PRESET_MATA_MATA } from '@sinuca/regras';
 import { SEM_LIMITE } from './para-testes';
 import { ClienteWs } from './para-testes-ws';
-import { http, portaLivre, reservarDevVarsDaConta, subirWrangler, type WranglerLocal } from './para-testes-worker';
+import { http, portaLivre, criarContaDeTeste, subirWrangler, type WranglerLocal } from './para-testes-worker';
 
 const SEGREDO = 'segredo-so-de-teste-do-l61-0123456789';
 const PEPPER_DE_TESTE = 'pepper-so-de-teste-do-l61-0123456789-abcdef';
 const SENHA = 'senha-de-teste-do-l61';
-const PASTA_DA_CONTA = fileURLToPath(new URL('../../conta/', import.meta.url));
-const CONFIGS = ['wrangler.jsonc', '../conta/wrangler.jsonc'];
 
 type Carteira = EstadoCarteira & { codigo?: string };
 
@@ -63,7 +60,7 @@ describe('as contas da Beco Games na sala (wrangler dev --local com os dois Work
   const clientes: ClienteWs[] = [];
   let w: WranglerLocal;
   let porta = 0;
-  let soltarDevVars: (() => void) | undefined;
+  let contaDeTeste: ReturnType<typeof criarContaDeTeste> | undefined;
   let seq = 0;
 
   const arquivoDaSala = (): string | null => arquivoDoObjeto(persistir, 'sinuca-sala-SalaDO');
@@ -99,12 +96,12 @@ describe('as contas da Beco Games na sala (wrangler dev --local com os dois Work
     throw new Error(`não aconteceu em ${ms} ms: ${descricao}`);
   }
 
-  const subir = async (): Promise<WranglerLocal> => subirWrangler({ persistir, assets, configs: CONFIGS, porta, vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: '1' } });
+  const subir = async (): Promise<WranglerLocal> => subirWrangler({ persistir, assets, configs: ['wrangler.jsonc', contaDeTeste!.config], porta, vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: '1' } });
 
   beforeAll(async () => {
     ClienteWs.esperaPadraoMs = 20_000;
     porta = await portaLivre();
-    soltarDevVars = await reservarDevVarsDaConta(PASTA_DA_CONTA, PEPPER_DE_TESTE, 360_000, {
+    contaDeTeste = criarContaDeTeste(PEPPER_DE_TESTE, {
       ORIGENS_DE_DEV: `http://127.0.0.1:${porta}`,
       COOKIE_SEGURO: '0',
       DOMINIO_DO_COOKIE: '',
@@ -118,7 +115,7 @@ describe('as contas da Beco Games na sala (wrangler dev --local com os dois Work
     for (const c of clientes) c.derrubar();
     await w?.parar();
     rmSync(raiz, { recursive: true, force: true });
-    soltarDevVars?.();
+    contaDeTeste?.soltar();
   }, 60_000);
 
   const convidadoComSkin = async (): Promise<string> => {

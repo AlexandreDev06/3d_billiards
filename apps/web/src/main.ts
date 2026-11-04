@@ -1162,7 +1162,7 @@ function iniciar(): () => void {
     const agora = performance.now();
     if (agora - ultimaLeituraDeMissoes < CONFIG_WEB.hud.missoes.leituraMinimaS * 1000) return;
     ultimaLeituraDeMissoes = agora;
-    void carteira.garantir();
+    void carteira.ler();
   }
   /** Os avisos que chegaram com a tacada ainda tocando: entram quando as bolas param, nunca por cima do lance. */
   let avisosDeMissaoPendentes: AvisoDeMissao[] = [];
@@ -1308,7 +1308,7 @@ function iniciar(): () => void {
   });
   const dialogosDaConta = criarDialogosDaConta(document.body, conta, carteira, {
     podeMudar: () => sessao === null,
-    aoJogarComoConvidado: () => void carteira.comecarDoZero(),
+    aoJogarComoConvidado: () => carteira.comecarDoZero(),
   });
   // L62: a conta manda no nome da mesa e na carteira. Entrou ou criou: a carteira passa a ser a da conta (sessão no cookie). Virou convidado
   // (sair, excluir, sessão vencida no meio do uso): carteira nova e vazia; o código velho não abre mais nada.
@@ -1322,7 +1322,7 @@ function iniciar(): () => void {
     } else {
       armazem.definirContaAtiva(false);
       menu.definirNomeDaConta(null);
-      if (carteira.modoConta()) void carteira.comecarDoZero();
+      if (carteira.modoConta()) carteira.comecarDoZero();
     }
     menu.atualizarBarra();
   });

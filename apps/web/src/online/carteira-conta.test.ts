@@ -74,18 +74,47 @@ describe('CarteiraDoAparelho com a conta', () => {
     expect(carteira.aviso()).not.toBeNull();
   });
 
-  it('comecarDoZero apaga o código velho e cria uma carteira vazia, sem aviso', async () => {
-    const { carteira, chamadas, armazenamento } = montar({ codigo: CODIGO, respostas: [{ status: 201, corpo: { codigo: NOVO, ...ESTADO, saldo: SALDO_INICIAL } }] });
+  it('comecarDoZero apaga o código velho e não pede nada à sala', () => {
+    const { carteira, chamadas, armazenamento } = montar({ codigo: CODIGO, respostas: [] });
     carteira.definirModoConta(true);
-    const r = await carteira.comecarDoZero();
-    expect(r.ok).toBe(true);
+    carteira.comecarDoZero();
+    expect(chamadas).toHaveLength(0);
     expect(carteira.modoConta()).toBe(false);
-    expect(carteira.codigo()).toBe(NOVO);
-    expect(JSON.parse(armazenamento.getItem(CHAVE_DA_CARTEIRA)!).codigo).toBe(NOVO);
+    expect(carteira.codigo()).toBeUndefined();
+    expect(carteira.estado()).toBeNull();
+    expect(carteira.pendente()).toBe(true);
+    expect(armazenamento.getItem(CHAVE_DA_CARTEIRA)).toBeNull();
+    expect(carteira.aviso()).toBeNull();
+  });
+
+  it('pendente: ler() não cria nada; a carteira nasce no primeiro uso real (compra), sem aviso', async () => {
+    const { carteira, chamadas, armazenamento } = montar({
+      codigo: CODIGO,
+      respostas: [{ status: 201, corpo: { codigo: NOVO, ...ESTADO, saldo: SALDO_INICIAL } }, { status: 200, corpo: ESTADO }],
+    });
+    carteira.comecarDoZero();
+    expect(await carteira.ler()).toBeNull();
+    expect(chamadas).toHaveLength(0);
+    await carteira.comprar('ebano');
     expect(chamadas[0]!.init.method).toBe('POST');
     expect(chamadas[0]!.init.headers.Authorization).toBeUndefined();
-    expect(carteira.estado()?.saldo).toBe(SALDO_INICIAL);
+    expect(carteira.pendente()).toBe(false);
+    expect(carteira.codigo()).toBe(NOVO);
+    expect(JSON.parse(armazenamento.getItem(CHAVE_DA_CARTEIRA)!).codigo).toBe(NOVO);
     expect(carteira.aviso()).toBeNull();
+  });
+
+  it('pendente: garantir() cria a carteira e ler() volta a ler a sala', async () => {
+    const { carteira, chamadas } = montar({
+      codigo: CODIGO,
+      respostas: [{ status: 201, corpo: { codigo: NOVO, ...ESTADO, saldo: SALDO_INICIAL } }, { status: 200, corpo: ESTADO }],
+    });
+    carteira.comecarDoZero();
+    expect((await carteira.garantir()).ok).toBe(true);
+    expect(chamadas).toHaveLength(1);
+    expect((await carteira.ler())?.ok).toBe(true);
+    expect(chamadas).toHaveLength(2);
+    expect(chamadas[1]!.init.method).toBe('GET');
   });
 
   it('definirModoConta esquece o estado de antes e avisa', async () => {

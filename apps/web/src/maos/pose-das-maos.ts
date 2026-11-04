@@ -97,8 +97,16 @@ export interface PonteEscolhida {
   ok: boolean;
   /** Distância pelo taco, do ponto de contato à mão (m). */
   distancia: number;
-  /** O que há embaixo da palma. */
+  /** O que há embaixo da palma (com `pousam`, se ali é ar, o da esfera da mão mais alta sobre a borracha ou a moldura). */
   apoio: TipoDeApoio;
+  /**
+   * L65: a mão tem apoio embaixo. Com `pousam`, quando o de sempre cai no ar procura-se um lugar onde a palma flutua até `ponte.pouso`
+   * do apoio, ou uma ponta de dedo o alcança dobrando-se; falso só se nenhum lugar entre a distância mínima e a máxima serve (uma pose
+   * rara: a branca no canto ou junto da caçapa do meio): então vale o lugar de sempre, no ar.
+   */
+  pousa: boolean;
+  /** O quanto a palma flutua sobre o apoio no lugar achado pela busca do pouso (m, 0 se toca); `Infinity` nos outros casos. */
+  folga: number;
 }
 
 /** Bolas que a mão nunca pode tapar, vistas por esta câmera. */
@@ -125,13 +133,17 @@ export function poseDaPonte(
   saida: PoseDeMao,
   esferasDaMao: readonly Esfera[] = [],
   subir = true,
-): { apoio: TipoDeApoio; afundaria: number } {
+  /** L65: a mão pendurada na borracha ou na moldura por uma esfera dela, com a palma no ar, conta como apoiada nelas. */
+  apoioPelasEsferas = false,
+): { apoio: TipoDeApoio; afundaria: number; sobreAMesa: boolean } {
   pontoDeContato(eixo, recuo, centro);
   const eixoY = centro.y - eixo.dy * s;
   const x = centro.x - eixo.dx * s;
   const z = centro.z - eixo.dz * s;
   const apoio = alturaDoApoio(obstaculos, eixo, x, z, cfg.pegada, (cfg.giro * Math.PI) / 180);
   let afundaria = apoio.altura + cfg.fundo - eixoY;
+  let maiorChao = apoio.altura;
+  let esferaSobreApoio = esferasDaMao.length === 0;
   // Girada no pano, a mão passa da pegada (o pulso vai para trás e para o lado): cada esfera dela olha o que há embaixo.
   const k = Math.hypot(eixo.dx, eixo.dz) || 1;
   const hx = eixo.dx / k;
@@ -139,11 +151,15 @@ export function poseDaPonte(
   for (const e of esferasDaMao) {
     const chao = alturaDoApoioEm(obstaculos, x + hx * e.x - hz * e.z, z + hz * e.x + hx * e.z);
     if (chao === -Infinity) continue;
+    esferaSobreApoio = true;
+    if (chao > maiorChao) maiorChao = chao;
     const embaixo = Math.max(e.y - e.r, -cfg.fundo);
     afundaria = Math.max(afundaria, chao - (eixoY + embaixo));
   }
   orientarMao(saida, eixo, x, eixoY + (subir ? Math.max(afundaria, 0) : 0), z);
-  return { apoio: apoio.tipo, afundaria };
+  // L65: com a palma no ar mas alguma parte da mão sobre a borracha ou a moldura, ela está pendurada nelas, não solta no ar.
+  const tipo = apoioPelasEsferas && apoio.tipo === 'ar' && maiorChao > -Infinity ? tipoDaAltura(obstaculos, maiorChao) : apoio.tipo;
+  return { apoio: tipo, afundaria, sobreAMesa: esferaSobreApoio };
 }
 
 /**
@@ -171,11 +187,29 @@ export function escolherPonte(
   subidaDosDedos: ((pose: PoseDeMao) => number) | null = null,
   /** Prefere qualquer lugar com apoio ao ar: a mão só fica no ar, fora da mesa, se não houver onde pousar entre o mínimo e o máximo. */
   evitarAr = false,
+  /**
+   * L65: se a mão, no lugar que está em `saidaDoLugar`, tem uma ponta de dedo que alcança o apoio (`PlantadorDeDedos.alcancaOApoio`).
+   * Com isto, se o lugar de sempre cai no ar, procura-se (só com a mão no eixo) o primeiro, a partir da distância pedida, onde ela pousa
+   * (`PonteEscolhida.pousa`); sem nenhum, vale o de sempre. Lugar que já tem apoio fica como estava.
+   */
+  pousam: ((pose: PoseDeMao) => boolean) | null = null,
 ): PonteEscolhida {
+  if (pousam !== null) {
+    // O de sempre vale se a mão pousa em alguma coisa. Só quando a palma cai no ar (a bola colada na tabela, a mão pendurada na moldura)
+    // procura-se o lugar onde ela pousa; sem nenhum, fica o de sempre, e `pousa` diz que flutua.
+    const deSempre = escolherPonte(eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr, null);
+    if (deSempre.apoio !== 'ar') return deSempre;
+    // A busca anda num rascunho: se nada pousa, a pose do de sempre fica em `saidaDoLugar`, como estava.
+    // Só a mão no eixo: erguida do apoio ela não pousa, e é a busca mais cara.
+    const achou = percorrer(true, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, rascunho, subidaDosDedos, evitarAr, pousam);
+    if (!achou.ok) return deSempre;
+    Object.assign(saidaDoLugar, rascunho);
+    return achou;
+  }
   // Primeiro a mão no eixo, onde o pano deixa; só se nenhum lugar serve, erguida do pano, como antes do L63.
-  const noEixo = percorrer(true, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr);
+  const noEixo = percorrer(true, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr, null);
   if (noEixo.ok) return noEixo;
-  return percorrer(false, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr);
+  return percorrer(false, eixo, recuo, obstaculos, bolas, cfg, protecao, esferasDaMao, saidaDoLugar, subidaDosDedos, evitarAr, null);
 }
 
 /** `rigido`: a mão fica no eixo do taco; senão ela sobe do pano até onde a folga do L28 deixa. */
@@ -191,18 +225,24 @@ function percorrer(
   saidaDoLugar: PoseDeMao,
   subidaDosDedos: ((pose: PoseDeMao) => number) | null,
   evitarAr: boolean,
+  pousam: ((pose: PoseDeMao) => boolean) | null,
 ): PonteEscolhida {
-  const passos = Math.ceil((cfg.distanciaMaxima - cfg.distanciaMinima) / cfg.passo);
+  // A busca do pouso anda de dois em dois passos: a faixa onde a mão pousa tem centímetros, e ela roda todo quadro em que a palma cai no ar.
+  const passo = pousam !== null ? 2 * cfg.passo : cfg.passo;
+  const passos = Math.ceil((cfg.distanciaMaxima - cfg.distanciaMinima) / passo);
   // Erguida, vale a folga de antes; no eixo, o pano e os dedos pedem quase nada.
   const tolerancia = rigido ? cfg.tolerancia : cfg.toleranciaErguida;
   let noAr = NaN;
   for (let k = 0; k <= 2 * passos + 1; k++) {
     // 0, +1, -1, +2, -2...: o lugar mais perto do pedido primeiro.
-    const deslocamento = k === 0 ? 0 : (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * cfg.passo;
+    const deslocamento = k === 0 ? 0 : (k % 2 === 1 ? 1 : -1) * Math.ceil(k / 2) * passo;
     const s = cfg.distancia + deslocamento;
     if (s < cfg.distanciaMinima - 1e-9 || s > cfg.distanciaMaxima + 1e-9) continue;
-    const { apoio, afundaria } = poseDaPonte(eixo, recuo, s, obstaculos, cfg, saidaDoLugar, esferasDaMao, !rigido);
+    const { apoio, afundaria, sobreAMesa } = poseDaPonte(eixo, recuo, s, obstaculos, cfg, saidaDoLugar, esferasDaMao, !rigido, pousam !== null);
     if (afundaria > tolerancia) continue;
+    // Só serve o lugar onde a mão pousa: a palma não entra no apoio e uma ponta de dedo o alcança. A mão inclina com o taco e baixa a
+    // quina da palma (`INCLINACAO_DA_MAO` por unidade de seno da elevação), que a conta pela vertical não vê.
+    if (pousam !== null && (apoio === 'ar' || !sobreAMesa || afundaria + Math.abs(eixo.dy) * INCLINACAO_DA_MAO > 0.0005)) continue;
     if (subidaDosDedos !== null) {
       const subida = subidaDosDedos(saidaDoLugar);
       if (rigido ? subida > tolerancia : false) continue;
@@ -210,19 +250,35 @@ function percorrer(
     }
     if (batendoEmBola(bolas, saidaDoLugar.x, saidaDoLugar.z, saidaDoLugar.y - cfg.fundo, cfg.pegada)) continue;
     if (protecao !== null && tapaAlgumaBola(esferasDaMao, saidaDoLugar, protecao.bolas, protecao.projetor, protecao.folga)) continue;
+    if (pousam !== null) {
+      const folga = Math.max(-afundaria, 0);
+      if (folga <= cfg.pouso || pousam(saidaDoLugar)) return { ok: true, distancia: s, apoio, pousa: true, folga };
+      continue;
+    }
     if (evitarAr && apoio === 'ar') {
       if (Number.isNaN(noAr)) noAr = s;
       continue;
     }
-    return { ok: true, distancia: s, apoio };
+    return { ok: true, distancia: s, apoio, pousa: apoio !== 'ar', folga: Infinity };
   }
   if (!Number.isNaN(noAr)) {
-    // Nada com apoio coube: fica no ar, onde a primeira conta o achou.
     const { apoio } = poseDaPonte(eixo, recuo, noAr, obstaculos, cfg, saidaDoLugar, esferasDaMao, !rigido);
     if (subidaDosDedos !== null && !rigido) saidaDoLugar.y += subidaDosDedos(saidaDoLugar);
-    return { ok: true, distancia: noAr, apoio };
+    return { ok: true, distancia: noAr, apoio, pousa: false, folga: Infinity };
   }
-  return { ok: false, distancia: cfg.distanciaMaxima, apoio: 'ar' };
+  return { ok: false, distancia: cfg.distanciaMaxima, apoio: 'ar', pousa: false, folga: Infinity };
+}
+
+const rascunho: PoseDeMao = poseVaziaDeMao();
+
+/** O quanto a quina da palma baixa (m) a cada unidade de seno da elevação do taco: a mão inclina com ele. */
+const INCLINACAO_DA_MAO = 0.04;
+
+/** O que é o apoio que tem esta altura (m, do pano). */
+function tipoDaAltura(obst: ObstaculosDaMesa, altura: number): TipoDeApoio {
+  if (altura >= obst.alturaMoldura - 1e-9) return 'moldura';
+  if (altura >= obst.alturaBorracha - 1e-9) return 'borracha';
+  return 'pano';
 }
 
 /** A maior altura de apoio sob a pegada da mão em (`x`, `z`) e o tipo do que há no centro. */

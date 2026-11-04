@@ -14,25 +14,22 @@
  * troca do Worker e desliga por `descongelar-carteiras`. E uma carteira com saldo NEGATIVO (−50) migra, volta e fecha as somas.
  *
  * O Banco e os espelhos são lidos DIRETO dos SQLite dos dois objetos (a prova não passa pela própria sala). Nenhum código de carteira,
- * `id`, segredo nem pepper pode estar na saída dos Workers. Sobe com um `apps/conta/.dev.vars` de teste, que o teste cria e apaga.
+ * `id`, segredo nem pepper pode estar na saída dos Workers. Sobe o Banco de uma pasta temporária com o `.dev.vars` de teste (`criarContaDeTeste`).
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { diaDaMissao, precoDaSkinNoDia, type EstadoCarteira } from '@sinuca/protocolo';
 import { PRESET_MATA_MATA } from '@sinuca/regras';
 import { SEM_LIMITE } from './para-testes';
 import { ClienteWs } from './para-testes-ws';
-import { depoisDe, escolherTacada, http, reservarDevVarsDaConta, subirWrangler, type WranglerLocal } from './para-testes-worker';
+import { depoisDe, escolherTacada, http, criarContaDeTeste, subirWrangler, type WranglerLocal } from './para-testes-worker';
 
 const SEGREDO = 'segredo-so-de-teste-do-l60-0123456789';
 const PEPPER_DE_TESTE = 'pepper-so-de-teste-do-l60-0123456789-abcdef';
-const PASTA_DA_CONTA = fileURLToPath(new URL('../../conta/', import.meta.url));
-const CONFIGS = ['wrangler.jsonc', '../conta/wrangler.jsonc'] as const;
 
 type Carteira = EstadoCarteira & { codigo?: string };
 
@@ -88,7 +85,7 @@ describe('a migração do saldo ao Banco e a volta (wrangler dev --local, três 
   const codigos: string[] = [];
   const saidas: string[] = [];
   let w: WranglerLocal | undefined;
-  let soltarDevVars: (() => void) | undefined;
+  const contaDeTeste = criarContaDeTeste(PEPPER_DE_TESTE);
   let comprador = '';
   let negativa = '';
   let saldoAntesDaCompra = 0;
@@ -128,7 +125,7 @@ describe('a migração do saldo ao Banco e a volta (wrangler dev --local, três 
     throw new Error(`não aconteceu em ${ms} ms: ${descricao}`);
   }
   async function subir(saldoNoBanco: '0' | '1'): Promise<void> {
-    w = await subirWrangler({ persistir, assets, configs: CONFIGS, vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: saldoNoBanco } });
+    w = await subirWrangler({ persistir, assets, configs: ['wrangler.jsonc', contaDeTeste.config], vars: { SEGREDO_ADMIN: SEGREDO, SALDO_NO_BANCO: saldoNoBanco } });
   }
   async function descer(): Promise<void> {
     if (w === undefined) return;
@@ -141,7 +138,6 @@ describe('a migração do saldo ao Banco e a volta (wrangler dev --local, três 
 
   beforeAll(async () => {
     ClienteWs.esperaPadraoMs = 20_000;
-    soltarDevVars = await reservarDevVarsDaConta(PASTA_DA_CONTA, PEPPER_DE_TESTE);
     mkdirSync(assets, { recursive: true });
     writeFileSync(join(assets, 'index.html'), '<!doctype html><title>Sinuca</title>');
     await subir('0');
@@ -151,7 +147,7 @@ describe('a migração do saldo ao Banco e a volta (wrangler dev --local, três 
     for (const c of clientes) c.derrubar();
     await w?.parar();
     rmSync(raiz, { recursive: true, force: true });
-    soltarDevVars?.(); // por último: apaga o .dev.vars e o .wrangler da conta e deixa o outro teste subir
+    contaDeTeste.soltar();
   }, 60_000);
 
   it('1. chave desligada: três carteiras com saldos diferentes (uma compra, uma aposta) e o Banco ainda sem conta nenhuma', async () => {

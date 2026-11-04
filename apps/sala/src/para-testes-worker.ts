@@ -4,7 +4,7 @@
  * HTTP, a escolha de tacada e o laço de uma partida. Nada de conta Cloudflare: é `--local`, o workerd da própria máquina.
  */
 import { spawn, type ChildProcess } from 'node:child_process';
-import { rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -16,6 +16,7 @@ import type { ClienteWs } from './para-testes-ws';
 
 const PASTA_DA_SALA = fileURLToPath(new URL('..', import.meta.url));
 const WRANGLER = fileURLToPath(new URL('../node_modules/wrangler/bin/wrangler.js', import.meta.url));
+const GUARDA = fileURLToPath(new URL('./guarda-do-wrangler.mjs', import.meta.url));
 
 export interface WranglerLocal {
   readonly porta: number;
@@ -53,7 +54,7 @@ export async function subirWrangler(opcoes: OpcoesDoWrangler): Promise<WranglerL
   const configs = (opcoes.configs ?? []).flatMap((c) => ['-c', c]);
   const filho: ChildProcess = spawn(
     process.execPath,
-    [WRANGLER, 'dev', '--local', ...configs, '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--assets', opcoes.assets, '--persist-to', opcoes.persistir, ...vars],
+    [GUARDA, String(process.pid), process.execPath, WRANGLER, 'dev', '--local', ...configs, '--port', String(porta), '--ip', '127.0.0.1', '--inspector-port', String(inspetor), '--assets', opcoes.assets, '--persist-to', opcoes.persistir, ...vars],
     {
       cwd: PASTA_DA_SALA,
       env: { ...process.env, WRANGLER_SEND_METRICS: 'false', WRANGLER_LOG_PATH: join(tmpdir(), 'sala-wrangler-logs'), NO_COLOR: '1', FORCE_COLOR: '0', CI: 'true' },
@@ -161,25 +162,22 @@ export function escolherTacada(v: VisaoDoCliente, turno: number) {
 export const depoisDe = (c: ClienteWs, marca: number, serve: (m: MensagemDaSala) => boolean) => c.esperar((m) => c.recebidas.indexOf(m) >= marca && serve(m));
 
 /**
- * O `apps/conta/.dev.vars` de teste (o pepper do Banco): é UM arquivo para todos os testes que sobem os dois Workers, então eles se
- * revezam. Cria com `wx` (nunca sobrescreve) e, se já existe (outro teste rodando, ou um seu de verdade), espera até `esperaMs`; devolve
- * o que o apaga e apaga também o `.wrangler` da conta. `extras` entram no mesmo arquivo (L61: `ORIGENS_DE_DEV` e `COOKIE_SEGURO=0` para a conta responder a `http://127.0.0.1`). Chame o que ele devolve por ÚLTIMO no `afterAll`.
+ * O Banco (apps/conta) só de um teste: uma pasta temporária com uma cópia do `wrangler.jsonc` da conta (o `main` aponta para o código de
+ * verdade) e o `.dev.vars` ao lado (o pepper e, se for o caso, `extras`: L61 `ORIGENS_DE_DEV` e `COOKIE_SEGURO=0` para a conta responder a
+ * `http://127.0.0.1`). O wrangler só lê `.dev.vars` e `.wrangler` da pasta do config de cada Worker (o `--env-file` vale só para o Worker
+ * principal), então esta pasta é o que isola os testes: nenhum escreve nem apaga arquivo dentro de `apps/conta`, e os que sobem dois
+ * Workers (e o do portal) não dividem variáveis nem `.wrangler`. Passe `config` em `configs` no lugar de `../conta/wrangler.jsonc`;
+ * `soltar` apaga a pasta, no `afterAll`.
  */
-export async function reservarDevVarsDaConta(pastaDaConta: string, pepper: string, esperaMs = 360_000, extras: Readonly<Record<string, string>> = {}): Promise<() => void> {
-  const arquivo = join(pastaDaConta, '.dev.vars');
-  const limite = Date.now() + esperaMs;
-  for (;;) {
-    try {
-      writeFileSync(arquivo, `PEPPER_DA_SENHA=${pepper}\n${Object.entries(extras).map(([k, v]) => `${k}=${v}\n`).join('')}`, { mode: 0o600, flag: 'wx' });
-      break;
-    } catch (e) {
-      if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
-      if (Date.now() > limite) throw new Error('já existe um apps/conta/.dev.vars há mais de 6 min: apague ou mova antes de rodar este teste', { cause: e });
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-  }
-  return () => {
-    rmSync(join(pastaDaConta, '.wrangler'), { recursive: true, force: true });
-    rmSync(arquivo, { force: true });
-  };
+export function criarContaDeTeste(pepper: string, extras: Readonly<Record<string, string>> = {}): { readonly config: string; soltar(): void } {
+  const pasta = mkdtempSync(join(tmpdir(), 'sala-conta-de-teste-'));
+  const pastaDaConta = fileURLToPath(new URL('../../conta/', import.meta.url));
+  const original = readFileSync(join(pastaDaConta, 'wrangler.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+  const cfg = JSON.parse(original) as Record<string, unknown>;
+  delete cfg.$schema;
+  cfg.main = join(pastaDaConta, cfg.main as string);
+  const config = join(pasta, 'wrangler.jsonc');
+  writeFileSync(config, JSON.stringify(cfg));
+  writeFileSync(join(pasta, '.dev.vars'), `PEPPER_DA_SENHA=${pepper}\n${Object.entries(extras).map(([k, v]) => `${k}=${v}\n`).join('')}`, { mode: 0o600 });
+  return { config, soltar: () => rmSync(pasta, { recursive: true, force: true }) };
 }

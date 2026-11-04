@@ -21,9 +21,19 @@ from const import (BALCAO, FOLGA, H_AZULEJO, H_BARRADO, JANELA, LUMINARIA_Y, MES
                    TOPO_BALCAO, VENT, X0, X1, Z0, Z1, quad_parede, sg)
 from geom import I4, Malha, caixa, caixa_chanfrada, cilindro, disco, laje, lathe, mat, orientada, perfil_suave, quad, tubo
 
+# O jogo multiplica o emissivo do néon por `brilhoDoNeon` (1,4, `apps/web/src/config.ts`) sem tonemapping; o emissivo do .glb sai dividido por isso, para o tubo
+# chegar à tela na cor de tela e não estourar para o branco (L68c). Se o jogo mudar o ganho, mude aqui (e `EMISSAO` em construir.py compensa a luz assada).
+GANHO_NEON = 1.0 / 1.4
+
+
+def _linear(srgb, ganho=1.0):
+    """Cor de tela (sRGB 0..1) em linear, que é o que o Blender e o glTF (`emissiveFactor`) esperam; `ganho` escurece depois."""
+    return tuple(ganho * (c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4) for c in srgb)
+
+
 # Classe de cada material: "a" = assado (a luz do Blender vai para a textura e no .glb sai sem luz, KHR_materials_unlit; `dest` é o nome do material no .glb,
 # `dens` o peso da densidade de texels no atlas); "p" = PBR de verdade (vidro, metal, rótulos); "e" = emissivo (néon, tela, janela). As receitas das
-# fontes assadas (fotos CC0 mais sujeira) estão em `blender_mat.py`; as cores dos "p" e "e" são as de sempre (cor em sRGB 0..1; tex = arquivo em texturas/<nivel>/).
+# fontes assadas (fotos CC0 mais sujeira) estão em `blender_mat.py`; as cores dos "p" e "e" vão ao Blender como estão, em linear (escreva em sRGB com `_linear`; tex = arquivo em texturas/<nivel>/).
 MATERIAIS = {
     "reboco": dict(c="a", dest="paredes", dens=1.2),
     "azulejo": dict(c="a", dest="paredes", dens=1.35),
@@ -83,11 +93,13 @@ MATERIAIS = {
     "luminaria-luz": dict(c="e", cor=(1.0, 0.8, 0.52), emissivo=(1.0, 0.8, 0.52), rug=0.9),
     "lampada": dict(c="e", cor=(1.0, 0.75, 0.4), emissivo=(1.0, 0.72, 0.34), rug=0.4),
     "luz-estufa": dict(c="e", cor=(1.0, 0.7, 0.3), emissivo=(1.0, 0.62, 0.22), rug=0.5),
-    "neon-placa": dict(c="a", dest="assado", dens=1.0, cor=(0.035, 0.03, 0.04), rug=0.6),
-    "neon-rosa": dict(c="e", cor=(1.0, 0.2, 0.55), emissivo=(1.0, 0.18, 0.55), rug=0.3),
-    "neon-ciano": dict(c="e", cor=(0.16, 0.85, 1.0), emissivo=(0.16, 0.85, 1.0), rug=0.3),
-    "neon-ambar": dict(c="e", cor=(1.0, 0.7, 0.17), emissivo=(1.0, 0.7, 0.17), rug=0.3),
-    "neon-branco": dict(c="e", cor=(1.0, 0.93, 0.7), emissivo=(1.0, 0.93, 0.7), rug=0.3),
+    "neon-placa": dict(c="a", dest="assado", dens=1.0, cor=(0.004, 0.003, 0.005), rug=0.9),   # placa preta: o claro vem dos tubos e do halo, não da luz da sala (L68c)
+    # tubos: as cores abaixo são as de tela (sRGB); o Blender e o glTF querem linear (L68c: passadas cruas, o rosa saía (255,137,227) e o ciano (128,255,255), pálidos).
+    # A cor-base fica quase preta: o tubo é só emissão, e a luz da sala em cima dele o lavava de branco.
+    "neon-rosa": dict(c="e", cor=_linear((1.0, 0.18, 0.55), 0.05), emissivo=_linear((1.0, 0.18, 0.55), GANHO_NEON), rug=0.3),
+    "neon-ciano": dict(c="e", cor=_linear((0.16, 0.85, 1.0), 0.05), emissivo=_linear((0.16, 0.85, 1.0), GANHO_NEON), rug=0.3),
+    "neon-ambar": dict(c="e", cor=_linear((1.0, 0.7, 0.17), 0.05), emissivo=_linear((1.0, 0.7, 0.17), GANHO_NEON), rug=0.3),
+    "neon-branco": dict(c="e", cor=_linear((1.0, 0.93, 0.7), 0.05), emissivo=_linear((1.0, 0.93, 0.7), GANHO_NEON), rug=0.3),
     "letreiro": dict(c="e", cor=(0.0, 0.0, 0.0), emissivo_tex="letreiro.jpg", rug=0.5),
     "letreiro-halo": dict(c="e", cor=(0.0, 0.0, 0.0), emissivo_tex="letreiro-halo.png", alfa=True, rug=1.0, so_alto=True, duas_faces=True),
     "rua": dict(c="e", cor=(0.0, 0.0, 0.0), emissivo_tex="rua.jpg", rug=1.0),

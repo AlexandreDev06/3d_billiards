@@ -25,7 +25,7 @@ import type { Logger } from '../log';
 import { MigracaoDeSaldos } from '../migracao-de-saldos';
 import { origemPermitida } from '../origem';
 import { Registro } from '../registro';
-import { tokenDoCabecalho } from '../sessao-da-conta';
+import { resumoDeSessaoValido } from '../sessao-da-conta';
 import { VarreduraDeExcluidas } from '../varredura-de-excluidas';
 import { AdminDoWorker } from './admin';
 import { AlarmeDaSala } from './alarme';
@@ -81,8 +81,8 @@ export class SalaDO extends DurableObject<Env> {
       log,
       relogio: this.relogio,
       carteiras: this.carteiras,
-      // L61b: a sessão de quem tem conta é relida no Banco (no máximo a cada 10 min por conexão) antes de criar, entrar ou começar partida com aposta
-      ...(env.CONTA === undefined ? {} : { contaDaSessao: (token: string) => (env.CONTA as unknown as BancoDaConta).contaDaSessao(token) }),
+      // L61b: a sessão de quem tem conta é relida no Banco (no máximo a cada 10 min por conexão) antes de criar, entrar ou começar partida com aposta; L66: pelo resumo
+      ...(env.CONTA === undefined ? {} : { contaDaSessaoPorResumo: (resumo: string) => (env.CONTA as unknown as BancoDaConta).contaDaSessaoPorResumo(resumo) }),
       aoMudarConta: (conn) => this.soquetes.regravarAnexo(conn),
     });
     this.httpCarteira = criarHttpDaCarteira({ config: this.config, carteiras: this.carteiras, relogio: this.relogio, origensAceitas: () => this.origensAceitas });
@@ -129,8 +129,9 @@ export class SalaDO extends DurableObject<Env> {
             log,
             lerAte: () => this.carteiras.varridasAte,
           });
-    // Acordou da hibernação com WebSockets abertos: cada um volta ao controle de silêncio, com o último sinal que guardou
-    for (const ws of ctx.getWebSockets()) this.soquetes.adotar(ws);
+    // Acordou da hibernação com WebSockets abertos: cada um volta ao controle de silêncio, com o último sinal que guardou. L66: o anexo antigo (com o
+    // token da sessão) é trocado pelo resumo antes de qualquer evento (`blockConcurrencyWhile`), e só então os soquetes são adotados
+    void ctx.blockConcurrencyWhile(() => this.soquetes.adotarTodos(ctx.getWebSockets()));
     // Acordou com operações na caixa de saída (uma queda no meio do envio): o `CarteirasNoDO` já começou a drená-las; o alarm cobre o resto
     void this.alarme.aoHaverSala();
     void this.varrerExcluidas(true);
@@ -205,10 +206,10 @@ export class SalaDO extends DurableObject<Env> {
    * RPC da borda (L61b): `POST /conta/sair` ou `/conta/excluir` deu certo. As conexões que traziam essa conta a perdem (a conexão segue, sem conta),
    * inclusive no anexo que sobrevive à hibernação, e os lugares que usam a carteira dela ficam sem carteira. Devolve quantas conexões perderam a conta.
    */
-  async esquecerConta(id: string, sessao?: string): Promise<number> {
+  async esquecerConta(id: string, resumoDaSessao?: string): Promise<number> {
     if (!ID_VALIDO.test(id)) throw new RangeError('id inválido');
-    if (sessao !== undefined && tokenDoCabecalho(sessao) === undefined) throw new RangeError('sessão inválida');
-    return this.registro.esquecerConta(id, sessao);
+    if (resumoDaSessao !== undefined && resumoDeSessaoValido(resumoDaSessao) === undefined) throw new RangeError('sessão inválida');
+    return this.registro.esquecerConta(id, resumoDaSessao);
   }
 
   /** RPC da borda (L61b): a marca `daConta` do convidado que virou conta não pôde ser posta; fica pendente, persistida, e o alarm a tenta de novo. */
@@ -239,7 +240,7 @@ export class SalaDO extends DurableObject<Env> {
 
     const par = new WebSocketPair();
     const [cliente, servidor] = [par[0], par[1]];
-    // L61b: o anexo leva o token da sessão que a borda provou, para reler a sessão antes de mexer em moeda
+    // L61b: o anexo leva o resumo (L66; antes o token) da sessão que a borda provou, para reler a sessão antes de mexer em moeda
     servidor.serializeAttachment(anexoDoUpgrade(request.headers, ip, this.relogio()) satisfies AnexoDoSoquete);
     this.ctx.acceptWebSocket(servidor);
     this.soquetes.adotar(servidor);

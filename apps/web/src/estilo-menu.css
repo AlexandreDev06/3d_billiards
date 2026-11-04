@@ -254,7 +254,7 @@ body[data-boteco='sim'] .menu {
 
 /*
  * O nome do jogo num elemento só (`.menu-letreiro`, criado por `letreiro()` em menu.ts): o letreiro do Pincel (`public/marca/`, L44),
- * aceso por cima do apagado. A largura (`--w`) manda; a altura vem da proporção do PNG (2048x1034 as duas linhas, 2048x882 só
+ * aceso por cima do apagado. A largura (`--w`) manda; a altura vem da proporção do PNG (2048x1120 as duas linhas, 2048x882 só
  * "SINUCA") e as margens negativas comem a folga transparente de cima e de baixo, que é só brilho. O texto fica escondido (leitor de
  * tela); se a imagem não carregar, `.sem-imagem` devolve o letreiro de texto de antes.
  */
@@ -272,7 +272,7 @@ body[data-boteco='sim'] .menu {
 
 .menu-letreiro.grande {
   --w: 372px;
-  height: calc(var(--w) * 0.5049);
+  height: calc(var(--w) * 0.5469);
   margin: calc(var(--w) * -0.06) auto calc(var(--w) * -0.03);
 }
 

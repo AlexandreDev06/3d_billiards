@@ -354,9 +354,9 @@ export function criarMeuBalao(pai: HTMLElement, carteira: CarteiraDoAparelho, op
       fechar.focus();
       prepararPrevia();
       // Põe a carteira em dia: o que se comprou na loja (ou em outra aba) aparece aqui.
-      void carteira.garantir().then((r) => {
+      void carteira.ler().then((r) => {
         if (!aberto) return;
-        if (!r.ok && r.erro === 'fora-do-ar') tratar(r, '');
+        if (r !== null && !r.ok && r.erro === 'fora-do-ar') tratar(r, '');
         else {
           // O balão que a sala guarda pode ser outro desde a última leitura: se o rascunho ainda é o de antes de mexer, acompanha.
           const guardado = carteira.estado()?.balao?.aparencia;

@@ -5,7 +5,7 @@ import tseslint from 'typescript-eslint';
 const SEM_MATH_RANDOM = ['error', { object: 'Math', property: 'random', message: 'Use o RNG semeado injetado.' }];
 
 export default defineConfig(
-  { ignores: ['**/dist/**', '**/node_modules/**', '.outros/**', '.maestri/**', 'arte/**'] },
+  { ignores: ['**/dist/**', '**/node_modules/**', '**/.wrangler/**', '.outros/**', '.maestri/**', 'arte/**'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   {

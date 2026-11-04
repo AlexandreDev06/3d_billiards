@@ -62,7 +62,6 @@
   "espuma",
   "ferro",
   "inox",
-  "letreiro-halo (alfa)",
   "liquido-ambar",
   "liquido-claro (alfa)",
   "liquido-guarana",
@@ -88,6 +87,7 @@
  "materiais_emissivos": [
   "cartazes",
   "lampada",
+  "letreiro-halo (alfa)",
   "luminaria-luz",
   "luz-estufa",
   "neon-ambar",
@@ -234,8 +234,8 @@
  "niveis": {
   "alto": {
    "arquivo": "exportados/boteco-alto.glb",
-   "bytes": 13683180,
-   "triangulos": 140842,
+   "bytes": 13699724,
+   "triangulos": 140866,
    "nos": [
     {
      "nome": "boteco",
@@ -249,7 +249,7 @@
     },
     {
      "nome": "letreiro-neon",
-     "triangulos": 3014,
+     "triangulos": 3038,
      "primitivas": 6
     },
     {
@@ -265,7 +265,7 @@
    ],
    "materiais": 47,
    "imagens": 15,
-   "bytes_das_imagens": 8161301,
+   "bytes_das_imagens": 8178413,
    "texturas": [
     {
      "nome": "atlas",
@@ -273,7 +273,7 @@
       4096,
       4096
      ],
-     "bytes": 2972359
+     "bytes": 2970643
     },
     {
      "nome": "atlas",
@@ -281,7 +281,7 @@
       4096,
       4096
      ],
-     "bytes": 1874619
+     "bytes": 1873001
     },
     {
      "nome": "atlas",
@@ -289,7 +289,7 @@
       3072,
       3072
      ],
-     "bytes": 1142951
+     "bytes": 1144303
     },
     {
      "nome": "rotulos",
@@ -375,17 +375,17 @@
      "nome": "letreiro-halo",
      "px": [
       1024,
-      517
+      560
      ],
-     "bytes": 424826
+     "bytes": 437956
     },
     {
      "nome": "letreiro-halo",
      "px": [
       1024,
-      517
+      560
      ],
-     "bytes": 227944
+     "bytes": 233908
     }
    ],
    "maior_textura_px": 4096,
@@ -407,7 +407,7 @@
   },
   "medio": {
    "arquivo": "exportados/boteco-medio.glb",
-   "bytes": 4785908,
+   "bytes": 4788804,
    "triangulos": 56870,
    "nos": [
     {
@@ -438,7 +438,7 @@
    ],
    "materiais": 38,
    "imagens": 11,
-   "bytes_das_imagens": 2627508,
+   "bytes_das_imagens": 2630403,
    "texturas": [
     {
      "nome": "atlas",
@@ -446,7 +446,7 @@
       2048,
       2048
      ],
-     "bytes": 802963
+     "bytes": 803317
     },
     {
      "nome": "atlas",
@@ -454,7 +454,7 @@
       2048,
       2048
      ],
-     "bytes": 532022
+     "bytes": 532348
     },
     {
      "nome": "atlas",
@@ -462,7 +462,7 @@
       2048,
       2048
      ],
-     "bytes": 503832
+     "bytes": 503932
     },
     {
      "nome": "rotulos",
@@ -524,9 +524,9 @@
      "nome": "letreiro",
      "px": [
       512,
-      258
+      280
      ],
-     "bytes": 23562
+     "bytes": 25677
     }
    ],
    "maior_textura_px": 2048,
@@ -548,7 +548,7 @@
   },
   "baixo": {
    "arquivo": "exportados/boteco-baixo.glb",
-   "bytes": 1051968,
+   "bytes": 1054900,
    "triangulos": 1416,
    "nos": [
     {
@@ -574,7 +574,7 @@
    ],
    "materiais": 10,
    "imagens": 5,
-   "bytes_das_imagens": 947468,
+   "bytes_das_imagens": 950402,
    "texturas": [
     {
      "nome": "atlas",
@@ -582,7 +582,7 @@
       2048,
       2048
      ],
-     "bytes": 664609
+     "bytes": 665272
     },
     {
      "nome": "atlas",
@@ -590,7 +590,7 @@
       1024,
       1024
      ],
-     "bytes": 124782
+     "bytes": 124938
     },
     {
      "nome": "prateleira",
@@ -612,9 +612,9 @@
      "nome": "letreiro",
      "px": [
       512,
-      258
+      280
      ],
-     "bytes": 23562
+     "bytes": 25677
     }
    ],
    "maior_textura_px": 2048,
@@ -1383,12 +1383,12 @@
   "letreiro": {
    "min": [
     -4.98,
-    1.44,
+    1.39,
     -2.76
    ],
    "max": [
     -4.92,
-    2.46,
+    2.51,
     -0.74
    ]
   },

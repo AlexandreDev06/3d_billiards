@@ -12,7 +12,7 @@ import { SEGURANCA, politicaDeConteudo, temAnuncio } from '../cabecalhos';
 import { ehCaminhoDaConta, tratarContaDaSinuca, type BancoDaConta } from '../conta-na-sinuca';
 import { ipDoCliente } from '../ip';
 import { origemPermitida } from '../origem';
-import { tokenDaSessao } from '../sessao-da-conta';
+import { resumoDaSessao, tokenDaSessao } from '../sessao-da-conta';
 import { configDoWorker } from './config-do-env';
 import { paraOObjeto, pedidoDoRequest, respostaDoResultado } from './corpo-do-pedido';
 import { SalaDO, logEmJson } from './sala-do';
@@ -39,18 +39,20 @@ const PRAZO_DA_SESSAO_MS = 5000;
  * há conta (`id` ausente) e vale o código do convidado, como sempre. Banco que não responde é `foraDoAr`: quem tem sessão espera a
  * conta, e cair no código abriria outra carteira em silêncio.
  */
-async function contaDaSessao(request: Request, env: Env): Promise<{ readonly id?: string; readonly token?: string; readonly foraDoAr?: true }> {
+async function contaDaSessao(request: Request, env: Env): Promise<{ readonly id?: string; readonly resumo?: string; readonly foraDoAr?: true }> {
   const token = tokenDaSessao(request.headers.get('cookie'));
   if (token === null || env.CONTA === undefined) return {};
   const banco = env.CONTA as unknown as BancoDaConta;
+  // L66: o token do cookie acaba aqui; o Banco, o objeto e o anexo só conhecem o resumo
+  const resumo = await resumoDaSessao(token);
   try {
     let prazo: ReturnType<typeof setTimeout> | undefined;
     const limite = new Promise<never>((_, rejeitar) => {
       prazo = setTimeout(() => rejeitar(new Error('prazo')), PRAZO_DA_SESSAO_MS);
     });
     try {
-      const conta = await Promise.race([banco.contaDaSessao(token), limite]);
-      return conta === null ? {} : { id: conta.id, token };
+      const conta = await Promise.race([banco.contaDaSessaoPorResumo(resumo), limite]);
+      return conta === null ? {} : { id: conta.id, resumo };
     } finally {
       clearTimeout(prazo);
     }
@@ -74,7 +76,7 @@ async function tratarConta(request: Request, env: Env): Promise<Response> {
     efeitos: {
       marcarDaConta: (id) => objetoDaSala(env).marcarDaConta(id),
       apagarDaConta: (id) => objetoDaSala(env).apagarDaConta(id),
-      esquecerConta: (id, sessao) => objetoDaSala(env).esquecerConta(id, sessao),
+      esquecerConta: (id, resumo) => objetoDaSala(env).esquecerConta(id, resumo),
       adiarMarca: (id) => objetoDaSala(env).adiarMarca(id),
     },
     tempoDoCorpoMs: config.carteira.tempoDoCorpoMs,
@@ -143,7 +145,7 @@ export default {
       if (!origemPermitida(request.headers.get('origin') ?? undefined, [...config.origensPermitidas, url.origin])) return texto(403, 'Forbidden');
       const conta = await contaDaSessao(request, env);
       if (conta.foraDoAr) return texto(503, 'A conta está fora do ar.', { 'Retry-After': '30' });
-      return objetoDaSala(env).fetch(paraOObjeto(request, conta.id, conta.token));
+      return objetoDaSala(env).fetch(paraOObjeto(request, conta.id, conta.resumo));
     }
 
     if (ehCaminhoDaConta(caminho)) return tratarConta(request, env);

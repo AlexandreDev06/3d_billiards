@@ -126,3 +126,28 @@ describe('PlantadorDeDedos: as pontas dos dedos pousam no apoio', () => {
     expect(memoria().heapUsed - antes).toBeLessThan(8_000_000);
   }, 30_000);
 });
+
+describe('PlantadorDeDedos.alcancaOApoio (L65)', () => {
+  const desenho = pontas(assentar(parado(), () => -Infinity));
+  const margem = CONFIG_WEB.maos.ponte.pouso;
+
+  it('sem apoio sob nenhum dedo a mão não alcança nada', () => {
+    expect(parado().alcancaOApoio(pose, () => -Infinity, margem)).toBe(false);
+  });
+
+  it('com o apoio na altura das pontas ou um pouco abaixo, alguma ponta o alcança dobrando-se', () => {
+    expect(parado().alcancaOApoio(pose, plano(desenho.indicador.y), margem)).toBe(true);
+    expect(parado().alcancaOApoio(pose, plano(desenho.indicador.y - 0.006), margem)).toBe(true);
+  });
+
+  it('com o apoio muito abaixo do alcance dos dedos, flutua: não alcança', () => {
+    expect(parado().alcancaOApoio(pose, plano(-1), margem)).toBe(false);
+  });
+
+  it('é só uma pergunta: não mexe nas dobras', () => {
+    const p = parado();
+    p.alcancaOApoio(pose, plano(desenho.indicador.y), margem);
+    expect(dobras(p)).toEqual([0, 0, 0, 0]);
+  });
+});
+
