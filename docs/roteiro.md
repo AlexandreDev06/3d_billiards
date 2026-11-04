@@ -13,7 +13,7 @@ Time ativo: Taco, Feltro, Juiz (Giz ficou de fora para poupar limite). O estudo 
 - [x] **L2** (+ L2b de integração) Taco: regras v0 (`novaPartida`, `aplicarTacada` puros) com testes por cenário. ‖ Feltro: laço hot-seat ligando física + regras, HUD de vez/grupo/bolas/falta. (os cenários golden ficaram nos testes dos próprios pacotes; `testes/cenarios/` e `e2e/` do Giz ficam para a Fase 1).
 - [x] **L3** Feltro: áudio sintetizado, painel dev de física (F1) e acabamento do HUD (o painel ficou com o Feltro, que é dono da UI). Giz não foi recrutado na Fase 0, para poupar limite: a cobertura veio dos testes por mutação de cada lote e das partidas pelo gancho no Chrome.
 - [x] **Fechamento técnico**: varredura do Juiz (passou, 0 crítico/alto) → L3b de ajustes (Taco e Feltro).
-- [ ] **Aprovação do usuário**: jogar, ajustar a sensação no painel (F1) e responder `.outros/perguntas.md`.
+- [x] **Aprovação do usuário** (2026-11-04): aprovada.
 
 ## Fase 1 — jogo local completo
 
@@ -90,6 +90,6 @@ Plano original desta fase:
 
 Sala entra: `packages/protocolo`, `apps/sala` (PartyServer/DO), código de sala, envio e retransmissão da gravação, reconexão com token, chat; `wrangler dev` local. Deploy e conta Cloudflare são do usuário: só com pedido explícito.
 
-## Fase 3 — 3–4 jogadores e acabamento
+## Fase 3 — cancelada (decisão do usuário em 2026-11-04)
 
-Ranca-saia, duplas, três jogadores; espectadores; mira ao vivo; replays compartilháveis; histórico e ranking (SQLite do DO); ambiente de bar; massé/pulo.
+O que já estava no jogo (ranca-saia, duplas, três jogadores, espectadores, mira ao vivo, placar, boteco) fica. Replays compartilháveis e massé não serão feitos.

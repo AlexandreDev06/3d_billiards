@@ -60,8 +60,8 @@ Fronteiras de dependência (o Revisor cobra):
 
 - Preset Boteco: resolvido pelo usuário em 2026-10-09 (8 final, sem a 1 e a 15; ver registro).
 - Ordem dos parceiros nas duplas: implementada com as chaves provisórias `ordemDaVez` ('alternada', A1 → B1 → A2 → B2) e `quemContinua` ('mesmo-jogador' | 'parceiro'); perguntas 19 e 20 em `sinuca-perguntas`. Jogador que cai no online perde a vez para a outra equipe (`passarVez`).
-- Hospedagem do front: Cloudflare Pages ou GitHub Pages (Fase 2).
-- Nome do jogo.
+- Hospedagem do front: resolvida, Cloudflare (Worker com assets).
+- Nome do jogo: resolvido pelo usuário em 2026-11-04, Sinuca 3D.
 
 ## Vigentes dos registros arquivados
 

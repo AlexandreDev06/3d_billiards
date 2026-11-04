@@ -68,7 +68,7 @@ O nível segue a tarefa do lote, não o papel (pedido do usuário em 2026-10-28,
 3. O subagente entrega: seção `## L<n> <papel>` em `.outros/status.md` e o relatório (formato abaixo) como mensagem final, também gravado em `.outros/lote-<n>/relatorio-<papel>.txt`.
 4. O Principal pede revisão ao Juiz (escopo = arquivos do lote) enquanto o próximo lote segue.
 5. Achados altos: o Principal confere pessoalmente. Aceitos viram **preâmbulo** do próximo lote do dono (ou um lote `L<n>b` se o próximo já começou).
-6. Veredito em `.outros/status.md` (`Revisão: passou | precisa de ajuste (resumo)`), `[x]` no roteiro e `git add -A`: o índice vira a linha de base, então o `git diff` do próximo lote mostra só o que ele mudou. Staging não é commit; commit só quando o usuário pedir (existe um commit-base, `b8ce47c`, para voltar se um lote der errado).
+6. Veredito em `.outros/status.md` (`Revisão: passou | precisa de ajuste (resumo)`), `[x]` no roteiro e `git add` dos caminhos do lote: o índice vira a linha de base, então o `git diff` do próximo lote mostra só o que ele mudou. Commit, push e deploy: regras do `CLAUDE.md` da raiz.
 7. Fim de fase: Juiz faz a varredura final, Giz roda tudo, o usuário joga. O Principal fecha com o relatório ao usuário (`templates.md`), move as seções da fase de `.outros/status.md` para `docs/historico/fase-<n>.md` e acrescenta a entrada em `LEARNINGS.md`.
 
 ## Relatório (mensagem final de todo subagente)

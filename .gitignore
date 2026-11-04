@@ -15,6 +15,7 @@ test-results/
 .outros/
 .maestri/
 .claude/settings.local.json
+.claude/settings.local.json.tmp.*
 .claude/worktrees/
 
 # carteiras da sala (L22): saldo e skins em disco, nunca no git

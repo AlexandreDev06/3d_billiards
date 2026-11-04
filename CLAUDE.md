@@ -1,7 +1,7 @@
 # Sinuca 3D Par ou Ímpar — Guia do Repositório
 
 Jogo de sinuca 3D de boteco ("par ou ímpar") para PC, no navegador, entre amigos: sem linha de mira, tacada pelo mouse, efeito e giz; hot-seat primeiro, online depois.
-**Estado (2026-10-22): Fase 0 em andamento.** Hot-seat e online (sala auto-hospedada, `pnpm online`) jogam de ponta a ponta, com par ou ímpar e mata-mata, emojis, carteira, loja de tacos e aposta; falta a varredura da fase.
+**Estado (2026-11-04): jogo no ar em `sinuca.becogames.app`; fases 0 a 2 fechadas e Fase 3 cancelada pelo usuário.** Hot-seat e online jogam de ponta a ponta, com par ou ímpar e mata-mata, emojis, loja de tacos, aposta e a conta Beco Games.
 O que cada parte faz está no `CLAUDE.md` da própria pasta (carregado quando você lê arquivos dela); fases e lotes em `docs/roteiro.md`.
 
 ## Fonte da verdade
@@ -55,7 +55,7 @@ pnpm --filter @sinuca/sala dev   só a sala (tsx watch), para o Vite fazer proxy
 
 ## Repositório
 
-Git desde 2026-10-26 (commit-base `b8ce47c`; remote `origin` no GitHub, branch `main`). Use-o para se organizar: `git status` e `git diff --stat` mostram o que mudou desde a linha de base do lote (o índice, `git add -A` ao aprovar); `git log` e `git show <commit>:<arquivo>` dão o histórico e o estado anterior. A árvore é compartilhada e outros subagentes têm mudanças não commitadas: nunca `git reset --hard`, `checkout .`, `clean` nem `stash`; para desfazer algo seu, reverta só os seus arquivos. Commit e push: regra abaixo.
+Git desde 2026-10-26 (commit-base `b8ce47c`; remote `origin` no GitHub, branch `main`). Use-o para se organizar: `git status` e `git diff --stat` mostram o que mudou desde a linha de base do lote (o índice, `git add` dos caminhos do lote ao aprovar); `git log` e `git show <commit>:<arquivo>` dão o histórico e o estado anterior. A árvore é compartilhada e outros subagentes têm mudanças não commitadas: nunca `git reset --hard`, `checkout .`, `clean` nem `stash`; para desfazer algo seu, reverta só os seus arquivos. Commit e push: regra abaixo.
 
 ## Regras invioláveis (valem em TODO prompt)
 
