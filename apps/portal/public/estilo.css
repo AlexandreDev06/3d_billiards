@@ -264,3 +264,11 @@ p { text-wrap: pretty; }
 
 /* Campo de usuário só para o gerenciador de senhas (nova-senha): fora da vista, sem ocupar espaço no layout. */
 .so-leitor { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; opacity: 0; overflow: hidden; pointer-events: none; }
+
+/* Guia (L70): migalhas, tempo de leitura e lista do índice */
+.texto .migalhas { margin: 0 0 14px; color: var(--suave); font-size: var(--t-pequeno); }
+.texto .tempo { white-space: nowrap; }
+.texto .guia-lista { list-style: none; padding: 0; margin: 28px 0; border-top: 1px solid var(--linha); }
+.texto .guia-lista li { margin: 0; padding: 18px 0; border-bottom: 1px solid var(--linha); }
+.texto .guia-lista a { display: block; font-size: 1.125rem; font-weight: 500; }
+.texto .guia-lista span { display: block; margin-top: 4px; color: var(--suave); font-size: var(--t-pequeno); }
